@@ -845,7 +845,7 @@ raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
 		return -EINVAL;
 	}
 
-	if (raid_level != 0) {
+	if (raid_level != 0 && raid_level != 6) {
 		SPDK_ERRLOG("invalid raid level %d, only raid level 0 is supported\n",
 			    raid_level);
 		return -EINVAL;
