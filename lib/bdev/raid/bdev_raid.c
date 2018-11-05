@@ -120,6 +120,11 @@ raid_bdev_create_cb(void *io_device, void *ctx_buf)
 		}
 	}
 
+	if (raid_bdev->config->raid_level == 6 && raid_bdev->num_base_bdevs > 2)
+		raid_bdev->matrix_raid6 = reed_sol_r6_coding_matrix(raid_bdev->num_base_bdevs - 2/*k*/, 8 /*w*/);
+	else
+		raid_bdev->matrix_raid6 = NULL;
+
 	return 0;
 }
 
@@ -185,6 +190,8 @@ raid_bdev_cleanup(struct raid_bdev *raid_bdev)
 	if (raid_bdev->config) {
 		raid_bdev->config->raid_bdev = NULL;
 	}
+	free(raid_bdev->matrix_raid6);
+	raid_bdev->matrix_raid6 = NULL;
 	free(raid_bdev);
 }
 

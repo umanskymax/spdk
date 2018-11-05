@@ -124,6 +124,9 @@ struct raid_bdev {
 
 	/* Set to true if destruct is called for this raid bdev */
 	bool                        destruct_called;
+
+	/* Reed-Solomon Coding Optimized for RAID-6 */
+	int			    *matrix_raid6;
 };
 
 /*
