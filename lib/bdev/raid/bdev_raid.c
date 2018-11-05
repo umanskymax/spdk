@@ -120,8 +120,15 @@ raid_bdev_create_cb(void *io_device, void *ctx_buf)
 		}
 	}
 
-	if (raid_bdev->config->raid_level == 6 && raid_bdev->num_base_bdevs > 2)
-		raid_bdev->matrix_raid6 = reed_sol_r6_coding_matrix(raid_bdev->num_base_bdevs - 2/*k*/, 8 /*w*/);
+	if (raid_bdev->config->raid_level == 6 && raid_bdev->num_base_bdevs > 2) {
+		int k = raid_bdev->num_base_bdevs - 2;
+		int w = 8;
+		raid_bdev->matrix_raid6 = reed_sol_r6_coding_matrix(k, w);
+		if (!raid_bdev->matrix_raid6) {
+			SPDK_ERRLOG("Can't compute Reed Solomon matrix for RAID 6 with params: k %d , w %d\n", k, w);
+			return -ENOMEM;
+		}
+	}
 	else
 		raid_bdev->matrix_raid6 = NULL;
 
