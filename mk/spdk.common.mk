@@ -133,7 +133,7 @@ SYS_LIBS += -libverbs -lrdmacm
 endif
 
 ifeq ($(CONFIG_JERASURE),y)
-LIBS += -L$(CONFIG_JERASURE_DIR)/lib
+LIBS += -L$(CONFIG_JERASURE_DIR)/lib -Wl,-rpath $(CONFIG_JERASURE_DIR)/lib
 SYS_LIBS += -lgf_complete -lJerasure
 COMMON_CFLAGS += -I$(CONFIG_JERASURE_DIR)/include -I$(CONFIG_JERASURE_DIR)/include/jerasure
 endif
