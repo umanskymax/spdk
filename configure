@@ -40,6 +40,8 @@ function usage()
 	echo "                           example: /usr/share/dpdk/x86_64-default-linuxapp-gcc"
 	echo " fio                       Required to build fio_plugin."
 	echo "                           example: /usr/src/fio"
+	echo " jerasure                  Required to raid6"
+	echo "                           example: /usr/src/jerasure/install"
 	echo " igb-uio-driver            Required on some systems to use qat devices"
 	echo "                           No path required"
 	echo " vhost                     Required to build vhost target."
@@ -240,6 +242,15 @@ for i in "$@"; do
 			CONFIG[FIO_SOURCE_DIR]=
 			CONFIG[FIO_PLUGIN]=n
 			;;
+		--with-jerasure=*)
+			check_dir "$i"
+			CONFIG[JERASURE_DIR]="${i#*=}"
+			CONFIG[JERASURE]=y
+			;;
+		--without-jerasure)
+			CONFIG[JERASURE_DIR]=
+			CONFIG[JERASURE]=n
+			;;
 		--with-vtune=*)
 			check_dir "$i"
 			CONFIG[VTUNE_DIR]="${i#*=}"
@@ -300,6 +311,15 @@ if [ "${CONFIG[FIO_PLUGIN]}" = "y" ]; then
 	fi
 else
 	CONFIG[FIO_SOURCE_DIR]=
+fi
+
+if [ "${CONFIG[JERASURE]}" = "y" ]; then
+	if [ -z "${CONFIG[JERASURE_DIR]}" ]; then
+		echo "When jerasure is enabled, you must specify the jerasure directory using --with-jerasure=path"
+		exit 1
+	fi
+else
+	CONFIG[JERASURE_DIR]=
 fi
 
 if [ "${CONFIG[VTUNE]}" = "y" ]; then

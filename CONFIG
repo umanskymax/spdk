@@ -73,6 +73,13 @@ CONFIG_DPDK_DIR=
 # fio source code directory.
 CONFIG_FIO_PLUGIN=n
 
+# This directory should contain 'include' and 'lib' directories for your jerasure
+CONFIG_JERASURE_DIR=
+
+# Use jerasure. Requires CONFIG_JERASURE_DIR set to a valid
+# jerasure install directory.
+CONFIG_JERASURE=n
+
 # This directory should contain the source code directory for fio
 # which is required for building the SPDK FIO plugin.
 CONFIG_FIO_SOURCE_DIR=/usr/src/fio

@@ -41,6 +41,10 @@
 #include "spdk/json.h"
 #include "spdk/string.h"
 
+#include "gf_rand.h"
+#include "jerasure.h"
+#include "reed_sol.h"
+
 static bool g_shutdown_started = false;
 
 /* raid bdev config as read from config file */

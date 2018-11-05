@@ -35,6 +35,8 @@ SPDK_ROOT_DIR := $(abspath $(CURDIR)/../../../../..)
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 include $(SPDK_ROOT_DIR)/mk/spdk.app.mk
 
+CFLAGS += -I$(SPDK_ROOT_DIR)/lib/bdev/ -I$(CONFIG_JERASURE_DIR)/include -I$(CONFIG_JERASURE_DIR)/include/jerasure
 TEST_FILE = bdev_raid_ut.c
 
 include $(SPDK_ROOT_DIR)/mk/spdk.unittest.mk
+CFLAGS +=-Wno-strict-prototypes

@@ -39,3 +39,4 @@ C_SRCS = bdev_raid.c bdev_raid_rpc.c
 LIBNAME = bdev_raid
 
 include $(SPDK_ROOT_DIR)/mk/spdk.lib.mk
+CFLAGS +=-Wno-strict-prototypes
