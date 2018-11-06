@@ -288,17 +288,8 @@ static void
 raid_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
 	struct spdk_bdev_io         *parent_io = cb_arg;
-	struct raid_bdev_io		*raid_io = (struct raid_bdev_io *)parent_io->driver_ctx;
-	struct raid_bdev		*raid_bdev = (struct raid_bdev *)parent_io->bdev->ctxt;
 
 	spdk_bdev_free_io(bdev_io);
-
-	if ((bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) &&
-	    (raid_bdev->config->raid_level == 6)) {
-		assert(raid_io->radi6_buf != NULL);
-		spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
-		/* SPDK_ERRLOG("Released RAID6 buffer\n"); */
-	}
 
 	if (success) {
 		spdk_bdev_io_complete(parent_io, SPDK_BDEV_IO_STATUS_SUCCESS);
@@ -323,59 +314,98 @@ raid_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg
 static void
 raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
-	struct raid6_cb_arg		*raid6_cb_arg = (struct raid6_cb_arg *)cb_arg;
-	struct spdk_bdev_io	        *parent_io = raid6_cb_arg->parent_io;
-	struct raid_bdev_io		*raid_io = (struct raid_bdev_io *)bdev_io->driver_ctx;
-	struct raid_bdev		*raid_bdev = (struct raid_bdev *)bdev_io->bdev->ctxt;
-	int				i;
-	int			        read_indx[3] = {0, 2, 3};
+	struct raid6_block_op		*op = (struct raid6_block_op *)cb_arg;
+	struct spdk_bdev_io		*parent_io = op->parent_io;
+	struct raid_bdev_io		*raid_io = (struct raid_bdev_io *)parent_io->driver_ctx;
+	struct raid_bdev_io_channel	*raid_ch = spdk_io_channel_get_ctx(raid_io->ch);
+	struct raid_bdev		*raid_bdev = (struct raid_bdev *)parent_io->bdev->ctxt;
+	uint32_t			read_indx[3] = {0, 2, 3};
+	uint32_t			i, idx;
+	int				ret;
 
 	/*
 	SPDK_WARNLOG("raid bdev io base_bdev_reset_submitted;  %u\n", raid_io->base_bdev_reset_submitted);
 	*/
 
-	(void)(parent_io);
+	op->status = success ? RAID6_BLOCK_STATUS_DONE : RAID6_BLOCK_STATUS_FAILED;
 
-	raid_io->raid6_block_statuses[raid6_cb_arg->bdev_idx] = success? RAID6_BLOCK_STATUS_DONE:
-									RAID6_BLOCK_STATUS_FAILED;
 
-	if (success) {
+	for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
+		if (raid_io->raid6_block_ops[i].status == RAID6_BLOCK_STATUS_IN_PROGRESS) {
+			return;
+		} else if (raid_io->raid6_block_ops[i].status == RAID6_BLOCK_STATUS_FAILED) {
+			SPDK_ERRLOG("RAID6: IO block op failed: bdev_io %p, idx %u\n",
+				    parent_io,
+				    raid_io->raid6_block_ops[i].bdev_idx);
+			success = false;
+		}
+	}
 
-		for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
-			if (raid_io->raid6_block_statuses[i] != RAID6_BLOCK_STATUS_DONE)
-				return;
+	if (!success) {
+		SPDK_ERRLOG("RAID6: IO failed: bdev_io %p\n", parent_io);
+		if (parent_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
+			assert(raid_io->raid6_buf != NULL);
+			spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
 		}
 
-		switch (raid_io->raid6_stage) {
-			case RAID6_STAGE_READ:
-			case RAID6_STAGE_WRITE_ONLY:
-			case RAID6_STAGE_UPDATE_WRITE:
-				raid_bdev_io_completion(bdev_io, success, cb_arg);
-				return;
-			case RAID6_STAGE_UPDATE_READ:
-				/* Run calculation */
+		raid_bdev_io_completion(bdev_io, success, parent_io);
+		return;
+	}
+
+
+	switch (raid_io->raid6_stage) {
+	case RAID6_STAGE_READ:
+	case RAID6_STAGE_WRITE_ONLY:
+	case RAID6_STAGE_UPDATE_WRITE:
+		if (parent_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
+			assert(raid_io->raid6_buf != NULL);
+			spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
+		}
+
+		raid_bdev_io_completion(bdev_io, success, parent_io);
+		return;
+	case RAID6_STAGE_UPDATE_READ:
+		/* Run calculation */
 
 
 
-				raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
-				/* Submit write requests*/
+		raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
+		/* Submit write requests*/
 
-				raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
-				for (i = 0; i < sizeof(read_indx) / sizeof (read_indx[0]); ++i) {
-					idx = read_indx[idx];
-					raid_io->raid6_block_statuses[i] = RAID6_BLOCK_STATUS_IN_PROGRESS;
+		raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
+		for (i = 0; i < sizeof(read_indx) / sizeof (read_indx[0]); ++i) {
+			idx = read_indx[i];
+			op = &raid_io->raid6_block_ops[idx];
 
-
-					ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[idx].desc,
-							raid_ch->base_channel[idx],
-							&raid_io->blocks_iov[idx], 1,
-							0, raid_bdev->strip_size, raid6_bdev_io_completion,
-							&raid_io->raid6_cb_args[idx]);
-			}
+			op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
+			ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[idx].desc,
+						      raid_ch->base_channel[idx],
+						      &op->iov, 1,
+						      0, raid_bdev->strip_size,
+						      raid6_bdev_io_completion,
+						      op);
+			if (ret) {
+				SPDK_ERRLOG("Failed to submit RAID6 block operation: res %d, idx %u, bdev_io %p\n",
+					    ret,
+					    idx,
+					    parent_io);
+				op->status = RAID6_BLOCK_STATUS_FAILED;
+				if (i == 0) {
+					/* Nothing was submited. Fail this IO. */
+					assert(raid_io->raid6_buf != NULL);
+					spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
+					raid_bdev_io_completion(bdev_io, false, parent_io);
+				} else {
+					/* Partly OK. Request will be failed when submited operations are done. */
+					ret = 0;
+				}
 				break;
-		};
-	} else {
-		raid_bdev_io_completion(bdev_io, success, cb_arg);
+			}
+		}
+		break;
+	case RAID6_STAGE_UPDATE_CALC:
+	default:
+		SPDK_ERRLOG("Unexpected RAID6 stage %d\n", raid_io->raid6_stage);
 	}
 }
 
@@ -422,13 +452,13 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 		ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[pd_idx].desc,
 					     raid_ch->base_channel[pd_idx],
 					     bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
-					     pd_lba, pd_blocks, raid6_bdev_io_completion,
+					     pd_lba, pd_blocks, raid_bdev_io_completion,
 					     bdev_io);
 	} else if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
 		if (raid_bdev->config->raid_level == 6) {
-			int read_indx[3] = {0, 2, 3};
-			int idx;
-			int strip_size = raid_bdev->strip_size << raid_bdev->strip_size_shift;
+			uint32_t read_indx[3] = {0, 2, 3};
+			uint32_t i, idx;
+			size_t strip_size_bytes = raid_bdev->strip_size << raid_bdev->blocklen_shift;
 
 			raid_io->raid6_buf = spdk_mempool_get(raid_bdev->raid6_buf_pool);
 			if (!raid_io->raid6_buf) {
@@ -438,27 +468,47 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 
 			raid_io->raid6_stage = RAID6_STAGE_UPDATE_READ;
 
-			for (i = 0; i < raid_bdev->num_base_bdevs; raid_io->raid6_block_statuses[i++] = RAID6_BLOCK_STATUS_DONE);
+			for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
+				raid_io->raid6_block_ops[i].status = RAID6_BLOCK_STATUS_DONE;
+			}
 
 			/* SPDK_ERRLOG("Allocated RAID6 buffer\n"); */
 			for (i = 0; i < sizeof(read_indx) / sizeof (read_indx[0]); ++i) {
 				idx = read_indx[i];
+				struct raid6_block_op* op = &raid_io->raid6_block_ops[idx];
 
-				raid_io->raid6_block_statuses[idx] = RAID6_BLOCK_STATUS_IN_PROGRESS;
+				op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
 
-				raid_io->blocks_iov[idx].iov_base = (char *)raid_io->raid6_buf +
-					idx * strip_size;
-				raid_io->blocks_iov[idx].iov_len = strip_size;
+				op->iov.iov_base = (char *)raid_io->raid6_buf +
+					idx * strip_size_bytes;
+				op->iov.iov_len = strip_size_bytes;
 
-				raid_io->raid6_cb_args[idx].parent_io = bdev_io;
-				raid_io->raid6_cb_args[idx].bdev_idx = idx;
+				op->parent_io = bdev_io;
+				op->bdev_idx = idx;
 
 				ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[idx].desc,
-						raid_ch->base_channel[idx],
-						&raid_io->blocks_iov[idx], 1,
-						0, raid_bdev->strip_size, raid6_bdev_io_completion,
-						&raid_io->raid6_cb_args[idx]);
+							     raid_ch->base_channel[idx],
+							     &op->iov, 1,
+							     0, raid_bdev->strip_size,
+							     raid6_bdev_io_completion,
+							     op);
+				if (ret) {
+					SPDK_ERRLOG("Failed to submit RAID6 block operation: res %d, idx %u, bdev_io %p\n",
+						    ret,
+						    idx,
+						    bdev_io);
+					op->status = RAID6_BLOCK_STATUS_FAILED;
+					if (i == 0) {
+						/* Nothing was submited. Existing wait mechanism should handle this. */
+					} else {
+						/* Partly OK. Request will be failed when submited operations are done. */
+						/* @todo: existing waitq mechanism should be updated to handle this */
+						ret = 0;
+					}
+					break;
+				}
 			}
+
 		} else {
 			ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[pd_idx].desc,
 					raid_ch->base_channel[pd_idx],
@@ -558,12 +608,7 @@ raid_bdev_waitq_io_process(void *ctx)
 	raid_bdev = (struct raid_bdev *)bdev_io->bdev->ctxt;
 	start_strip = bdev_io->u.bdev.offset_blocks >> raid_bdev->strip_size_shift;
 
-	if (bdev_io->type != SPDK_BDEV_IO_TYPE_WRITE) {
-		ret = raid_bdev_submit_rw_request(bdev_io, start_strip);
-	} else {
-		start_strip = 0;
-		ret = raid_bdev_submit_rw_request(bdev_io, start_strip);
-	}
+	ret = raid_bdev_submit_rw_request(bdev_io, start_strip);
 	if (ret != 0) {
 		raid_bdev_io_submit_fail_process(raid_bdev, bdev_io, raid_io, ret);
 	}
@@ -1519,7 +1564,7 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 			SPDK_ERRLOG("Failed to allocate buffers pool for RAID6\n");
 			return -ENOMEM;
 		}
-		SPDK_ERRLOG("Allocated RAID buffer pool: %d*%d",
+		SPDK_ERRLOG("Allocated RAID buffer pool: %d*%d\n",
 			    1024,
 			    (raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs);
 	}

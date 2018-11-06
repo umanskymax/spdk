@@ -142,9 +142,9 @@ struct raid_bdev {
 enum raid6_stage {
 	RAID6_STAGE_READ = 0,
 	RAID6_STAGE_WRITE_ONLY,
-	RAOD6_STAGE_UPDATE_READ,
-	RAOD6_STAGE_UPDATE_CALC,
-	RAOD6_STAGE_UPDATE_WRITE,
+	RAID6_STAGE_UPDATE_READ,
+	RAID6_STAGE_UPDATE_CALC,
+	RAID6_STAGE_UPDATE_WRITE,
 };
 
 enum raid6_block_op_status {
@@ -153,17 +153,20 @@ enum raid6_block_op_status {
 	RAID6_BLOCK_STATUS_FAILED,
 };
 
+struct raid6_block_op {
+	struct spdk_bdev_io		*parent_io;
+	int				 bdev_idx;
+	enum raid6_block_op_status	 status;
+	/** Array of iovecs used for RAID6 update. */
+	struct iovec			 iov;
+};
+
 #define RAID_BDEV_IO_NUM_CHILD 32
 
 /*
  * raid_bdev_io is the context part of bdev_io. It contains the information
  * related to bdev_io for a pooled bdev
  */
-struct raid6_cb_arg {
-	struct spdk_bdev_io         *parent_io;
-	int			    bdev_idx;
-};
-
 struct raid_bdev_io {
 	/* WaitQ entry, used only in waitq logic */
 	struct spdk_bdev_io_wait_entry	waitq_entry;
@@ -179,12 +182,8 @@ struct raid_bdev_io {
 	/* RAID6 data buffer */
 	void				*raid6_buf;
 	/* Used for RAID6 state machine*/
-
-	enum raid6_stage raid6_stage;
-	enum raid6_block_op_status raid6_block_statuses[RAID_BDEV_IO_NUM_CHILD];
-	/** Array of iovecs used for RAID6 update. */
-	struct iovec blocks_iov[RAID_BDEV_IO_NUM_CHILD];
-	struct raid6_cb_arg raid6_cb_args[RAID_BDEV_IO_NUM_CHILD];
+	enum raid6_stage		raid6_stage;
+	struct raid6_block_op		raid6_block_ops[RAID_BDEV_IO_NUM_CHILD];
 };
 
 /*

@@ -180,7 +180,7 @@ fio_spdk_rdma () {
     then
 	FIO_PARAMS+=" --time_based=1 --runtime=$TIME"
     fi
-    FIO_PARAMS+=" --bs=$BLOCK_SIZE --bsrange=$BLOCK_SIZE-$BLOCK_SIZE --size=$SIZE"
+    FIO_PARAMS+=" --bs=$BLOCK_SIZE --size=$SIZE"
     FIO_PARAMS+=" --iodepth=$IO_DEPTH --readwrite=$IO_PATTERN --rwmixread=50"
     FIO_PARAMS+=" --randrepeat=1 --ioengine=spdk --direct=1 --gtod_reduce=0"
     FIO_PARAMS+=" --cpumask=$CPU_MASK"
@@ -233,10 +233,10 @@ test_raid_spdk_fio()
 	nvmf_tgt_add_null_bdev Null$i 8096 32768
 	bdevs+=" Null$i"
     done
-    nvmf_tgt_add_raid_bdev Raid0 32 0 $bdevs
+    nvmf_tgt_add_raid_bdev Raid0 32 6 $bdevs
     nvmf_tgt_add_subsystem cnode1 $DEFAULT_IP_ADDR 4420 Raid0
     sleep 5
-    fio_spdk_rdma $DEFAULT_IP_ADDR 4420 1 1 96k 16 4G write 10s
+    fio_spdk_rdma $DEFAULT_IP_ADDR 4420 1 1 32k 16 4G write 10s
     sleep 1
     nvmf_tgt_stop
 }
