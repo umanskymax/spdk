@@ -159,6 +159,11 @@ enum raid6_block_op_status {
  * raid_bdev_io is the context part of bdev_io. It contains the information
  * related to bdev_io for a pooled bdev
  */
+struct raid6_cb_arg {
+	struct spdk_bdev_io         *parent_io;
+	int			    bdev_idx;
+};
+
 struct raid_bdev_io {
 	/* WaitQ entry, used only in waitq logic */
 	struct spdk_bdev_io_wait_entry	waitq_entry;
@@ -177,6 +182,9 @@ struct raid_bdev_io {
 
 	enum raid6_stage raid6_stage;
 	enum raid6_block_op_status raid6_block_statuses[RAID_BDEV_IO_NUM_CHILD];
+	/** Array of iovecs used for RAID6 update. */
+	struct iovec blocks_iov[RAID_BDEV_IO_NUM_CHILD];
+	struct raid6_cb_arg raid6_cb_args[RAID_BDEV_IO_NUM_CHILD];
 };
 
 /*

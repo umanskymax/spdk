@@ -319,10 +319,6 @@ raid_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg
  * none
  */
 
-struct raid6_cb_arg {
-	struct spdk_bdev_io         *parent_io;
-	int			    bdev_idx;
-};
 
 static void
 raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
@@ -331,7 +327,8 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	struct spdk_bdev_io	        *parent_io = raid6_cb_arg->parent_io;
 	struct raid_bdev_io		*raid_io = (struct raid_bdev_io *)bdev_io->driver_ctx;
 	struct raid_bdev		*raid_bdev = (struct raid_bdev *)bdev_io->bdev->ctxt;
-	int i;
+	int				i;
+	int			        read_indx[3] = {0, 2, 3};
 
 	/*
 	SPDK_WARNLOG("raid bdev io base_bdev_reset_submitted;  %u\n", raid_io->base_bdev_reset_submitted);
@@ -352,17 +349,29 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		switch (raid_io->raid6_stage) {
 			case RAID6_STAGE_READ:
 			case RAID6_STAGE_WRITE_ONLY:
-			case RAOD6_STAGE_UPDATE_WRITE:
+			case RAID6_STAGE_UPDATE_WRITE:
 				raid_bdev_io_completion(bdev_io, success, cb_arg);
 				return;
-			case RAOD6_STAGE_UPDATE_READ:
+			case RAID6_STAGE_UPDATE_READ:
 				/* Run calculation */
 
-				raid_io->raid6_stage = RAOD6_STAGE_UPDATE_CALC;
-				break;
-			case RAOD6_STAGE_UPDATE_CALC:
-				/* Submit wite requests*/
-				raid_io->raid6_stage = RAOD6_STAGE_UPDATE_WRITE;
+
+
+				raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
+				/* Submit write requests*/
+
+				raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
+				for (i = 0; i < sizeof(read_indx) / sizeof (read_indx[0]); ++i) {
+					idx = read_indx[idx];
+					raid_io->raid6_block_statuses[i] = RAID6_BLOCK_STATUS_IN_PROGRESS;
+
+
+					ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[idx].desc,
+							raid_ch->base_channel[idx],
+							&raid_io->blocks_iov[idx], 1,
+							0, raid_bdev->strip_size, raid6_bdev_io_completion,
+							&raid_io->raid6_cb_args[idx]);
+			}
 				break;
 		};
 	} else {
@@ -417,18 +426,46 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 					     bdev_io);
 	} else if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
 		if (raid_bdev->config->raid_level == 6) {
+			int read_indx[3] = {0, 2, 3};
+			int idx;
+			int strip_size = raid_bdev->strip_size << raid_bdev->strip_size_shift;
+
 			raid_io->raid6_buf = spdk_mempool_get(raid_bdev->raid6_buf_pool);
 			if (!raid_io->raid6_buf) {
 				SPDK_ERRLOG("Failed to allocate RAID6 buffer\n");
 				assert(0);
 			}
+
+			raid_io->raid6_stage = RAID6_STAGE_UPDATE_READ;
+
+			for (i = 0; i < raid_bdev->num_base_bdevs; raid_io->raid6_block_statuses[i++] = RAID6_BLOCK_STATUS_DONE);
+
 			/* SPDK_ERRLOG("Allocated RAID6 buffer\n"); */
+			for (i = 0; i < sizeof(read_indx) / sizeof (read_indx[0]); ++i) {
+				idx = read_indx[i];
+
+				raid_io->raid6_block_statuses[idx] = RAID6_BLOCK_STATUS_IN_PROGRESS;
+
+				raid_io->blocks_iov[idx].iov_base = (char *)raid_io->raid6_buf +
+					idx * strip_size;
+				raid_io->blocks_iov[idx].iov_len = strip_size;
+
+				raid_io->raid6_cb_args[idx].parent_io = bdev_io;
+				raid_io->raid6_cb_args[idx].bdev_idx = idx;
+
+				ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[idx].desc,
+						raid_ch->base_channel[idx],
+						&raid_io->blocks_iov[idx], 1,
+						0, raid_bdev->strip_size, raid6_bdev_io_completion,
+						&raid_io->raid6_cb_args[idx]);
+			}
+		} else {
+			ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[pd_idx].desc,
+					raid_ch->base_channel[pd_idx],
+					bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
+					pd_lba, pd_blocks, raid_bdev_io_completion,
+					bdev_io);
 		}
-		ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[pd_idx].desc,
-					      raid_ch->base_channel[pd_idx],
-					      bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
-					      pd_lba, pd_blocks, raid6_bdev_io_completion,
-					      bdev_io);
 	} else {
 		SPDK_ERRLOG("Recvd not supported io type %u\n", bdev_io->type);
 		assert(0);
@@ -520,7 +557,13 @@ raid_bdev_waitq_io_process(void *ctx)
 	 */
 	raid_bdev = (struct raid_bdev *)bdev_io->bdev->ctxt;
 	start_strip = bdev_io->u.bdev.offset_blocks >> raid_bdev->strip_size_shift;
-	ret = raid_bdev_submit_rw_request(bdev_io, start_strip);
+
+	if (bdev_io->type != SPDK_BDEV_IO_TYPE_WRITE) {
+		ret = raid_bdev_submit_rw_request(bdev_io, start_strip);
+	} else {
+		start_strip = 0;
+		ret = raid_bdev_submit_rw_request(bdev_io, start_strip);
+	}
 	if (ret != 0) {
 		raid_bdev_io_submit_fail_process(raid_bdev, bdev_io, raid_io, ret);
 	}
