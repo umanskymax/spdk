@@ -310,6 +310,9 @@ raid_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg
  * none
  */
 
+#define K 2
+#define M 2
+#define W 8
 
 static void
 raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
@@ -322,6 +325,10 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	uint32_t			read_indx[3] = {0, 2, 3};
 	uint32_t			i, idx;
 	int				ret;
+	int				erasures[K + M + 1 ] = {};
+	int				erasures_count = 0;
+	char				*data[K] = {};
+	char				*coding[M] = {};
 
 	/*
 	SPDK_WARNLOG("raid bdev io base_bdev_reset_submitted;  %u\n", raid_io->base_bdev_reset_submitted);
@@ -367,6 +374,29 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	case RAID6_STAGE_UPDATE_READ:
 		/* Run calculation */
 
+
+		for (i = 0; i < K + M; i++) {
+			if (1 == i) { /* Restore second data block*/
+				erasures[erasures_count] = i;
+				erasures_count++;
+			}
+
+			if (i < K)
+				data[i] = raid_io->raid6_block_ops[i].iov.iov_base;
+			else
+				coding[i -K] = raid_io->raid6_block_ops[i].iov.iov_base;
+		}
+
+		erasures[erasures_count] = -1;
+
+		jerasure_matrix_decode(K, M, W,
+				raid_bdev->matrix_raid6, 1, erasures,
+				data, coding, raid_bdev->strip_size);
+
+		memcpy(raid_io->raid6_block_ops[0].iov.iov_base, parent_io->u.bdev.iovs, parent_io->u.bdev.iovcnt);
+
+		jerasure_matrix_encode(K, M, W, raid_bdev->matrix_raid6,
+				data, coding, raid_bdev->strip_size);
 
 
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
