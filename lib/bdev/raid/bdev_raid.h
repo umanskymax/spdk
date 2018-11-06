@@ -127,6 +127,9 @@ struct raid_bdev {
 
 	/* Reed-Solomon Coding Optimized for RAID-6 */
 	int			    *matrix_raid6;
+
+	/* buffers pool for RAID 6 operation */
+	struct spdk_mempool	    *raid6_buf_pool;
 };
 
 /*
@@ -144,6 +147,9 @@ struct raid_bdev_io {
 	uint8_t				base_bdev_reset_submitted;
 	uint8_t				base_bdev_reset_completed;
 	uint8_t				base_bdev_reset_status;
+
+	/* RAID6 data buffer */
+	void				*raid6_buf;
 };
 
 /*

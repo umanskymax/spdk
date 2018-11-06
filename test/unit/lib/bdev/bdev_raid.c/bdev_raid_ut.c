@@ -33,6 +33,7 @@
 
 #include "spdk/stdinc.h"
 #include "spdk_cunit.h"
+#include "common/lib/test_env.c"
 #include "spdk/env.h"
 #include "spdk_internal/mock.h"
 #include "bdev/raid/bdev_raid.c"

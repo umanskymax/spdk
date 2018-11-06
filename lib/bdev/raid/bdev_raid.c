@@ -288,8 +288,17 @@ static void
 raid_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
 	struct spdk_bdev_io         *parent_io = cb_arg;
+	struct raid_bdev_io		*raid_io = (struct raid_bdev_io *)parent_io->driver_ctx;
+	struct raid_bdev		*raid_bdev = (struct raid_bdev *)parent_io->bdev->ctxt;
 
 	spdk_bdev_free_io(bdev_io);
+
+	if ((bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) &&
+	    (raid_bdev->config->raid_level == 6)) {
+		assert(raid_io->radi6_buf != NULL);
+		spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
+		/* SPDK_ERRLOG("Released RAID6 buffer\n"); */
+	}
 
 	if (success) {
 		spdk_bdev_io_complete(parent_io, SPDK_BDEV_IO_STATUS_SUCCESS);
@@ -344,6 +353,14 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 					     pd_lba, pd_blocks, raid_bdev_io_completion,
 					     bdev_io);
 	} else if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
+		if (raid_bdev->config->raid_level == 6) {
+			raid_io->raid6_buf = spdk_mempool_get(raid_bdev->raid6_buf_pool);
+			if (!raid_io->raid6_buf) {
+				SPDK_ERRLOG("Failed to allocate RAID6 buffer\n");
+				assert(0);
+			}
+			/* SPDK_ERRLOG("Allocated RAID6 buffer\n"); */
+		}
 		ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[pd_idx].desc,
 					      raid_ch->base_channel[pd_idx],
 					      bdev_io->u.bdev.iovs, bdev_io->u.bdev.iovcnt,
@@ -1386,6 +1403,20 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 	raid_bdev->strip_size = (raid_bdev->strip_size * 1024) / blocklen;
 	raid_bdev->strip_size_shift = spdk_u32log2(raid_bdev->strip_size);
 	raid_bdev->blocklen_shift = spdk_u32log2(blocklen);
+	if (raid_bdev->config->raid_level == 6) {
+		raid_bdev->raid6_buf_pool = spdk_mempool_create("spdk_bdev_raid6",
+								1024,
+								(raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs,
+								SPDK_MEMPOOL_DEFAULT_CACHE_SIZE,
+								SPDK_ENV_SOCKET_ID_ANY);
+		if (!raid_bdev->raid6_buf_pool) {
+			SPDK_ERRLOG("Failed to allocate buffers pool for RAID6\n");
+			return -ENOMEM;
+		}
+		SPDK_ERRLOG("Allocated RAID buffer pool: %d*%d",
+			    1024,
+			    (raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs);
+	}
 
 	raid_bdev_gen = &raid_bdev->bdev;
 	raid_bdev_gen->blocklen = blocklen;
@@ -1456,7 +1487,9 @@ raid_bdev_deconfigure(struct raid_bdev *raid_bdev)
 	assert(raid_bdev->num_base_bdevs_discovered);
 	TAILQ_INSERT_TAIL(&g_spdk_raid_bdev_offline_list, raid_bdev, state_link);
 	SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "raid bdev state chaning from online to offline\n");
-
+	if (raid_bdev->config->raid_level == 6) {
+		spdk_mempool_free(raid_bdev->raid6_buf_pool);
+	}
 	spdk_io_device_unregister(raid_bdev, NULL);
 	spdk_bdev_unregister(&raid_bdev->bdev, NULL, NULL);
 }
