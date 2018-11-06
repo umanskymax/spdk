@@ -1594,7 +1594,7 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 			SPDK_ERRLOG("Failed to allocate buffers pool for RAID6\n");
 			return -ENOMEM;
 		}
-		SPDK_ERRLOG("Allocated RAID buffer pool: %d*%d\n",
+		SPDK_NOTICELOG("Allocated RAID buffer pool: %d*%d\n",
 			    1024,
 			    (raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs);
 	}
