@@ -60,6 +60,12 @@ enum raid_bdev_state {
 	RAID_BDEV_MAX
 };
 
+enum raid6_bdev_type {
+	RAID6_BDEV_DATA = 0,
+	RAID6_BDEV_P,
+	RAID6_BDEV_Q
+};
+
 /*
  * raid_base_bdev_info contains information for the base bdevs which are part of some
  * raid. This structure contains the per base bdev information. Whatever is
@@ -132,6 +138,23 @@ struct raid_bdev {
 	struct spdk_mempool	    *raid6_buf_pool;
 };
 
+
+enum raid6_stage {
+	RAID6_STAGE_READ = 0,
+	RAID6_STAGE_WRITE_ONLY,
+	RAOD6_STAGE_UPDATE_READ,
+	RAOD6_STAGE_UPDATE_CALC,
+	RAOD6_STAGE_UPDATE_WRITE,
+};
+
+enum raid6_block_op_status {
+	RAID6_BLOCK_STATUS_DONE = 0,
+	RAID6_BLOCK_STATUS_IN_PROGRESS,
+	RAID6_BLOCK_STATUS_FAILED,
+};
+
+#define RAID_BDEV_IO_NUM_CHILD 32
+
 /*
  * raid_bdev_io is the context part of bdev_io. It contains the information
  * related to bdev_io for a pooled bdev
@@ -150,6 +173,10 @@ struct raid_bdev_io {
 
 	/* RAID6 data buffer */
 	void				*raid6_buf;
+	/* Used for RAID6 state machine*/
+
+	enum raid6_stage raid6_stage;
+	enum raid6_block_op_status raid6_block_statuses[RAID_BDEV_IO_NUM_CHILD];
 };
 
 /*
