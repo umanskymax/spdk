@@ -376,55 +376,53 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		return;
 	case RAID6_STAGE_UPDATE_READ:
 		/* Run calculation */
-
-
-		for (i = 0; i < K + M; i++) {
-			if (1 == i) { /* Restore second data block*/
-				erasures[erasures_count] = i;
-				erasures_count++;
-			}
-
-			if (i < K)
-				data[i] = raid_io->raid6_block_ops[i].iov.iov_base;
-			else
-				coding[i -K] = raid_io->raid6_block_ops[i].iov.iov_base;
-		}
-
-		erasures[erasures_count] = -1;
-
-		jerasure_matrix_decode(K, M, W,
-				raid_bdev->matrix_raid6, 1, erasures,
-				data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
-
-		iovs = parent_io->u.bdev.iovs;
-		nbytes = raid_io->raid6_block_ops[0].iov.iov_len;
-
-		for (i = 0; i < (size_t)parent_io->u.bdev.iovcnt; i++) {
-			if (iovs[i].iov_base == NULL && iovs[i].iov_len != 0) {
-				return ;
-			}
-
-
-			if (nbytes <= iovs[i].iov_len) {
-				return ;
-			}
-
-			memcpy(raid_io->raid6_block_ops[0].iov.iov_base +
-					raid_io->raid6_block_ops[0].iov.iov_len - nbytes,
-					iovs[i].iov_base, iovs[i].iov_len);
-
-			nbytes -= iovs[i].iov_len;
-
-		}
-
-
-		jerasure_matrix_encode(K, M, W, raid_bdev->matrix_raid6,
-				data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
-
-
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
-		/* Submit write requests*/
 
+		if (!raid_bdev->config->skip_jerasure) {
+			for (i = 0; i < K + M; i++) {
+				if (1 == i) { /* Restore second data block*/
+					erasures[erasures_count] = i;
+					erasures_count++;
+				}
+
+				if (i < K)
+					data[i] = raid_io->raid6_block_ops[i].iov.iov_base;
+				else
+					coding[i -K] = raid_io->raid6_block_ops[i].iov.iov_base;
+			}
+
+			erasures[erasures_count] = -1;
+
+			jerasure_matrix_decode(K, M, W,
+					       raid_bdev->matrix_raid6, 1, erasures,
+					       data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
+
+			iovs = parent_io->u.bdev.iovs;
+			nbytes = raid_io->raid6_block_ops[0].iov.iov_len;
+
+			for (i = 0; i < (size_t)parent_io->u.bdev.iovcnt; i++) {
+				if (iovs[i].iov_base == NULL && iovs[i].iov_len != 0) {
+					return ;
+				}
+
+
+				if (nbytes <= iovs[i].iov_len) {
+					return ;
+				}
+
+				memcpy(raid_io->raid6_block_ops[0].iov.iov_base +
+				       raid_io->raid6_block_ops[0].iov.iov_len - nbytes,
+				       iovs[i].iov_base, iovs[i].iov_len);
+
+				nbytes -= iovs[i].iov_len;
+
+			}
+
+			jerasure_matrix_encode(K, M, W, raid_bdev->matrix_raid6,
+					       data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
+		}
+
+		/* Submit write requests*/
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
 		for (i = 0; i < sizeof(read_indx) / sizeof (read_indx[0]); ++i) {
 			idx = read_indx[i];
@@ -1219,6 +1217,9 @@ raid_bdev_parse_raid(struct spdk_conf_section *conf_section)
 		SPDK_ERRLOG("Failed to add raid bdev config\n");
 		return rc;
 	}
+
+	raid_cfg->skip_jerasure = spdk_conf_section_get_boolval(conf_section, "SkipJerasure", false);
+	SPDK_NOTICELOG("RAID6: Skip jerasure %d\n", raid_cfg->skip_jerasure);
 
 	for (i = 0; true; i++) {
 		base_bdev_name = spdk_conf_section_get_nmval(conf_section, "Devices", 0, i);

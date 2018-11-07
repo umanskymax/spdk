@@ -510,6 +510,13 @@ spdk_conf_section_get_intval(struct spdk_conf_section *sp, const char *key)
 	return 0;
 }
 
+bool
+spdk_conf_section_get_boolval(struct spdk_conf_section *sp, const char *key, bool default_val)
+{
+	return default_val;
+}
+
+
 struct spdk_conf_section *
 spdk_conf_next_section(struct spdk_conf_section *sp)
 {

@@ -217,6 +217,9 @@ struct raid_bdev_config {
 	/* raid level */
 	uint8_t                       raid_level;
 
+	/* Skip jerasure calculations */
+	bool                          skip_jerasure;
+
 	TAILQ_ENTRY(raid_bdev_config) link;
 };
 
