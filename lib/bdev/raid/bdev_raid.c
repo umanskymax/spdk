@@ -329,11 +329,14 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	int				erasures_count = 0;
 	char				*data[K] = {};
 	char				*coding[M] = {};
+	struct iovec			*iovs = NULL;
+	size_t				nbytes = 0;
 
 	/*
 	SPDK_WARNLOG("raid bdev io base_bdev_reset_submitted;  %u\n", raid_io->base_bdev_reset_submitted);
 	*/
 
+	spdk_bdev_free_io(bdev_io);
 	op->status = success ? RAID6_BLOCK_STATUS_DONE : RAID6_BLOCK_STATUS_FAILED;
 
 
@@ -355,7 +358,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 			spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
 		}
 
-		raid_bdev_io_completion(bdev_io, success, parent_io);
+		spdk_bdev_io_complete(parent_io, SPDK_BDEV_IO_STATUS_FAILED);
 		return;
 	}
 
@@ -369,7 +372,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 			spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
 		}
 
-		raid_bdev_io_completion(bdev_io, success, parent_io);
+		spdk_bdev_io_complete(parent_io, SPDK_BDEV_IO_STATUS_SUCCESS);
 		return;
 	case RAID6_STAGE_UPDATE_READ:
 		/* Run calculation */
@@ -391,12 +394,32 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 
 		jerasure_matrix_decode(K, M, W,
 				raid_bdev->matrix_raid6, 1, erasures,
-				data, coding, raid_bdev->strip_size);
+				data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
 
-		memcpy(raid_io->raid6_block_ops[0].iov.iov_base, parent_io->u.bdev.iovs, parent_io->u.bdev.iovcnt);
+		iovs = parent_io->u.bdev.iovs;
+		nbytes = raid_io->raid6_block_ops[0].iov.iov_len;
+
+		for (i = 0; i < (size_t)parent_io->u.bdev.iovcnt; i++) {
+			if (iovs[i].iov_base == NULL && iovs[i].iov_len != 0) {
+				return ;
+			}
+
+
+			if (nbytes <= iovs[i].iov_len) {
+				return ;
+			}
+
+			memcpy(raid_io->raid6_block_ops[0].iov.iov_base +
+					raid_io->raid6_block_ops[0].iov.iov_len - nbytes,
+					iovs[i].iov_base, iovs[i].iov_len);
+
+			nbytes -= iovs[i].iov_len;
+
+		}
+
 
 		jerasure_matrix_encode(K, M, W, raid_bdev->matrix_raid6,
-				data, coding, raid_bdev->strip_size);
+				data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
 
 
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
@@ -499,6 +522,12 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 			raid_io->raid6_stage = RAID6_STAGE_UPDATE_READ;
 
 			for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
+				struct raid6_block_op* op = &raid_io->raid6_block_ops[i];
+
+				op->iov.iov_base = (char *)raid_io->raid6_buf +
+					i * strip_size_bytes;
+				op->iov.iov_len = strip_size_bytes;
+
 				raid_io->raid6_block_ops[i].status = RAID6_BLOCK_STATUS_DONE;
 			}
 
@@ -509,9 +538,6 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 
 				op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
 
-				op->iov.iov_base = (char *)raid_io->raid6_buf +
-					idx * strip_size_bytes;
-				op->iov.iov_len = strip_size_bytes;
 
 				op->parent_io = bdev_io;
 				op->bdev_idx = idx;
