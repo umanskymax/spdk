@@ -120,18 +120,6 @@ raid_bdev_create_cb(void *io_device, void *ctx_buf)
 		}
 	}
 
-	if (raid_bdev->config->raid_level == 6 && raid_bdev->num_base_bdevs > 2) {
-		int k = raid_bdev->num_base_bdevs - 2;
-		int w = 8;
-		raid_bdev->matrix_raid6 = reed_sol_r6_coding_matrix(k, w);
-		if (!raid_bdev->matrix_raid6) {
-			SPDK_ERRLOG("Can't compute Reed Solomon matrix for RAID 6 with params: k %d , w %d\n", k, w);
-			return -ENOMEM;
-		}
-	}
-	else
-		raid_bdev->matrix_raid6 = NULL;
-
 	return 0;
 }
 
@@ -197,8 +185,6 @@ raid_bdev_cleanup(struct raid_bdev *raid_bdev)
 	if (raid_bdev->config) {
 		raid_bdev->config->raid_bdev = NULL;
 	}
-	free(raid_bdev->matrix_raid6);
-	raid_bdev->matrix_raid6 = NULL;
 	free(raid_bdev);
 }
 
@@ -310,10 +296,6 @@ raid_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg
  * none
  */
 
-#define K 2
-#define M 2
-#define W 8
-
 static void
 raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg)
 {
@@ -325,12 +307,15 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	uint32_t			read_indx[3] = {0, 2, 3};
 	uint32_t			i, idx;
 	int				ret;
-	int				erasures[K + M + 1 ] = {};
-	int				erasures_count = 0;
-	char				*data[K] = {};
-	char				*coding[M] = {};
 	struct iovec			*iovs = NULL;
 	size_t				nbytes = 0;
+	const uint32_t			M = 2;
+	const uint32_t			K = raid_bdev->config->num_base_bdevs - M;
+	const uint32_t			W = 8;
+	int				erasures[K + M + 1];
+	int				erasures_count = 0;
+	char				*data[K];
+	char				*coding[M];
 
 	/*
 	SPDK_WARNLOG("raid bdev io base_bdev_reset_submitted;  %u\n", raid_io->base_bdev_reset_submitted);
@@ -388,25 +373,39 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 				if (i < K)
 					data[i] = raid_io->raid6_block_ops[i].iov.iov_base;
 				else
-					coding[i -K] = raid_io->raid6_block_ops[i].iov.iov_base;
+					coding[i - K] = raid_io->raid6_block_ops[i].iov.iov_base;
 			}
 
 			erasures[erasures_count] = -1;
 
-			jerasure_matrix_decode(K, M, W,
-					       raid_bdev->matrix_raid6, 1, erasures,
-					       data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
+			ret = jerasure_matrix_decode(K, M, W,
+						     raid_bdev->matrix_raid6, 1, erasures,
+						     data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
+			if (ret) {
+				SPDK_ERRLOG("Wrong IO vector: i %u, base %p, len %lu\n",
+						    i,
+						    iovs[i].iov_base,
+						    iovs[i].iov_len);
+					assert(raid_io->raid6_buf != NULL);
+					spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
+					raid_bdev_io_completion(bdev_io, false, parent_io);
+					return ;
+			}
 
 			iovs = parent_io->u.bdev.iovs;
 			nbytes = raid_io->raid6_block_ops[0].iov.iov_len;
 
 			for (i = 0; i < (size_t)parent_io->u.bdev.iovcnt; i++) {
-				if (iovs[i].iov_base == NULL && iovs[i].iov_len != 0) {
-					return ;
-				}
-
-
-				if (nbytes <= iovs[i].iov_len) {
+				if (((iovs[i].iov_base == NULL) && (iovs[i].iov_len != 0)) ||
+				    (nbytes < iovs[i].iov_len)) {
+					SPDK_ERRLOG("Wrong IO vector: i %u, base %p, len %lu, nbytes %lu\n",
+						    i,
+						    iovs[i].iov_base,
+						    iovs[i].iov_len,
+						    nbytes);
+					assert(raid_io->raid6_buf != NULL);
+					spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
+					raid_bdev_io_completion(bdev_io, false, parent_io);
 					return ;
 				}
 
@@ -415,11 +414,10 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 				       iovs[i].iov_base, iovs[i].iov_len);
 
 				nbytes -= iovs[i].iov_len;
-
 			}
 
-			jerasure_matrix_encode(K, M, W, raid_bdev->matrix_raid6,
-					       data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
+			reed_sol_r6_encode(K, W, data, coding,
+					   raid_bdev->strip_size << raid_bdev->blocklen_shift);
 		}
 
 		/* Submit write requests*/
@@ -535,8 +533,6 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 				struct raid6_block_op* op = &raid_io->raid6_block_ops[idx];
 
 				op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
-
-
 				op->parent_io = bdev_io;
 				op->bdev_idx = idx;
 
@@ -1059,12 +1055,14 @@ raid_bdev_config_find_by_name(const char *raid_name)
  * raid_name - name for raid bdev.
  * strip_size - strip size in KB
  * num_base_bdevs - number of base bdevs.
- * raid_level - raid level, only raid level 0 is supported.
+ * raid_level - raid level, only raid levels 0 and 6 are supported.
+ * skip_jerasure - if true jerasure coding is not calculated.
  * _raid_cfg - Pointer to newly added configuration
  */
 int
 raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
-		     int raid_level, struct raid_bdev_config **_raid_cfg)
+		     int raid_level, bool skip_jerasure,
+		     struct raid_bdev_config **_raid_cfg)
 {
 	struct raid_bdev_config *raid_cfg;
 
@@ -1091,6 +1089,11 @@ raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
 		return -EINVAL;
 	}
 
+	if ((raid_level == 6) && (num_base_bdevs < 3)) {
+		SPDK_ERRLOG("RAID6 must have at least 3 base devices.\n");
+		return -EINVAL;
+	}
+
 	raid_cfg = calloc(1, sizeof(*raid_cfg));
 	if (raid_cfg == NULL) {
 		SPDK_ERRLOG("unable to allocate memory\n");
@@ -1106,6 +1109,7 @@ raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
 	raid_cfg->strip_size = strip_size;
 	raid_cfg->num_base_bdevs = num_base_bdevs;
 	raid_cfg->raid_level = raid_level;
+	raid_cfg->skip_jerasure = skip_jerasure;
 
 	raid_cfg->base_bdev = calloc(num_base_bdevs, sizeof(*raid_cfg->base_bdev));
 	if (raid_cfg->base_bdev == NULL) {
@@ -1194,6 +1198,7 @@ raid_bdev_parse_raid(struct spdk_conf_section *conf_section)
 	int strip_size;
 	int i, num_base_bdevs;
 	int raid_level;
+	bool skip_jerasure;
 	const char *base_bdev_name;
 	struct raid_bdev_config *raid_cfg;
 	int rc;
@@ -1207,19 +1212,17 @@ raid_bdev_parse_raid(struct spdk_conf_section *conf_section)
 	strip_size = spdk_conf_section_get_intval(conf_section, "StripSize");
 	num_base_bdevs = spdk_conf_section_get_intval(conf_section, "NumDevices");
 	raid_level = spdk_conf_section_get_intval(conf_section, "RaidLevel");
-
+	skip_jerasure = spdk_conf_section_get_boolval(conf_section, "SkipJerasure", false);
 	SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "%s %d %d %d\n", raid_name, strip_size, num_base_bdevs,
 		      raid_level);
+	SPDK_NOTICELOG("RAID6: Skip jerasure %d\n", skip_jerasure);
 
 	rc = raid_bdev_config_add(raid_name, strip_size, num_base_bdevs, raid_level,
-				  &raid_cfg);
+				  skip_jerasure, &raid_cfg);
 	if (rc != 0) {
 		SPDK_ERRLOG("Failed to add raid bdev config\n");
 		return rc;
 	}
-
-	raid_cfg->skip_jerasure = spdk_conf_section_get_boolval(conf_section, "SkipJerasure", false);
-	SPDK_NOTICELOG("RAID6: Skip jerasure %d\n", raid_cfg->skip_jerasure);
 
 	for (i = 0; true; i++) {
 		base_bdev_name = spdk_conf_section_get_nmval(conf_section, "Devices", 0, i);
@@ -1612,6 +1615,10 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 	raid_bdev->strip_size_shift = spdk_u32log2(raid_bdev->strip_size);
 	raid_bdev->blocklen_shift = spdk_u32log2(blocklen);
 	if (raid_bdev->config->raid_level == 6) {
+		const int W = 8;
+		const int M = 2;
+		const int K = raid_bdev->config->num_base_bdevs - M;
+
 		raid_bdev->raid6_buf_pool = spdk_mempool_create("spdk_bdev_raid6",
 								1024,
 								(raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs,
@@ -1624,6 +1631,12 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 		SPDK_NOTICELOG("Allocated RAID buffer pool: %d*%d\n",
 			    1024,
 			    (raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs);
+
+		raid_bdev->matrix_raid6 = reed_sol_r6_coding_matrix(K, W);
+		if (!raid_bdev->matrix_raid6) {
+			SPDK_ERRLOG("Can't compute Reed Solomon matrix for RAID 6 with params: k %d , w %d\n", K, W);
+			return -ENOMEM;
+		}
 	}
 
 	raid_bdev_gen = &raid_bdev->bdev;
@@ -1697,6 +1710,7 @@ raid_bdev_deconfigure(struct raid_bdev *raid_bdev)
 	SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "raid bdev state chaning from online to offline\n");
 	if (raid_bdev->config->raid_level == 6) {
 		spdk_mempool_free(raid_bdev->raid6_buf_pool);
+		free(raid_bdev->matrix_raid6);
 	}
 	spdk_io_device_unregister(raid_bdev, NULL);
 	spdk_bdev_unregister(&raid_bdev->bdev, NULL, NULL);
