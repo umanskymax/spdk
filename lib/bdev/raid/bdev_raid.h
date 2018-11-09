@@ -184,6 +184,7 @@ struct raid_bdev_io {
 	/* Used for RAID6 state machine*/
 	enum raid6_stage		raid6_stage;
 	struct raid6_block_op		raid6_block_ops[RAID_BDEV_IO_NUM_CHILD];
+	uint64_t			start_strip;
 };
 
 /*

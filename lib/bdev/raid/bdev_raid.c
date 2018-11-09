@@ -316,6 +316,8 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	int				erasures_count = 0;
 	char				*data[K];
 	char				*coding[M];
+	uint64_t			pd_strip;
+	uint64_t			pd_lba;
 
 	/*
 	SPDK_WARNLOG("raid bdev io base_bdev_reset_submitted;  %u\n", raid_io->base_bdev_reset_submitted);
@@ -422,6 +424,9 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 
 		/* Submit write requests*/
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
+		pd_strip = raid_io->start_strip / K;
+		pd_lba = pd_strip << raid_bdev->strip_size_shift;
+
 		for (i = 0; i < sizeof(read_indx) / sizeof (read_indx[0]); ++i) {
 			idx = read_indx[i];
 			op = &raid_io->raid6_block_ops[idx];
@@ -430,7 +435,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 			ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[idx].desc,
 						      raid_ch->base_channel[idx],
 						      &op->iov, 1,
-						      0, raid_bdev->strip_size,
+						      pd_lba, raid_bdev->strip_size,
 						      raid6_bdev_io_completion,
 						      op);
 			if (ret) {
@@ -505,9 +510,16 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 					     bdev_io);
 	} else if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
 		if (raid_bdev->config->raid_level == 6) {
+			const uint32_t M = 2;
+			const uint32_t K = raid_bdev->config->num_base_bdevs - M;
 			uint32_t read_indx[3] = {0, 2, 3};
 			uint32_t i, idx;
 			size_t strip_size_bytes = raid_bdev->strip_size << raid_bdev->blocklen_shift;
+
+			pd_strip = start_strip / K;
+			pd_idx = start_strip % K;
+			pd_lba = pd_strip << raid_bdev->strip_size_shift;
+			raid_io->start_strip = start_strip;
 
 			raid_io->raid6_buf = spdk_mempool_get(raid_bdev->raid6_buf_pool);
 			if (!raid_io->raid6_buf) {
@@ -527,7 +539,6 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 				raid_io->raid6_block_ops[i].status = RAID6_BLOCK_STATUS_DONE;
 			}
 
-			/* SPDK_ERRLOG("Allocated RAID6 buffer\n"); */
 			for (i = 0; i < sizeof(read_indx) / sizeof (read_indx[0]); ++i) {
 				idx = read_indx[i];
 				struct raid6_block_op* op = &raid_io->raid6_block_ops[idx];
@@ -539,13 +550,14 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 				ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[idx].desc,
 							     raid_ch->base_channel[idx],
 							     &op->iov, 1,
-							     0, raid_bdev->strip_size,
+							     pd_lba, raid_bdev->strip_size,
 							     raid6_bdev_io_completion,
 							     op);
 				if (ret) {
-					SPDK_ERRLOG("Failed to submit RAID6 block operation: res %d, idx %u, bdev_io %p\n",
+					SPDK_ERRLOG("Failed to submit RAID6 block operation: res %d, idx %u, pd_lba %lu, bdev_io %p\n",
 						    ret,
 						    idx,
+						    pd_lba,
 						    bdev_io);
 					op->status = RAID6_BLOCK_STATUS_FAILED;
 					if (i == 0) {
@@ -1650,16 +1662,24 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 		raid_bdev_gen->split_on_optimal_io_boundary = false;
 	}
 
-	/*
-	 * RAID bdev logic is for striping so take the minimum block count based
-	 * approach where total block count of raid bdev is the number of base
-	 * bdev times the minimum block count of any base bdev
-	 */
-	SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "min blockcount %lu,  numbasedev %u, strip size shift %u\n",
-		      min_blockcnt,
-		      raid_bdev->num_base_bdevs, raid_bdev->strip_size_shift);
-	raid_bdev_gen->blockcnt = ((min_blockcnt >> raid_bdev->strip_size_shift) <<
-				   raid_bdev->strip_size_shift)  * raid_bdev->num_base_bdevs;
+	if (raid_bdev->config->raid_level == 6) {
+		const int M = 2;
+		const int K = raid_bdev->config->num_base_bdevs - M;
+		raid_bdev_gen->blockcnt = ((min_blockcnt >> raid_bdev->strip_size_shift) <<
+					   raid_bdev->strip_size_shift) * K;
+	} else {
+		/*
+		 * RAID bdev logic is for striping so take the minimum block count based
+		 * approach where total block count of raid bdev is the number of base
+		 * bdev times the minimum block count of any base bdev
+		 */
+		SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "min blockcount %lu,  numbasedev %u, strip size shift %u\n",
+			      min_blockcnt,
+			      raid_bdev->num_base_bdevs, raid_bdev->strip_size_shift);
+		raid_bdev_gen->blockcnt = ((min_blockcnt >> raid_bdev->strip_size_shift) <<
+					   raid_bdev->strip_size_shift)  * raid_bdev->num_base_bdevs;
+	}
+
 	SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "io device register %p\n", raid_bdev);
 	SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "blockcnt %lu, blocklen %u\n", raid_bdev_gen->blockcnt,
 		      raid_bdev_gen->blocklen);
