@@ -304,7 +304,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	struct raid_bdev_io		*raid_io = (struct raid_bdev_io *)parent_io->driver_ctx;
 	struct raid_bdev_io_channel	*raid_ch = spdk_io_channel_get_ctx(raid_io->ch);
 	struct raid_bdev		*raid_bdev = (struct raid_bdev *)parent_io->bdev->ctxt;
-	char				write_mask[raid_bdev->num_base_bdevs];
+	char				write_mask[raid_bdev->num_base_bdevs]; /* The code is not ANSI compatible, MSVC will not compile it */
 	uint32_t			i;
 	int				ret;
 	struct iovec			*iovs = NULL;
