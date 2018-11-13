@@ -304,8 +304,8 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	struct raid_bdev_io		*raid_io = (struct raid_bdev_io *)parent_io->driver_ctx;
 	struct raid_bdev_io_channel	*raid_ch = spdk_io_channel_get_ctx(raid_io->ch);
 	struct raid_bdev		*raid_bdev = (struct raid_bdev *)parent_io->bdev->ctxt;
-	uint32_t			read_indx[3] = {0, 2, 3};
-	uint32_t			i, idx;
+	char				write_mask[raid_bdev->num_base_bdevs];
+	uint32_t			i;
 	int				ret;
 	struct iovec			*iovs = NULL;
 	size_t				nbytes = 0;
@@ -313,7 +313,6 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	const uint32_t			K = raid_bdev->config->num_base_bdevs - M;
 	const uint32_t			W = 8;
 	int				erasures[K + M + 1];
-	int				erasures_count = 0;
 	char				*data[K];
 	char				*coding[M];
 	uint64_t			pd_strip;
@@ -366,19 +365,19 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
 
 		if (!raid_bdev->config->skip_jerasure) {
+			if (raid_bdev->config->erased_device != -1) {
+				erasures[0] = raid_bdev->config->erased_device;
+				erasures[1] = -1;
+			} else {
+				/* Good flow */
+				erasures[0] = -1;
+			}
 			for (i = 0; i < K + M; i++) {
-				if (1 == i) { /* Restore second data block*/
-					erasures[erasures_count] = i;
-					erasures_count++;
-				}
-
 				if (i < K)
 					data[i] = raid_io->raid6_block_ops[i].iov.iov_base;
 				else
 					coding[i - K] = raid_io->raid6_block_ops[i].iov.iov_base;
 			}
-
-			erasures[erasures_count] = -1;
 
 			ret = jerasure_matrix_decode(K, M, W,
 						     raid_bdev->matrix_raid6, 1, erasures,
@@ -426,14 +425,21 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
 		pd_strip = raid_io->start_strip / K;
 		pd_lba = pd_strip << raid_bdev->strip_size_shift;
+		memset(write_mask, 1, sizeof(write_mask));
+		if (raid_bdev->config->erased_device != -1) {
+			write_mask[raid_bdev->config->erased_device] = 0;
+		} else {
+			/* Good flow */
+		}
+		for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
+			if (!write_mask[i]) {
+				continue;
+			}
 
-		for (i = 0; i < sizeof(read_indx) / sizeof (read_indx[0]); ++i) {
-			idx = read_indx[i];
-			op = &raid_io->raid6_block_ops[idx];
-
+			op = &raid_io->raid6_block_ops[i];
 			op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
-			ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[idx].desc,
-						      raid_ch->base_channel[idx],
+			ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[i].desc,
+						      raid_ch->base_channel[i],
 						      &op->iov, 1,
 						      pd_lba, raid_bdev->strip_size,
 						      raid6_bdev_io_completion,
@@ -441,7 +447,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 			if (ret) {
 				SPDK_ERRLOG("Failed to submit RAID6 block operation: res %d, idx %u, bdev_io %p\n",
 					    ret,
-					    idx,
+					    i,
 					    parent_io);
 				op->status = RAID6_BLOCK_STATUS_FAILED;
 				if (i == 0) {
@@ -512,9 +518,9 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 		if (raid_bdev->config->raid_level == 6) {
 			const uint32_t M = 2;
 			const uint32_t K = raid_bdev->config->num_base_bdevs - M;
-			uint32_t read_indx[3] = {0, 2, 3};
-			uint32_t i, idx;
-			size_t strip_size_bytes = raid_bdev->strip_size << raid_bdev->blocklen_shift;
+			char read_mask[raid_bdev->num_base_bdevs];
+			uint32_t i;
+			const size_t strip_size_bytes = raid_bdev->strip_size << raid_bdev->blocklen_shift;
 
 			pd_strip = start_strip / K;
 			pd_idx = start_strip % K;
@@ -529,6 +535,12 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 
 			raid_io->raid6_stage = RAID6_STAGE_UPDATE_READ;
 
+			memset(read_mask, 1, sizeof(read_mask));
+			if (raid_bdev->config->erased_device != -1) {
+				read_mask[raid_bdev->config->erased_device] = 0;
+			} else {
+				/* Good flow */
+			}
 			for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
 				struct raid6_block_op* op = &raid_io->raid6_block_ops[i];
 
@@ -536,27 +548,25 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 					i * strip_size_bytes;
 				op->iov.iov_len = strip_size_bytes;
 
-				raid_io->raid6_block_ops[i].status = RAID6_BLOCK_STATUS_DONE;
-			}
-
-			for (i = 0; i < sizeof(read_indx) / sizeof (read_indx[0]); ++i) {
-				idx = read_indx[i];
-				struct raid6_block_op* op = &raid_io->raid6_block_ops[idx];
+				if (!read_mask[i]) {
+					op->status = RAID6_BLOCK_STATUS_DONE;
+					continue;
+				}
 
 				op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
 				op->parent_io = bdev_io;
-				op->bdev_idx = idx;
+				op->bdev_idx = i;
 
-				ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[idx].desc,
-							     raid_ch->base_channel[idx],
+				ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[i].desc,
+							     raid_ch->base_channel[i],
 							     &op->iov, 1,
 							     pd_lba, raid_bdev->strip_size,
 							     raid6_bdev_io_completion,
 							     op);
 				if (ret) {
-					SPDK_ERRLOG("Failed to submit RAID6 block operation: res %d, idx %u, pd_lba %lu, bdev_io %p\n",
+					SPDK_ERRLOG("Failed to submit RAID6 block operation: res %d, bdev_idx %u, pd_lba %lu, bdev_io %p\n",
 						    ret,
-						    idx,
+						    i,
 						    pd_lba,
 						    bdev_io);
 					op->status = RAID6_BLOCK_STATUS_FAILED;
@@ -1069,11 +1079,12 @@ raid_bdev_config_find_by_name(const char *raid_name)
  * num_base_bdevs - number of base bdevs.
  * raid_level - raid level, only raid levels 0 and 6 are supported.
  * skip_jerasure - if true jerasure coding is not calculated.
+ * erased_device - index of erased device. -1 if all disks are OK.
  * _raid_cfg - Pointer to newly added configuration
  */
 int
 raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
-		     int raid_level, bool skip_jerasure,
+		     int raid_level, bool skip_jerasure, int erased_device,
 		     struct raid_bdev_config **_raid_cfg)
 {
 	struct raid_bdev_config *raid_cfg;
@@ -1106,6 +1117,11 @@ raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
 		return -EINVAL;
 	}
 
+	if (erased_device >= num_base_bdevs) {
+		SPDK_ERRLOG("Erased device index must be less than number of base device count.\n");
+		return -EINVAL;
+	}
+
 	raid_cfg = calloc(1, sizeof(*raid_cfg));
 	if (raid_cfg == NULL) {
 		SPDK_ERRLOG("unable to allocate memory\n");
@@ -1122,6 +1138,7 @@ raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
 	raid_cfg->num_base_bdevs = num_base_bdevs;
 	raid_cfg->raid_level = raid_level;
 	raid_cfg->skip_jerasure = skip_jerasure;
+	raid_cfg->erased_device = erased_device;
 
 	raid_cfg->base_bdev = calloc(num_base_bdevs, sizeof(*raid_cfg->base_bdev));
 	if (raid_cfg->base_bdev == NULL) {
@@ -1211,6 +1228,7 @@ raid_bdev_parse_raid(struct spdk_conf_section *conf_section)
 	int i, num_base_bdevs;
 	int raid_level;
 	bool skip_jerasure;
+	int erased_device;
 	const char *base_bdev_name;
 	struct raid_bdev_config *raid_cfg;
 	int rc;
@@ -1225,12 +1243,13 @@ raid_bdev_parse_raid(struct spdk_conf_section *conf_section)
 	num_base_bdevs = spdk_conf_section_get_intval(conf_section, "NumDevices");
 	raid_level = spdk_conf_section_get_intval(conf_section, "RaidLevel");
 	skip_jerasure = spdk_conf_section_get_boolval(conf_section, "SkipJerasure", false);
+	erased_device = spdk_conf_section_get_intval(conf_section, "ErasedDevice");
 	SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "%s %d %d %d\n", raid_name, strip_size, num_base_bdevs,
 		      raid_level);
-	SPDK_NOTICELOG("RAID6: Skip jerasure %d\n", skip_jerasure);
+	SPDK_NOTICELOG("RAID6: Skip jerasure %d, erased device %d\n", skip_jerasure, erased_device);
 
 	rc = raid_bdev_config_add(raid_name, strip_size, num_base_bdevs, raid_level,
-				  skip_jerasure, &raid_cfg);
+				  skip_jerasure, erased_device, &raid_cfg);
 	if (rc != 0) {
 		SPDK_ERRLOG("Failed to add raid bdev config\n");
 		return rc;
