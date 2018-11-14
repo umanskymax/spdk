@@ -284,6 +284,7 @@ raid_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg
 	}
 }
 
+
 /*
  * brief:
  * raid6_bdev_io_completion function is called by lower layers to notify raid
@@ -304,17 +305,12 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	struct raid_bdev_io		*raid_io = (struct raid_bdev_io *)parent_io->driver_ctx;
 	struct raid_bdev_io_channel	*raid_ch = spdk_io_channel_get_ctx(raid_io->ch);
 	struct raid_bdev		*raid_bdev = (struct raid_bdev *)parent_io->bdev->ctxt;
-	char				write_mask[raid_bdev->num_base_bdevs]; /* The code is not ANSI compatible, MSVC will not compile it */
 	uint32_t			i;
 	int				ret;
 	struct iovec			*iovs = NULL;
 	size_t				nbytes = 0;
-	const uint32_t			M = 2;
-	const uint32_t			K = raid_bdev->config->num_base_bdevs - M;
-	const uint32_t			W = 8;
-	int				erasures[K + M + 1];
-	char				*data[K];
-	char				*coding[M];
+	char				*data[raid_bdev->K];
+	char				*coding[raid_bdev->M];
 	uint64_t			pd_strip;
 	uint64_t			pd_lba;
 
@@ -365,32 +361,27 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
 
 		if (!raid_bdev->config->skip_jerasure) {
-			if (raid_bdev->config->erased_device != -1) {
-				erasures[0] = raid_bdev->config->erased_device;
-				erasures[1] = -1;
-			} else {
-				/* Good flow */
-				erasures[0] = -1;
-			}
-			for (i = 0; i < K + M; i++) {
-				if (i < K)
+			for (i = 0; i < raid_bdev->K + raid_bdev->M; i++) {
+				if (i < raid_bdev->K)
 					data[i] = raid_io->raid6_block_ops[i].iov.iov_base;
 				else
-					coding[i - K] = raid_io->raid6_block_ops[i].iov.iov_base;
+					coding[i - raid_bdev->K] = raid_io->raid6_block_ops[i].iov.iov_base;
 			}
 
-			ret = jerasure_matrix_decode(K, M, W,
-						     raid_bdev->matrix_raid6, 1, erasures,
-						     data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
-			if (ret) {
-				SPDK_ERRLOG("Wrong IO vector: i %u, base %p, len %lu\n",
-						    i,
-						    iovs[i].iov_base,
-						    iovs[i].iov_len);
+			if (raid_bdev->config->erased_device != -1) {
+				ret = jerasure_matrix_decode(raid_bdev->K, raid_bdev->M, raid_bdev->W,
+						raid_bdev->matrix_raid6, 1, raid_bdev->erasures,
+						data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
+				if (ret) {
+					SPDK_ERRLOG("Wrong IO vector: i %u, base %p, len %lu\n",
+							i,
+							iovs[i].iov_base,
+							iovs[i].iov_len);
 					assert(raid_io->raid6_buf != NULL);
 					spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
 					raid_bdev_io_completion(bdev_io, false, parent_io);
 					return ;
+				}
 			}
 
 			iovs = parent_io->u.bdev.iovs;
@@ -417,22 +408,17 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 				nbytes -= iovs[i].iov_len;
 			}
 
-			reed_sol_r6_encode(K, W, data, coding,
+			reed_sol_r6_encode(raid_bdev->K, raid_bdev->W, data, coding,
 					   raid_bdev->strip_size << raid_bdev->blocklen_shift);
 		}
 
 		/* Submit write requests*/
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
-		pd_strip = raid_io->start_strip / K;
+		pd_strip = raid_io->start_strip / raid_bdev->K;
 		pd_lba = pd_strip << raid_bdev->strip_size_shift;
-		memset(write_mask, 1, sizeof(write_mask));
-		if (raid_bdev->config->erased_device != -1) {
-			write_mask[raid_bdev->config->erased_device] = 0;
-		} else {
-			/* Good flow */
-		}
+
 		for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
-			if (!write_mask[i]) {
+			if (!raid_bdev->write_mask[i]) {
 				continue;
 			}
 
@@ -516,14 +502,11 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 					     bdev_io);
 	} else if (bdev_io->type == SPDK_BDEV_IO_TYPE_WRITE) {
 		if (raid_bdev->config->raid_level == 6) {
-			const uint32_t M = 2;
-			const uint32_t K = raid_bdev->config->num_base_bdevs - M;
-			char read_mask[raid_bdev->num_base_bdevs];
 			uint32_t i;
 			const size_t strip_size_bytes = raid_bdev->strip_size << raid_bdev->blocklen_shift;
 
-			pd_strip = start_strip / K;
-			pd_idx = start_strip % K;
+			pd_strip = start_strip / raid_bdev->K;
+			pd_idx = start_strip % raid_bdev->K;
 			pd_lba = pd_strip << raid_bdev->strip_size_shift;
 			raid_io->start_strip = start_strip;
 
@@ -535,12 +518,7 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 
 			raid_io->raid6_stage = RAID6_STAGE_UPDATE_READ;
 
-			memset(read_mask, 1, sizeof(read_mask));
-			if (raid_bdev->config->erased_device != -1) {
-				read_mask[raid_bdev->config->erased_device] = 0;
-			} else {
-				/* Good flow */
-			}
+
 			for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
 				struct raid6_block_op* op = &raid_io->raid6_block_ops[i];
 
@@ -548,7 +526,7 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 					i * strip_size_bytes;
 				op->iov.iov_len = strip_size_bytes;
 
-				if (!read_mask[i]) {
+				if (!raid_bdev->read_mask[i]) {
 					op->status = RAID6_BLOCK_STATUS_DONE;
 					continue;
 				}
@@ -556,6 +534,8 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 				op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
 				op->parent_io = bdev_io;
 				op->bdev_idx = i;
+
+				SPDK_NOTICELOG("RAID6. Read from %s\n", raid_bdev->base_bdev_info[i].bdev->name);
 
 				ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[i].desc,
 							     raid_ch->base_channel[i],
@@ -1621,7 +1601,8 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 	uint32_t		blocklen;
 	uint64_t		min_blockcnt;
 	struct spdk_bdev	*raid_bdev_gen;
-	int rc = 0;
+	int			rc = 0;
+	int			i;
 
 	blocklen = raid_bdev->base_bdev_info[0].bdev->blocklen;
 	min_blockcnt = raid_bdev->base_bdev_info[0].bdev->blockcnt;
@@ -1646,10 +1627,52 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 	raid_bdev->strip_size_shift = spdk_u32log2(raid_bdev->strip_size);
 	raid_bdev->blocklen_shift = spdk_u32log2(blocklen);
 	if (raid_bdev->config->raid_level == 6) {
-		const int W = 8;
-		const int M = 2;
-		const int K = raid_bdev->config->num_base_bdevs - M;
 
+		if (raid_bdev->config->num_base_bdevs < 4) {
+			SPDK_ERRLOG("We need at least 4 devices for RAID6 emulation\n");
+			return -EINVAL;
+		}
+
+		raid_bdev->W = 8;
+		raid_bdev->M = 2;
+		raid_bdev->K = raid_bdev->config->num_base_bdevs - raid_bdev->M;
+
+		memset(raid_bdev->write_mask, 0, sizeof(raid_bdev->write_mask));
+		memset(raid_bdev->read_mask, 0, sizeof(raid_bdev->read_mask));
+
+		raid_bdev->write_mask[0] = 1;
+		for (i = 1; i < raid_bdev->config->num_base_bdevs; ++i) {
+			if (i < raid_bdev->K) {
+				raid_bdev->read_mask[i] = 1; /* We need data blocks for parity calculation */
+			} else {
+				raid_bdev->read_mask[i] = raid_bdev->config->erased_device != -1 ? 1 : 0; /* We read parity blocks only in bad flow */
+				raid_bdev->write_mask[i] = 1; /* We always write parity blocks */
+
+			}
+			raid_bdev->erasures[i] = -1;
+		}
+
+		for (; i < RAID_BDEV_IO_NUM_CHILD; raid_bdev->erasures[i++] = -1);
+
+		if (raid_bdev->config->erased_device != -1) {
+			raid_bdev->read_mask[raid_bdev->config->erased_device] = 0; /* we don't read failed block, will be restored */
+			raid_bdev->erasures[0] = raid_bdev->config->erased_device;
+			raid_bdev->read_mask[0] = 1;
+		} else {
+			raid_bdev->read_mask[0] = 0;
+		}
+
+		SPDK_NOTICELOG("RAID6 emulated flow: %s\n", raid_bdev->config->erased_device == -1 ?
+				"Good flow" : "Bad flow");
+
+		for (i = 0; i < raid_bdev->config->num_base_bdevs; ++i) {
+			SPDK_NOTICELOG("RAID6 Disk %s , read %c , write %c , restore %c, calculate %c\n",
+					 raid_bdev->base_bdev_info[i].bdev->name,
+					 raid_bdev->read_mask[i] ? 'y' : 'n',
+					 raid_bdev->write_mask[i] ? 'y' : 'n',
+					 i == raid_bdev->config->erased_device? 'y' : 'n',
+					 i >= raid_bdev->K ? 'y' : 'n');
+		}
 		raid_bdev->raid6_buf_pool = spdk_mempool_create("spdk_bdev_raid6",
 								1024,
 								(raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs,
@@ -1663,9 +1686,9 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 			    1024,
 			    (raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs);
 
-		raid_bdev->matrix_raid6 = reed_sol_r6_coding_matrix(K, W);
+		raid_bdev->matrix_raid6 = reed_sol_r6_coding_matrix(raid_bdev->K, raid_bdev->W);
 		if (!raid_bdev->matrix_raid6) {
-			SPDK_ERRLOG("Can't compute Reed Solomon matrix for RAID 6 with params: k %d , w %d\n", K, W);
+			SPDK_ERRLOG("Can't compute Reed Solomon matrix for RAID 6 with params: k %d , w %d\n", raid_bdev->K, raid_bdev->W);
 			return -ENOMEM;
 		}
 	}

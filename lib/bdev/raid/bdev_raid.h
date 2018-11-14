@@ -86,6 +86,7 @@ struct raid_base_bdev_info {
 	bool			remove_scheduled;
 };
 
+#define RAID_BDEV_IO_NUM_CHILD 32
 /*
  * raid_bdev is the single entity structure which contains SPDK block device
  * and the information related to any raid bdev either configured or
@@ -136,6 +137,14 @@ struct raid_bdev {
 
 	/* buffers pool for RAID 6 operation */
 	struct spdk_mempool	    *raid6_buf_pool;
+
+	/* Erasure coding parameters */
+	uint8_t				W, K, M;
+
+	/* Mask of operations, depends on emulated flow */
+	uint8_t				write_mask[RAID_BDEV_IO_NUM_CHILD];
+	uint8_t				read_mask[RAID_BDEV_IO_NUM_CHILD];
+	int				erasures[RAID_BDEV_IO_NUM_CHILD + 1];
 };
 
 
@@ -161,7 +170,6 @@ struct raid6_block_op {
 	struct iovec			 iov;
 };
 
-#define RAID_BDEV_IO_NUM_CHILD 32
 
 /*
  * raid_bdev_io is the context part of bdev_io. It contains the information
