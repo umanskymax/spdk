@@ -38,15 +38,19 @@ script_dir=$(dirname "$0")
 function update_cfg_file()
 {
 	local file=$1
-	local section=$2
-	local key=$3
-	local val=$4
-	local output=$5
+	shift
+	local output=$1
+	shift
+	local section=$1
+	shift
+	local key=$1
+	shift
+	local val=$*
 
 
-	local tmp_file=${file}.${section}.${key}.${val}
+	local tmp_file=${file}.tmp
 
-	${script_dir}/mlnx-spdk-update-conf.awk -v section=$section -v key=$key value=$val ${file} > ${tmp_file}
+	${script_dir}/mlnx-spdk-update-conf.awk -v section=$section -v key="$key" value="$val" ${file} > ${tmp_file}
 	rc=$?
 	if [[ $rc == 0 ]]; then
 		mv ${tmp_file} ${output}
@@ -87,10 +91,12 @@ for nd in 4 8 16; do
 			echo "Number of disks $nd erased device $erase_device skip erasure $skip_erasure destination ${result_conf}"
 			echo "Disks $disks"
 
-			update_cfg_file ${ceph_conf} RAID2 NumDevices $nd ${result_conf}
-			update_cfg_file ${ceph_conf} RAID2 ErasedDevice $erase_device ${result_conf}
-			update_cfg_file ${ceph_conf} RAID2 SkipJerasure $skip_erasure ${result_conf}
-			update_cfg_file ${ceph_conf} RAID2 Devices $disks ${result_conf}
+#			continue
+
+			update_cfg_file ${ceph_conf} ${result_conf} RAID1 NumDevices $nd
+			update_cfg_file ${result_conf} ${result_conf} RAID1 ErasedDevice $erase_device
+			update_cfg_file ${result_conf} ${result_conf} RAID1 SkipJerasure $skip_erasure
+			update_cfg_file ${result_conf} ${result_conf} RAID1 Devices ${disks}
 		done
 	done
 done
