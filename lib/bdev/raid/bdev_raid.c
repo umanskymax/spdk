@@ -360,54 +360,55 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		/* Run calculation */
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
 
+		for (i = 0; i < raid_bdev->K + raid_bdev->M; i++) {
+			if (i < raid_bdev->K)
+				data[i] = raid_io->raid6_block_ops[i].iov.iov_base;
+			else
+				coding[i - raid_bdev->K] = raid_io->raid6_block_ops[i].iov.iov_base;
+		}
+
+		if ((raid_bdev->config->erased_device != -1) &&
+		    (!raid_bdev->config->skip_jerasure)) {
+			ret = jerasure_matrix_decode(raid_bdev->K, raid_bdev->M, raid_bdev->W,
+						     raid_bdev->matrix_raid6, 1, raid_bdev->erasures,
+						     data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
+			if (ret) {
+				SPDK_ERRLOG("Wrong IO vector: i %u, base %p, len %lu\n",
+					    i,
+					    iovs[i].iov_base,
+					    iovs[i].iov_len);
+				assert(raid_io->raid6_buf != NULL);
+				spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
+				raid_bdev_io_completion(bdev_io, false, parent_io);
+				return ;
+			}
+		}
+
+		iovs = parent_io->u.bdev.iovs;
+		nbytes = raid_io->raid6_block_ops[0].iov.iov_len;
+
+		for (i = 0; i < (size_t)parent_io->u.bdev.iovcnt; i++) {
+			if (((iovs[i].iov_base == NULL) && (iovs[i].iov_len != 0)) ||
+			    (nbytes < iovs[i].iov_len)) {
+				SPDK_ERRLOG("Wrong IO vector: i %u, base %p, len %lu, nbytes %lu\n",
+					    i,
+					    iovs[i].iov_base,
+					    iovs[i].iov_len,
+					    nbytes);
+				assert(raid_io->raid6_buf != NULL);
+				spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
+				raid_bdev_io_completion(bdev_io, false, parent_io);
+				return ;
+			}
+
+			memcpy(raid_io->raid6_block_ops[0].iov.iov_base +
+			       raid_io->raid6_block_ops[0].iov.iov_len - nbytes,
+			       iovs[i].iov_base, iovs[i].iov_len);
+
+			nbytes -= iovs[i].iov_len;
+		}
+
 		if (!raid_bdev->config->skip_jerasure) {
-			for (i = 0; i < raid_bdev->K + raid_bdev->M; i++) {
-				if (i < raid_bdev->K)
-					data[i] = raid_io->raid6_block_ops[i].iov.iov_base;
-				else
-					coding[i - raid_bdev->K] = raid_io->raid6_block_ops[i].iov.iov_base;
-			}
-
-			if (raid_bdev->config->erased_device != -1) {
-				ret = jerasure_matrix_decode(raid_bdev->K, raid_bdev->M, raid_bdev->W,
-						raid_bdev->matrix_raid6, 1, raid_bdev->erasures,
-						data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
-				if (ret) {
-					SPDK_ERRLOG("Wrong IO vector: i %u, base %p, len %lu\n",
-							i,
-							iovs[i].iov_base,
-							iovs[i].iov_len);
-					assert(raid_io->raid6_buf != NULL);
-					spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
-					raid_bdev_io_completion(bdev_io, false, parent_io);
-					return ;
-				}
-			}
-
-			iovs = parent_io->u.bdev.iovs;
-			nbytes = raid_io->raid6_block_ops[0].iov.iov_len;
-
-			for (i = 0; i < (size_t)parent_io->u.bdev.iovcnt; i++) {
-				if (((iovs[i].iov_base == NULL) && (iovs[i].iov_len != 0)) ||
-				    (nbytes < iovs[i].iov_len)) {
-					SPDK_ERRLOG("Wrong IO vector: i %u, base %p, len %lu, nbytes %lu\n",
-						    i,
-						    iovs[i].iov_base,
-						    iovs[i].iov_len,
-						    nbytes);
-					assert(raid_io->raid6_buf != NULL);
-					spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
-					raid_bdev_io_completion(bdev_io, false, parent_io);
-					return ;
-				}
-
-				memcpy(raid_io->raid6_block_ops[0].iov.iov_base +
-				       raid_io->raid6_block_ops[0].iov.iov_len - nbytes,
-				       iovs[i].iov_base, iovs[i].iov_len);
-
-				nbytes -= iovs[i].iov_len;
-			}
-
 			reed_sol_r6_encode(raid_bdev->K, raid_bdev->W, data, coding,
 					   raid_bdev->strip_size << raid_bdev->blocklen_shift);
 		}
@@ -525,6 +526,8 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 				op->iov.iov_base = (char *)raid_io->raid6_buf +
 					i * strip_size_bytes;
 				op->iov.iov_len = strip_size_bytes;
+				op->parent_io = bdev_io;
+				op->bdev_idx = i;
 
 				if (!raid_bdev->read_mask[i]) {
 					op->status = RAID6_BLOCK_STATUS_DONE;
@@ -532,10 +535,6 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 				}
 
 				op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
-				op->parent_io = bdev_io;
-				op->bdev_idx = i;
-
-				SPDK_NOTICELOG("RAID6. Read from %s\n", raid_bdev->base_bdev_info[i].bdev->name);
 
 				ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[i].desc,
 							     raid_ch->base_channel[i],

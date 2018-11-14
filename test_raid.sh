@@ -49,6 +49,24 @@ nvmf_tgt_start () {
     nvmf_tgt_init $@
 }
 
+# Start SPDK NVMF target
+# Args:
+# - CONFIG_FILE=nvmf.conf
+# - CPU_MASK=0x01
+nvmf_tgt_start_conf () {
+    local CONFIG_FILE=${1:-"nvmf.conf"}; shift
+    local CPU_MASK=${1:-"0x01"}; shift
+    rm -rf /var/tmp/spdk.sock
+    $NVMF_TGT -m $CPU_MASK -c $CONFIG_FILE 2>&1 | tee $TGT_LOG_FILE &
+    while ! ls /var/tmp/spdk.sock > /dev/null 2>&1
+    do
+	sleep 1
+    done
+    sleep 5
+
+}
+
+
 # Stop previously started NVFM target
 nvmf_tgt_stop () {
     $RPC_PY kill_instance 15
@@ -241,6 +259,15 @@ test_raid_spdk_fio()
     nvmf_tgt_stop
 }
 
+test_raid_spdk_fio_conf()
+{
+    nvmf_tgt_start_conf "nvmf.conf" 0x0F
+    sleep 5
+    fio_spdk_rdma $DEFAULT_IP_ADDR 4420 1 1 32k 16 4G write 10s
+    sleep 1
+    nvmf_tgt_stop
+}
+
 test_raid_kernel_fio()
 {
     nvmf_tgt_start 0x0F 128 0 64
@@ -261,4 +288,34 @@ test_raid_kernel_fio()
     nvmf_tgt_stop
 }
 
-test_raid_spdk_fio
+test_raid_bluefield_matrix ()
+{
+    local CONF_DIR=$PWD/conf
+    local TGT_LOG=/tmp/nvmf_tgt.log
+
+    for conf in $CONF_DIR/*.conf
+    do
+	for cpu_mask in 0x01 0x03 0x0F 0xFF 0xFFFF
+	do
+	    local DISKS=$(grep "NumDevices" $conf | grep -v "#" | awk '{ print $2 }')
+	    local EC=$(grep "SkipJerasure.*True" $conf | grep -cv "#")
+	    local GOOD=$(grep "ErasedDevice.*-1" $conf | grep -cv "#")
+	    if [ 0 -eq "$EC" ]; then EC="Calc"; else EC="Skip"; fi
+	    if [ 0 -eq "$GOOD" ]; then GOOD="Bad"; else GOOD="Good"; fi
+
+	    nvmf_tgt_start_conf "$conf" $cpu_mask 1>$TGT_LOG 2>&1
+	    FIO_RES=$(ssh gen-l-vrt-41071 sudo -E $PWD/fio.sh)
+	    sleep 5
+	    kill -15 $(pidof nvmf_tgt)
+
+	    local CORES=$(grep "Total cores available:" $TGT_LOG | awk '{ print $NF }')
+	    echo -n "| $CORES | $DISKS | $EC| $GOOD | "
+	    echo "$FIO_RES" | grep "write:"
+	    echo -n "| | | | | "
+	    echo "$FIO_RES" | grep " lat.*):"
+	    sleep 3
+	done
+    done
+}
+
+test_raid_bluefield_matrix
