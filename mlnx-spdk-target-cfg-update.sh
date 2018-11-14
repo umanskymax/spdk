@@ -62,7 +62,7 @@ function update_cfg_file()
 
 cp ${ceph_conf} ${ceph_conf}.bak
 
-all_disks=$(awk -F" +" '/TransportId/{print $5}'  ${ceph_conf}  | xargs)
+all_disks=$(awk -F" +" '/TransportId/{print $5"n1"}'  ${ceph_conf}  | xargs)
 echo $all_disks
 
 for nd in 4 8 16; do
