@@ -152,6 +152,23 @@ raid_bdev_destroy_cb(void *io_device, void *ctx_buf)
 	}
 	free(raid_ch->base_channel);
 	raid_ch->base_channel = NULL;
+
+	if (raid_bdev->config->raid_level == 6) {
+		int i = 0;
+		uint64_t total_reads = 0;
+		uint64_t total_writes = 0;
+		for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
+			SPDK_NOTICELOG("RAID6 Disk %d stats: read %lu, write %lu\n",
+				       i,
+				       raid_bdev->read_stats[i],
+				       raid_bdev->write_stats[i]);
+			total_reads += raid_bdev->read_stats[i];
+			total_writes += raid_bdev->write_stats[i];
+		}
+		SPDK_NOTICELOG("RAID6 Total stats: read %lu, write %lu\n",
+			       total_reads,
+			       total_writes);
+	}
 }
 
 /*
@@ -495,6 +512,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 
 			op = &raid_io->raid6_block_ops[i];
 			op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
+			raid_bdev->write_stats[i]++;
 			ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[i].desc,
 						      raid_ch->base_channel[i],
 						      &op->iov, 1,
@@ -607,7 +625,7 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 				}
 
 				op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
-
+				raid_bdev->read_stats[i]++;
 				ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[i].desc,
 							     raid_ch->base_channel[i],
 							     &op->iov, 1,
@@ -1790,6 +1808,8 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 			}
 			SPDK_NOTICELOG("Map for strip %d: %s\n", i, raid6_map);
 		}
+		memset(raid_bdev->write_stats, 0, sizeof(raid_bdev->write_stats));
+		memset(raid_bdev->read_stats, 0, sizeof(raid_bdev->read_stats));
 	}
 
 	raid_bdev_gen = &raid_bdev->bdev;

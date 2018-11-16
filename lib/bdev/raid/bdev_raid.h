@@ -148,6 +148,10 @@ struct raid_bdev {
 
 	/* Pre-built RAID6 rotate map */
 	uint8_t				rotate_map[RAID_BDEV_IO_NUM_CHILD][RAID_BDEV_IO_NUM_CHILD];
+
+	/* Base devices IO statistics */
+	uint64_t				write_stats[RAID_BDEV_IO_NUM_CHILD];
+	uint64_t				read_stats[RAID_BDEV_IO_NUM_CHILD];
 };
 
 
