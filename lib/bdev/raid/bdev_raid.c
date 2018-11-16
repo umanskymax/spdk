@@ -45,6 +45,8 @@
 #include "jerasure.h"
 #include "reed_sol.h"
 
+#include "ec_offload.h"
+
 static bool g_shutdown_started = false;
 
 /* raid bdev config as read from config file */
@@ -120,6 +122,33 @@ raid_bdev_create_cb(void *io_device, void *ctx_buf)
 		}
 	}
 
+	if ((raid_bdev->config->raid_level == 6) &&
+	    (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD)) {
+		/* Initialize EC offload */
+		struct ec_offload_opts opts = {};
+		int32_t i, l;
+		char failed_blocks[2*raid_bdev->K + 1];
+
+		opts.devname = raid_bdev->config->ec_offload_device;
+		opts.frame_size = (raid_bdev->strip_size << raid_bdev->blocklen_shift)
+			* raid_bdev->K;
+		opts.k = raid_bdev->K;
+		opts.m = raid_bdev->M;
+		opts.w = raid_bdev->W;
+
+		for (i = 0, l = 0; i < raid_bdev->K; i++) {
+			failed_blocks[l++] = (i == raid_bdev->config->erased_device) ? '1' : '0';
+			failed_blocks[l++] = ',';
+		}
+		failed_blocks[l] = '\0';
+		opts.failed_blocks = failed_blocks;
+		raid_ch->ec_offload_ctx = ec_offload_init_ctx(&opts);
+		if (!raid_ch->ec_offload_ctx) {
+			SPDK_ERRLOG("Failed to initialize EC offload context.\n");
+			return -ENOMEM;
+		}
+	}
+
 	return 0;
 }
 
@@ -144,6 +173,9 @@ raid_bdev_destroy_cb(void *io_device, void *ctx_buf)
 	assert(raid_bdev != NULL);
 	assert(raid_ch != NULL);
 	assert(raid_ch->base_channel);
+	if (raid_ch->ec_offload_ctx) {
+		ec_offload_close_ctx(raid_ch->ec_offload_ctx);
+	}
 	for (uint32_t i = 0; i < raid_bdev->num_base_bdevs; i++) {
 		/* Free base bdev channels */
 		assert(raid_ch->base_channel[i] != NULL);
@@ -368,15 +400,19 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		}
 
 		if ((raid_bdev->config->erased_device != -1) &&
-		    (!raid_bdev->config->skip_jerasure)) {
-			ret = jerasure_matrix_decode(raid_bdev->K, raid_bdev->M, raid_bdev->W,
-						     raid_bdev->matrix_raid6, 1, raid_bdev->erasures,
-						     data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
+		    (raid_bdev->config->ec_mode != RAID_BDEV_EC_MODE_SKIP)) {
+			if (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_SW) {
+				ret = jerasure_matrix_decode(raid_bdev->K, raid_bdev->M, raid_bdev->W,
+							     raid_bdev->matrix_raid6, 1, raid_bdev->erasures,
+							     data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
+			} else {
+				ret = ec_offload_decode_block_sync(raid_ch->ec_offload_ctx,
+								   data[0],
+								   coding[0]);
+			}
+
 			if (ret) {
-				SPDK_ERRLOG("Wrong IO vector: i %u, base %p, len %lu\n",
-					    i,
-					    iovs[i].iov_base,
-					    iovs[i].iov_len);
+				SPDK_ERRLOG("Failed to decode erased disk: ret %d\n", ret);
 				assert(raid_io->raid6_buf != NULL);
 				spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
 				raid_bdev_io_completion(bdev_io, false, parent_io);
@@ -408,9 +444,22 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 			nbytes -= iovs[i].iov_len;
 		}
 
-		if (!raid_bdev->config->skip_jerasure) {
-			reed_sol_r6_encode(raid_bdev->K, raid_bdev->W, data, coding,
-					   raid_bdev->strip_size << raid_bdev->blocklen_shift);
+		if (raid_bdev->config->ec_mode != RAID_BDEV_EC_MODE_SKIP) {
+			if (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_SW) {
+				reed_sol_r6_encode(raid_bdev->K, raid_bdev->W, data, coding,
+						   raid_bdev->strip_size << raid_bdev->blocklen_shift);
+			} else {
+				ret = ec_offload_encode_block_sync(raid_ch->ec_offload_ctx,
+								   data[0],
+								   coding[0]);
+				if (ret) {
+					SPDK_ERRLOG("Failed to encode: ret %d\n", ret);
+					assert(raid_io->raid6_buf != NULL);
+					spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
+					raid_bdev_io_completion(bdev_io, false, parent_io);
+					return ;
+}
+			}
 		}
 
 		/* Submit write requests*/
@@ -1003,6 +1052,9 @@ raid_bdev_config_cleanup(struct raid_bdev_config *raid_cfg)
 		}
 		free(raid_cfg->base_bdev);
 	}
+	if (raid_cfg->ec_offload_device) {
+		free(raid_cfg->ec_offload_device);
+	}
 	free(raid_cfg->name);
 	free(raid_cfg);
 }
@@ -1057,13 +1109,15 @@ raid_bdev_config_find_by_name(const char *raid_name)
  * strip_size - strip size in KB
  * num_base_bdevs - number of base bdevs.
  * raid_level - raid level, only raid levels 0 and 6 are supported.
- * skip_jerasure - if true jerasure coding is not calculated.
+ * ec_mode - erasure coding calculation mode.
  * erased_device - index of erased device. -1 if all disks are OK.
+ * ec_offload_device - EC offload device name.
  * _raid_cfg - Pointer to newly added configuration
  */
 int
 raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
-		     int raid_level, bool skip_jerasure, int erased_device,
+		     int raid_level, enum raid_bdev_ec_mode ec_mode,
+		     int erased_device, char *ec_offload_device,
 		     struct raid_bdev_config **_raid_cfg)
 {
 	struct raid_bdev_config *raid_cfg;
@@ -1101,6 +1155,11 @@ raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
 		return -EINVAL;
 	}
 
+	if (!ec_offload_device && (ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD)) {
+		SPDK_ERRLOG("EC offload device must be specified when EC mode is HW_OFFLOAD\n");
+		return -EINVAL;
+	}
+
 	raid_cfg = calloc(1, sizeof(*raid_cfg));
 	if (raid_cfg == NULL) {
 		SPDK_ERRLOG("unable to allocate memory\n");
@@ -1116,11 +1175,21 @@ raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
 	raid_cfg->strip_size = strip_size;
 	raid_cfg->num_base_bdevs = num_base_bdevs;
 	raid_cfg->raid_level = raid_level;
-	raid_cfg->skip_jerasure = skip_jerasure;
+	raid_cfg->ec_mode = ec_mode;
 	raid_cfg->erased_device = erased_device;
+	if (ec_offload_device) {
+		raid_cfg->ec_offload_device = strdup(ec_offload_device);
+		if (!raid_cfg->ec_offload_device) {
+			free(raid_cfg->name);
+			free(raid_cfg);
+			SPDK_ERRLOG("unable to allocate memory\n");
+			return -ENOMEM;
+		}
+	}
 
 	raid_cfg->base_bdev = calloc(num_base_bdevs, sizeof(*raid_cfg->base_bdev));
 	if (raid_cfg->base_bdev == NULL) {
+		free(raid_cfg->ec_offload_device);
 		free(raid_cfg->name);
 		free(raid_cfg);
 		SPDK_ERRLOG("unable to allocate memory\n");
@@ -1206,8 +1275,10 @@ raid_bdev_parse_raid(struct spdk_conf_section *conf_section)
 	int strip_size;
 	int i, num_base_bdevs;
 	int raid_level;
-	bool skip_jerasure;
+	char *ec_mode_str;
+	enum raid_bdev_ec_mode ec_mode = RAID_BDEV_EC_MODE_SW;
 	int erased_device;
+	char *ec_offload_device;
 	const char *base_bdev_name;
 	struct raid_bdev_config *raid_cfg;
 	int rc;
@@ -1221,14 +1292,30 @@ raid_bdev_parse_raid(struct spdk_conf_section *conf_section)
 	strip_size = spdk_conf_section_get_intval(conf_section, "StripSize");
 	num_base_bdevs = spdk_conf_section_get_intval(conf_section, "NumDevices");
 	raid_level = spdk_conf_section_get_intval(conf_section, "RaidLevel");
-	skip_jerasure = spdk_conf_section_get_boolval(conf_section, "SkipJerasure", false);
-	erased_device = spdk_conf_section_get_intval(conf_section, "ErasedDevice");
 	SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "%s %d %d %d\n", raid_name, strip_size, num_base_bdevs,
 		      raid_level);
-	SPDK_NOTICELOG("RAID6: Skip jerasure %d, erased device %d\n", skip_jerasure, erased_device);
+	ec_mode_str = spdk_conf_section_get_val(conf_section, "EcMode");
+	if (ec_mode_str) {
+		if (0 == strcmp(ec_mode_str, "SKIP")) {
+			ec_mode = RAID_BDEV_EC_MODE_SKIP;
+		} else if (0 == strcmp(ec_mode_str, "SW")) {
+			ec_mode = RAID_BDEV_EC_MODE_SW;
+		} else if (0 == strcmp(ec_mode_str, "HW_OFFLOAD")) {
+			ec_mode = RAID_BDEV_EC_MODE_HW_OFFLOAD;
+		} else {
+			SPDK_ERRLOG("Invalid EcMode %s\n", ec_mode_str);
+			return -EINVAL;
+		}
+	}
+	erased_device = spdk_conf_section_get_intval(conf_section, "ErasedDevice");
+	SPDK_NOTICELOG("RAID6: EC mode %d, erased device %d\n", ec_mode, erased_device);
+	ec_offload_device = spdk_conf_section_get_val(conf_section, "EcOffloadDevice");
+	if (ec_offload_device) {
+		SPDK_NOTICELOG("RAID6: EC offload device %s\n", ec_offload_device);
+	}
 
 	rc = raid_bdev_config_add(raid_name, strip_size, num_base_bdevs, raid_level,
-				  skip_jerasure, erased_device, &raid_cfg);
+				  ec_mode, erased_device, ec_offload_device, &raid_cfg);
 	if (rc != 0) {
 		SPDK_ERRLOG("Failed to add raid bdev config\n");
 		return rc;

@@ -726,6 +726,34 @@ bdev_io_initialize(struct spdk_bdev_io *bdev_io, struct spdk_bdev *bdev,
 	bdev_io->u.bdev.iovs = bdev_io->u.bdev.iovs;
 }
 
+struct ec_offload_context *
+ec_offload_init_ctx(struct ec_offload_opts *opts)
+{
+	return NULL;
+}
+
+void
+ec_offload_close_ctx(struct ec_offload_context *ctx)
+{
+	return;
+}
+
+int
+ec_offload_decode_block_sync(struct ec_offload_context *ctx,
+			     char* data,
+			     char* code)
+{
+	return 0;
+}
+
+int
+ec_offload_encode_block_sync(struct ec_offload_context *ctx,
+			     char* data,
+			     char* code)
+{
+	return 0;
+}
+
 static void
 verify_io(struct spdk_bdev_io *bdev_io, uint8_t num_base_drives,
 	  struct raid_bdev_io_channel *ch_ctx, struct raid_bdev *raid_bdev, uint32_t io_status)

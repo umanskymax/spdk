@@ -35,6 +35,7 @@
 #define SPDK_BDEV_RAID_INTERNAL_H
 
 #include "spdk/bdev_module.h"
+#include "ec_offload.h"
 
 /*
  * Raid state describes the state of the raid. This raid bdev can be either in
@@ -204,6 +205,12 @@ struct raid_base_bdev_config {
 	char				*name;
 };
 
+/* Erasure coding calculation mode */
+enum raid_bdev_ec_mode {
+	RAID_BDEV_EC_MODE_SKIP,
+	RAID_BDEV_EC_MODE_SW,
+	RAID_BDEV_EC_MODE_HW_OFFLOAD
+};
 /*
  * raid_bdev_config contains the raid bdev  config related information after
  * parsing the config file
@@ -226,8 +233,11 @@ struct raid_bdev_config {
 	/* raid level */
 	uint8_t                       raid_level;
 
-	/* Skip jerasure calculations */
-	bool                          skip_jerasure;
+	/* Erasure coding calculation mode */
+	enum raid_bdev_ec_mode        ec_mode;
+
+	/* EC offload device name */
+	char                          *ec_offload_device;
 
 	/* Erased device index. -1 if all are OK */
 	int                           erased_device;
@@ -254,6 +264,9 @@ struct raid_config {
 struct raid_bdev_io_channel {
 	/* Array of IO channels of base bdevs */
 	struct spdk_io_channel      **base_channel;
+
+	/* EC offload context */
+	struct ec_offload_context   *ec_offload_ctx;
 };
 
 /* TAIL heads for various raid bdev lists */
@@ -274,7 +287,8 @@ int raid_bdev_add_base_devices(struct raid_bdev_config *raid_cfg);
 void raid_bdev_free_base_bdev_resource(struct raid_bdev *raid_bdev, uint32_t slot);
 void raid_bdev_cleanup(struct raid_bdev *raid_bdev);
 int raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
-			 int raid_level, bool skip_jerasure, int erased_device,
+			 int raid_level, enum raid_bdev_ec_mode ec_mode,
+			 int erased_device, char *ec_offload_device,
 			 struct raid_bdev_config **_raid_cfg);
 int raid_bdev_config_add_base_bdev(struct raid_bdev_config *raid_cfg,
 				   const char *base_bdev_name, uint32_t slot);

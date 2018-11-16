@@ -7,7 +7,7 @@ RPC_PY=$SPDK_PATH/scripts/rpc.py
 SPDK_PERF=$SPDK_PATH/examples/nvme/perf/perf
 SPDK_FIO_PLUGIN=$SPDK_PATH/examples/nvme/fio_plugin/fio_plugin
 DEFAULT_NVME_DEVICE="0000:81:00.0"
-DEFAULT_IP_ADDR=1.1.75.1
+DEFAULT_IP_ADDR=1.1.79.1
 TGT_LOG_FILE=./nvmf_tgt.log.$$
 
 
@@ -63,7 +63,6 @@ nvmf_tgt_start_conf () {
 	sleep 1
     done
     sleep 5
-
 }
 
 
