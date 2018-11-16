@@ -145,6 +145,9 @@ struct raid_bdev {
 	uint8_t				write_mask[RAID_BDEV_IO_NUM_CHILD];
 	uint8_t				read_mask[RAID_BDEV_IO_NUM_CHILD];
 	int				erasures[RAID_BDEV_IO_NUM_CHILD + 1];
+
+	/* Pre-built RAID6 rotate map */
+	uint8_t				rotate_map[RAID_BDEV_IO_NUM_CHILD][RAID_BDEV_IO_NUM_CHILD];
 };
 
 
@@ -229,6 +232,9 @@ struct raid_bdev_config {
 	/* Skip jerasure calculations */
 	bool                          skip_jerasure;
 
+	/* Rotate coding disks in RAID6 */
+	bool                          rotate;
+
 	/* Erased device index. -1 if all are OK */
 	int                           erased_device;
 
@@ -274,7 +280,7 @@ int raid_bdev_add_base_devices(struct raid_bdev_config *raid_cfg);
 void raid_bdev_free_base_bdev_resource(struct raid_bdev *raid_bdev, uint32_t slot);
 void raid_bdev_cleanup(struct raid_bdev *raid_bdev);
 int raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
-			 int raid_level, bool skip_jerasure, int erased_device,
+			 int raid_level, bool skip_jerasure, bool rotate, int erased_device,
 			 struct raid_bdev_config **_raid_cfg);
 int raid_bdev_config_add_base_bdev(struct raid_bdev_config *raid_cfg,
 				   const char *base_bdev_name, uint32_t slot);

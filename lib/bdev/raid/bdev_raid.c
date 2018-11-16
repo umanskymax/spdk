@@ -284,6 +284,73 @@ raid_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg
 	}
 }
 
+/*
+ * Convert BDEV index to RAID6 index with rotate map.
+ *
+ * \params
+ * raid_bdev - pointer to RAID6 block device
+ * raid_strip - raid strip (spans all disks)
+ * bdev_idx - block device index
+ *
+ * \return
+ * RAID6 device index: 0 to K-1 for data disks, K to K+M-1 for coding disks
+ */
+static int32_t raid6_bdev_get_rotated_idx(struct raid_bdev *raid_bdev, uint64_t raid_strip, int32_t bdev_idx)
+{
+	const int32_t rotate_offset = raid_strip % raid_bdev->num_base_bdevs;
+	return raid_bdev->rotate_map[rotate_offset][bdev_idx];
+}
+
+/*
+ * Convert BDEV index to RAID6 index.
+ *
+ * \params
+ * raid_bdev - pointer to RAID6 block device
+ * raid_strip - raid strip (spans all disks)
+ * bdev_idx - block device index
+ *
+ * \return
+ * RAID6 device index: 0 to K-1 for data disks, K to K+M-1 for coding disks
+ */
+static int32_t raid6_bdev_rotate_idx(struct raid_bdev *raid_bdev, uint64_t raid_strip, int32_t bdev_idx)
+{
+	const int32_t rotate_offset = raid_strip % raid_bdev->num_base_bdevs;
+	const int32_t first_coding_idx =
+		(2*raid_bdev->num_base_bdevs - raid_bdev->M - rotate_offset)
+		% raid_bdev->num_base_bdevs;
+	const int32_t last_coding_idx = (first_coding_idx + raid_bdev->M - 1)
+		% raid_bdev->num_base_bdevs;
+
+	if (!raid_bdev->config->rotate) {
+		return bdev_idx;
+	}
+
+	if (first_coding_idx <= last_coding_idx) {
+		/* Coding disks are in the middle */
+		if ((bdev_idx >= first_coding_idx) && (bdev_idx <= last_coding_idx)) {
+			/* Coding disk */
+			return raid_bdev->K + bdev_idx - first_coding_idx;
+		} else if (bdev_idx < first_coding_idx) {
+			/* Data disk on the left */
+			return bdev_idx;
+		} else {
+			/* Data disk on the right */
+			return first_coding_idx + bdev_idx - last_coding_idx - 1;
+		}
+	} else {
+		/* Coding disks on both sides */
+		if ((bdev_idx > last_coding_idx) && (bdev_idx < first_coding_idx)) {
+			/* Data disk */
+			return bdev_idx - last_coding_idx - 1;
+		} else if (bdev_idx <= last_coding_idx) {
+			/* Coding disk on the left */
+			return raid_bdev->K + raid_bdev->M - (last_coding_idx - bdev_idx) - 1;
+		} else {
+			return raid_bdev->K + bdev_idx - first_coding_idx;
+		}
+	}
+}
+
 
 /*
  * brief:
@@ -313,6 +380,8 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	char				*coding[raid_bdev->M];
 	uint64_t			pd_strip;
 	uint64_t			pd_lba;
+	int32_t			raid6_idx;
+	const size_t			strip_size_bytes = raid_bdev->strip_size << raid_bdev->blocklen_shift;
 
 	/*
 	SPDK_WARNLOG("raid bdev io base_bdev_reset_submitted;  %u\n", raid_io->base_bdev_reset_submitted);
@@ -359,19 +428,22 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	case RAID6_STAGE_UPDATE_READ:
 		/* Run calculation */
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
+		pd_strip = raid_io->start_strip / raid_bdev->K;
+		pd_lba = pd_strip << raid_bdev->strip_size_shift;
 
 		for (i = 0; i < raid_bdev->K + raid_bdev->M; i++) {
-			if (i < raid_bdev->K)
-				data[i] = raid_io->raid6_block_ops[i].iov.iov_base;
+			raid6_idx = raid6_bdev_get_rotated_idx(raid_bdev, pd_strip, i);
+			if (raid6_idx < raid_bdev->K)
+				data[raid6_idx] = raid_io->raid6_block_ops[i].iov.iov_base;
 			else
-				coding[i - raid_bdev->K] = raid_io->raid6_block_ops[i].iov.iov_base;
+				coding[raid6_idx - raid_bdev->K] = raid_io->raid6_block_ops[i].iov.iov_base;
 		}
 
 		if ((raid_bdev->config->erased_device != -1) &&
 		    (!raid_bdev->config->skip_jerasure)) {
 			ret = jerasure_matrix_decode(raid_bdev->K, raid_bdev->M, raid_bdev->W,
 						     raid_bdev->matrix_raid6, 1, raid_bdev->erasures,
-						     data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
+						     data, coding, strip_size_bytes);
 			if (ret) {
 				SPDK_ERRLOG("Wrong IO vector: i %u, base %p, len %lu\n",
 					    i,
@@ -385,7 +457,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		}
 
 		iovs = parent_io->u.bdev.iovs;
-		nbytes = raid_io->raid6_block_ops[0].iov.iov_len;
+		nbytes = strip_size_bytes;
 
 		for (i = 0; i < (size_t)parent_io->u.bdev.iovcnt; i++) {
 			if (((iovs[i].iov_base == NULL) && (iovs[i].iov_len != 0)) ||
@@ -401,8 +473,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 				return ;
 			}
 
-			memcpy(raid_io->raid6_block_ops[0].iov.iov_base +
-			       raid_io->raid6_block_ops[0].iov.iov_len - nbytes,
+			memcpy(data[0] + strip_size_bytes - nbytes,
 			       iovs[i].iov_base, iovs[i].iov_len);
 
 			nbytes -= iovs[i].iov_len;
@@ -410,16 +481,15 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 
 		if (!raid_bdev->config->skip_jerasure) {
 			reed_sol_r6_encode(raid_bdev->K, raid_bdev->W, data, coding,
-					   raid_bdev->strip_size << raid_bdev->blocklen_shift);
+					   strip_size_bytes);
 		}
 
 		/* Submit write requests*/
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
-		pd_strip = raid_io->start_strip / raid_bdev->K;
-		pd_lba = pd_strip << raid_bdev->strip_size_shift;
 
 		for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
-			if (!raid_bdev->write_mask[i]) {
+			raid6_idx = raid6_bdev_get_rotated_idx(raid_bdev, pd_strip, i);
+			if (!raid_bdev->write_mask[raid6_idx]) {
 				continue;
 			}
 
@@ -519,9 +589,10 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 
 			raid_io->raid6_stage = RAID6_STAGE_UPDATE_READ;
 
-
 			for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
+				/* Block operations are still tied to base device order and do not rotate */
 				struct raid6_block_op* op = &raid_io->raid6_block_ops[i];
+				int32_t raid6_idx = raid6_bdev_get_rotated_idx(raid_bdev, pd_strip, i);
 
 				op->iov.iov_base = (char *)raid_io->raid6_buf +
 					i * strip_size_bytes;
@@ -529,7 +600,8 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 				op->parent_io = bdev_io;
 				op->bdev_idx = i;
 
-				if (!raid_bdev->read_mask[i]) {
+				/* Check if this base device shall be read taking RAID6 rotation into account */
+				if (!raid_bdev->read_mask[raid6_idx]) {
 					op->status = RAID6_BLOCK_STATUS_DONE;
 					continue;
 				}
@@ -1058,12 +1130,13 @@ raid_bdev_config_find_by_name(const char *raid_name)
  * num_base_bdevs - number of base bdevs.
  * raid_level - raid level, only raid levels 0 and 6 are supported.
  * skip_jerasure - if true jerasure coding is not calculated.
+ * rotate - if truecoding disk rotation is performed in RAID6
  * erased_device - index of erased device. -1 if all disks are OK.
  * _raid_cfg - Pointer to newly added configuration
  */
 int
 raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
-		     int raid_level, bool skip_jerasure, int erased_device,
+		     int raid_level, bool skip_jerasure, bool rotate, int erased_device,
 		     struct raid_bdev_config **_raid_cfg)
 {
 	struct raid_bdev_config *raid_cfg;
@@ -1117,6 +1190,7 @@ raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
 	raid_cfg->num_base_bdevs = num_base_bdevs;
 	raid_cfg->raid_level = raid_level;
 	raid_cfg->skip_jerasure = skip_jerasure;
+	raid_cfg->rotate = rotate;
 	raid_cfg->erased_device = erased_device;
 
 	raid_cfg->base_bdev = calloc(num_base_bdevs, sizeof(*raid_cfg->base_bdev));
@@ -1207,6 +1281,7 @@ raid_bdev_parse_raid(struct spdk_conf_section *conf_section)
 	int i, num_base_bdevs;
 	int raid_level;
 	bool skip_jerasure;
+	bool rotate;
 	int erased_device;
 	const char *base_bdev_name;
 	struct raid_bdev_config *raid_cfg;
@@ -1222,13 +1297,15 @@ raid_bdev_parse_raid(struct spdk_conf_section *conf_section)
 	num_base_bdevs = spdk_conf_section_get_intval(conf_section, "NumDevices");
 	raid_level = spdk_conf_section_get_intval(conf_section, "RaidLevel");
 	skip_jerasure = spdk_conf_section_get_boolval(conf_section, "SkipJerasure", false);
+	rotate = spdk_conf_section_get_boolval(conf_section, "Rotate", false);
 	erased_device = spdk_conf_section_get_intval(conf_section, "ErasedDevice");
 	SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "%s %d %d %d\n", raid_name, strip_size, num_base_bdevs,
 		      raid_level);
-	SPDK_NOTICELOG("RAID6: Skip jerasure %d, erased device %d\n", skip_jerasure, erased_device);
+	SPDK_NOTICELOG("RAID6: Skip jerasure %d, rotate %d, erased device %d\n",
+		       skip_jerasure, rotate, erased_device);
 
 	rc = raid_bdev_config_add(raid_name, strip_size, num_base_bdevs, raid_level,
-				  skip_jerasure, erased_device, &raid_cfg);
+				  skip_jerasure, rotate, erased_device, &raid_cfg);
 	if (rc != 0) {
 		SPDK_ERRLOG("Failed to add raid bdev config\n");
 		return rc;
@@ -1689,6 +1766,29 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 		if (!raid_bdev->matrix_raid6) {
 			SPDK_ERRLOG("Can't compute Reed Solomon matrix for RAID 6 with params: k %d , w %d\n", raid_bdev->K, raid_bdev->W);
 			return -ENOMEM;
+		}
+
+		/* Build rotate map */
+		for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
+			int32_t j;
+			for (j = 0; j < raid_bdev->num_base_bdevs; ++j) {
+				raid_bdev->rotate_map[i][j] =
+					raid6_bdev_rotate_idx(raid_bdev, i, j);
+			}
+		}
+
+		/* Test disk rotation */
+		for(i = 0; i < 2*raid_bdev->num_base_bdevs; ++i) {
+			char raid6_map[10*raid_bdev->num_base_bdevs];
+			size_t len = 0;
+			int32_t j;
+
+			raid6_map[0] = '\0';
+			for (j = 0; j < raid_bdev->num_base_bdevs; ++j) {
+				len += sprintf(raid6_map + len, "%d, ",
+					       raid6_bdev_get_rotated_idx(raid_bdev, i, j));
+			}
+			SPDK_NOTICELOG("Map for strip %d: %s\n", i, raid6_map);
 		}
 	}
 

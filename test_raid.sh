@@ -290,7 +290,7 @@ test_raid_kernel_fio()
 
 test_raid_bluefield_matrix ()
 {
-    local CONF_DIR=$PWD/conf
+    local CONF_DIR=$PWD/conf_nd4
     local TGT_LOG=/tmp/nvmf_tgt.log
 
     for conf in $CONF_DIR/*.conf
@@ -299,8 +299,10 @@ test_raid_bluefield_matrix ()
 	do
 	    local DISKS=$(grep "NumDevices" $conf | grep -v "#" | awk '{ print $2 }')
 	    local EC=$(grep "SkipJerasure.*True" $conf | grep -cv "#")
+	    local ROTATE=$(grep "Rotate.*True" $conf | grep -cv "#")
 	    local GOOD=$(grep "ErasedDevice.*-1" $conf | grep -cv "#")
 	    if [ 0 -eq "$EC" ]; then EC="Calc"; else EC="Skip"; fi
+	    if [ 0 -eq "$ROTATE" ]; then ROTATE="No"; else ROTATE="Yes"; fi
 	    if [ 0 -eq "$GOOD" ]; then GOOD="Bad"; else GOOD="Good"; fi
 
 	    nvmf_tgt_start_conf "$conf" $cpu_mask 1>$TGT_LOG 2>&1
@@ -309,9 +311,9 @@ test_raid_bluefield_matrix ()
 	    kill -15 $(pidof nvmf_tgt)
 
 	    local CORES=$(grep "Total cores available:" $TGT_LOG | awk '{ print $NF }')
-	    echo -n "| $CORES | $DISKS | $EC| $GOOD | "
+	    echo -n "| $CORES | $DISKS | $EC| $GOOD | $ROTATE | "
 	    echo "$FIO_RES" | grep "write:"
-	    echo -n "| | | | | "
+	    echo -n "| | | | | | "
 	    echo "$FIO_RES" | grep " lat.*):"
 	    sleep 3
 	done

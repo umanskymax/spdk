@@ -239,7 +239,7 @@ spdk_rpc_construct_raid_bdev(struct spdk_jsonrpc_request *request,
 	}
 
 	rc = raid_bdev_config_add(req.name, req.strip_size, req.base_bdevs.num_base_bdevs, req.raid_level,
-				  false, -1, &raid_cfg);
+				  false, false, -1, &raid_cfg);
 	if (rc != 0) {
 		spdk_jsonrpc_send_error_response_fmt(request, SPDK_JSONRPC_ERROR_INTERNAL_ERROR,
 						     "Failed to add RAID bdev config %s: %s",
