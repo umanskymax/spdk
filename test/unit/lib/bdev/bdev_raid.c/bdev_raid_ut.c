@@ -38,6 +38,7 @@
 #include "spdk_internal/mock.h"
 #include "bdev/raid/bdev_raid.c"
 #include "bdev/raid/bdev_raid_rpc.c"
+#include "bdev/raid/raid_base.c"
 
 #define MAX_BASE_DRIVES 255
 #define MAX_RAIDS 31

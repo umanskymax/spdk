@@ -45,6 +45,12 @@
 #include "jerasure.h"
 #include "reed_sol.h"
 
+
+#include <limits.h>
+#include <stdint.h>
+#include "raid.h"
+
+
 static bool g_shutdown_started = false;
 
 /* raid bdev config as read from config file */
@@ -369,6 +375,73 @@ static int32_t raid6_bdev_rotate_idx(struct raid_bdev *raid_bdev, uint64_t raid_
 }
 
 
+static void
+raid6_update_pq(struct raid_bdev *raid_bdev,
+		const int data_index,
+		const void *d_old,
+		const void *d_new,
+		void *p,
+		void *q)
+{
+	int				ret, i;
+	int				k = raid_bdev->K;
+	void				*buffs[RAID_BDEV_IO_NUM_CHILD];
+	char				*zero_buff = NULL;
+	char				*tmp_buff = NULL;
+	char				*diff_buff = NULL;
+	char				*q_buff = NULL;
+	const size_t			strip_size_bytes = raid_bdev->strip_size << raid_bdev->blocklen_shift;
+
+	(void)(ret);
+
+	zero_buff = spdk_mempool_get(raid_bdev->raid6_buf_pool);
+	memset(zero_buff, 0, strip_size_bytes);
+
+	tmp_buff = spdk_mempool_get(raid_bdev->raid6_buf_pool);
+	diff_buff = spdk_mempool_get(raid_bdev->raid6_buf_pool);
+	q_buff = spdk_mempool_get(raid_bdev->raid6_buf_pool);
+
+	buffs[0] = (void *)d_old;
+	buffs[1] = (void *)d_new;
+	buffs[2] = diff_buff;
+
+	/* Put DATA NEW + DATA OLD to DIFF buff  */
+	ret = xor_gen_base(3, strip_size_bytes, buffs);
+	assert( ret == 0);
+
+	for (i =0; i < k; i++)
+		buffs[i] = i == data_index ? diff_buff : zero_buff;
+
+	buffs[k] = tmp_buff;
+	buffs[k + 1] = q_buff;
+
+	/* Put (D + D') * alpha to Q BUFF */
+	ret = pq_gen_base(k + 2, strip_size_bytes, buffs);
+	assert( ret == 0);
+
+	buffs[0] = (void *)diff_buff;
+	buffs[1] = p;
+	buffs[2] = p;
+
+	/* Calculate P new */
+	ret = xor_gen_base(3, strip_size_bytes, buffs);
+
+	buffs[0] = (void *)q_buff;
+	buffs[1] = q;
+	buffs[2] = q;
+
+	/* Calculate Q new */
+	ret = xor_gen_base(3, strip_size_bytes, buffs);
+	assert( ret == 0);
+
+	spdk_mempool_put(raid_bdev->raid6_buf_pool, zero_buff);
+	spdk_mempool_put(raid_bdev->raid6_buf_pool, tmp_buff);
+	spdk_mempool_put(raid_bdev->raid6_buf_pool, diff_buff );
+	spdk_mempool_put(raid_bdev->raid6_buf_pool, q_buff);
+	q_buff = spdk_mempool_get(raid_bdev->raid6_buf_pool);
+}
+
+
 /*
  * brief:
  * raid6_bdev_io_completion function is called by lower layers to notify raid
@@ -455,7 +528,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 			else
 				coding[raid6_idx - raid_bdev->K] = raid_io->raid6_block_ops[i].iov.iov_base;
 		}
-
+/*
 		if ((raid_bdev->config->erased_device != -1) &&
 		    (!raid_bdev->config->skip_jerasure)) {
 			ret = jerasure_matrix_decode(raid_bdev->K, raid_bdev->M, raid_bdev->W,
@@ -472,9 +545,13 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 				return ;
 			}
 		}
-
+*/
 		iovs = parent_io->u.bdev.iovs;
 		nbytes = strip_size_bytes;
+
+		if(!raid_bdev->config->skip_jerasure) {
+			raid6_update_pq(raid_bdev, 0, data[0], iovs[0].iov_base, coding[0], coding[1]);
+		}
 
 		for (i = 0; i < (size_t)parent_io->u.bdev.iovcnt; i++) {
 			if (((iovs[i].iov_base == NULL) && (iovs[i].iov_len != 0)) ||
@@ -495,12 +572,12 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 
 			nbytes -= iovs[i].iov_len;
 		}
-
+/*
 		if (!raid_bdev->config->skip_jerasure) {
 			reed_sol_r6_encode(raid_bdev->K, raid_bdev->W, data, coding,
 					   strip_size_bytes);
 		}
-
+*/
 		/* Submit write requests*/
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
 
