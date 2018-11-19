@@ -87,16 +87,26 @@ for nd in 4 8 16; do
 				flow_name="bad_flow"
 			fi
 
-			result_conf=spdk_nvmf_trgt_${flow_name}_${erasure_name}_${nd_name}.conf
-			echo "Number of disks $nd erased device $erase_device skip erasure $skip_erasure destination ${result_conf}"
-			echo "Disks $disks"
+			for rotate in True False; do
 
-#			continue
+			    if [[ $rotate == "True" ]]; then
+				rotate_name="rotate"
+			    else
+				rotate_name="no_rotate"
+			    fi
 
-			update_cfg_file ${ceph_conf} ${result_conf} RAID1 NumDevices $nd
-			update_cfg_file ${result_conf} ${result_conf} RAID1 ErasedDevice $erase_device
-			update_cfg_file ${result_conf} ${result_conf} RAID1 SkipJerasure $skip_erasure
-			update_cfg_file ${result_conf} ${result_conf} RAID1 Devices ${disks}
+			    result_conf=spdk_nvmf_trgt_${flow_name}_${erasure_name}_${rotate_name}_${nd_name}.conf
+			    echo "Number of disks $nd erased device $erase_device skip erasure $skip_erasure destination ${result_conf}"
+			    echo "Disks $disks"
+
+			    #			continue
+
+			    update_cfg_file ${ceph_conf} ${result_conf} RAID1 NumDevices $nd
+			    update_cfg_file ${result_conf} ${result_conf} RAID1 ErasedDevice $erase_device
+			    update_cfg_file ${result_conf} ${result_conf} RAID1 SkipJerasure $skip_erasure
+			    update_cfg_file ${result_conf} ${result_conf} RAID1 Rotate $rotate
+			    update_cfg_file ${result_conf} ${result_conf} RAID1 Devices ${disks}
+			done
 		done
 	done
 done

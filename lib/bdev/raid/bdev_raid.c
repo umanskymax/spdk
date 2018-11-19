@@ -40,11 +40,11 @@
 #include "spdk/util.h"
 #include "spdk/json.h"
 #include "spdk/string.h"
-
+/*
 #include "gf_rand.h"
 #include "jerasure.h"
 #include "reed_sol.h"
-
+*/
 
 #include <limits.h>
 #include <stdint.h>
@@ -468,6 +468,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	char				*data[raid_bdev->K];
 	char				*coding[raid_bdev->M];
 	uint64_t			pd_strip;
+	uint32_t			pd_idx;
 	uint64_t			pd_lba;
 	int32_t				raid6_idx;
 	const size_t			strip_size_bytes = raid_bdev->strip_size << raid_bdev->blocklen_shift;
@@ -518,6 +519,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		/* Run calculation */
 		raid_io->raid6_stage = RAID6_STAGE_UPDATE_CALC;
 		pd_strip = raid_io->start_strip / raid_bdev->K;
+		pd_idx = raid_io->start_strip % raid_bdev->K;
 		pd_lba = pd_strip << raid_bdev->strip_size_shift;
 
 		for (i = 0; i < raid_bdev->K + raid_bdev->M; i++) {
@@ -548,8 +550,8 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		iovs = parent_io->u.bdev.iovs;
 		nbytes = strip_size_bytes;
 
-		if(!raid_bdev->config->skip_jerasure &&  (iovs[i].iov_base == NULL) && (iovs[i].iov_len != 0)) {
-			raid6_update_pq(raid_bdev, 0, data[0], iovs[0].iov_base, coding[0], coding[1]);
+		if(!raid_bdev->config->skip_jerasure &&  (iovs[0].iov_base != NULL) && (iovs[0].iov_len != 0)) {
+			raid6_update_pq(raid_bdev, 0, data[pd_idx], iovs[0].iov_base, coding[0], coding[1]);
 		}
 
 		for (i = 0; i < (size_t)parent_io->u.bdev.iovcnt; i++) {
@@ -566,7 +568,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 				return ;
 			}
 
-			memcpy(data[0] + strip_size_bytes - nbytes,
+			memcpy(data[pd_idx] + strip_size_bytes - nbytes,
 			       iovs[i].iov_base, iovs[i].iov_len);
 
 			nbytes -= iovs[i].iov_len;
@@ -582,13 +584,16 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 
 		for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
 			raid6_idx = raid6_bdev_get_rotated_idx(raid_bdev, pd_strip, i);
-			if (!raid_bdev->write_mask[raid6_idx]) {
+			/* Check if this base device shall be read taking RAID6 rotation into account */
+			if ((raid6_idx != pd_idx) &&
+			    (raid6_idx != raid_bdev->K) &&
+			    (raid6_idx != raid_bdev->K + 1)) {
 				continue;
 			}
 
 			op = &raid_io->raid6_block_ops[i];
 			op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
-			raid_bdev->write_stats[i]++;
+			/* raid_bdev->write_stats[i]++; */
 			ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[i].desc,
 						      raid_ch->base_channel[i],
 						      &op->iov, 1,
@@ -695,13 +700,15 @@ raid_bdev_submit_rw_request(struct spdk_bdev_io *bdev_io, uint64_t start_strip)
 				op->bdev_idx = i;
 
 				/* Check if this base device shall be read taking RAID6 rotation into account */
-				if (!raid_bdev->read_mask[raid6_idx]) {
+				if ((raid6_idx != pd_idx) &&
+				    (raid6_idx != raid_bdev->K) &&
+				    (raid6_idx != raid_bdev->K + 1)) {
 					op->status = RAID6_BLOCK_STATUS_DONE;
 					continue;
 				}
 
 				op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
-				raid_bdev->read_stats[i]++;
+				/* raid_bdev->read_stats[i]++; */
 				ret = spdk_bdev_readv_blocks(raid_bdev->base_bdev_info[i].desc,
 							     raid_ch->base_channel[i],
 							     &op->iov, 1,
@@ -1807,48 +1814,26 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 		raid_bdev->M = 2;
 		raid_bdev->K = raid_bdev->config->num_base_bdevs - raid_bdev->M;
 
-		memset(raid_bdev->write_mask, 0, sizeof(raid_bdev->write_mask));
-		memset(raid_bdev->read_mask, 0, sizeof(raid_bdev->read_mask));
-
-		raid_bdev->write_mask[0] = 1;
-		raid_bdev->read_mask[0] = 1;
-		raid_bdev->write_mask[raid_bdev->K] = 1;
-		raid_bdev->read_mask[raid_bdev->K] = 1;
-		raid_bdev->write_mask[raid_bdev->K + 1] = 1;
-		raid_bdev->read_mask[raid_bdev->K +1 ] = 1;
 #if 0
 		for (i = 1; i < raid_bdev->config->num_base_bdevs; ++i) {
-			if (i < raid_bdev->K) {
-				raid_bdev->read_mask[i] = 1; /* We need data blocks for parity calculation */
-			} else {
-				raid_bdev->read_mask[i] = raid_bdev->config->erased_device != -1 ? 1 : 0; /* We read parity blocks only in bad flow */
-				raid_bdev->write_mask[i] = 1; /* We always write parity blocks */
-
-			}
 			raid_bdev->erasures[i] = -1;
 		}
 
 		for (; i < RAID_BDEV_IO_NUM_CHILD; raid_bdev->erasures[i++] = -1);
 
 		if (raid_bdev->config->erased_device != -1) {
-			raid_bdev->read_mask[raid_bdev->config->erased_device] = 0; /* we don't read failed block, will be restored */
 			raid_bdev->erasures[0] = raid_bdev->config->erased_device;
-			raid_bdev->read_mask[0] = 1;
-		} else {
-			raid_bdev->read_mask[0] = 0;
 		}
-#endif
 		SPDK_NOTICELOG("RAID6 emulated flow: %s\n", raid_bdev->config->erased_device == -1 ?
 				"Good flow" : "Bad flow");
 
 		for (i = 0; i < raid_bdev->config->num_base_bdevs; ++i) {
-			SPDK_NOTICELOG("RAID6 Disk %s , read %c , write %c , restore %c, calculate %c\n",
+			SPDK_NOTICELOG("RAID6 Disk %s , restore %c, calculate %c\n",
 					 raid_bdev->base_bdev_info[i].bdev->name,
-					 raid_bdev->read_mask[i] ? 'y' : 'n',
-					 raid_bdev->write_mask[i] ? 'y' : 'n',
 					 i == raid_bdev->config->erased_device? 'y' : 'n',
 					 i >= raid_bdev->K ? 'y' : 'n');
 		}
+#endif
 		raid_bdev->raid6_buf_pool = spdk_mempool_create("spdk_bdev_raid6",
 								1024,
 								(raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs,

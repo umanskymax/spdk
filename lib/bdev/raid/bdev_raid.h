@@ -142,8 +142,6 @@ struct raid_bdev {
 	uint8_t				W, K, M;
 
 	/* Mask of operations, depends on emulated flow */
-	uint8_t				write_mask[RAID_BDEV_IO_NUM_CHILD];
-	uint8_t				read_mask[RAID_BDEV_IO_NUM_CHILD];
 	int				erasures[RAID_BDEV_IO_NUM_CHILD + 1];
 
 	/* Pre-built RAID6 rotate map */

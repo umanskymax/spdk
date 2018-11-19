@@ -290,7 +290,7 @@ test_raid_kernel_fio()
 
 test_raid_bluefield_matrix ()
 {
-    local CONF_DIR=$PWD/conf_nd4
+    local CONF_DIR=$PWD/conf
     local TGT_LOG=/tmp/nvmf_tgt.log
 
     for conf in $CONF_DIR/*.conf
