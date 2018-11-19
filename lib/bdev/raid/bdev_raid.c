@@ -438,7 +438,6 @@ raid6_update_pq(struct raid_bdev *raid_bdev,
 	spdk_mempool_put(raid_bdev->raid6_buf_pool, tmp_buff);
 	spdk_mempool_put(raid_bdev->raid6_buf_pool, diff_buff );
 	spdk_mempool_put(raid_bdev->raid6_buf_pool, q_buff);
-	q_buff = spdk_mempool_get(raid_bdev->raid6_buf_pool);
 }
 
 
@@ -470,7 +469,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	char				*coding[raid_bdev->M];
 	uint64_t			pd_strip;
 	uint64_t			pd_lba;
-	int32_t			raid6_idx;
+	int32_t				raid6_idx;
 	const size_t			strip_size_bytes = raid_bdev->strip_size << raid_bdev->blocklen_shift;
 
 	/*
@@ -549,7 +548,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 		iovs = parent_io->u.bdev.iovs;
 		nbytes = strip_size_bytes;
 
-		if(!raid_bdev->config->skip_jerasure) {
+		if(!raid_bdev->config->skip_jerasure &&  (iovs[i].iov_base == NULL) && (iovs[i].iov_len != 0)) {
 			raid6_update_pq(raid_bdev, 0, data[0], iovs[0].iov_base, coding[0], coding[1]);
 		}
 
@@ -1812,6 +1811,12 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 		memset(raid_bdev->read_mask, 0, sizeof(raid_bdev->read_mask));
 
 		raid_bdev->write_mask[0] = 1;
+		raid_bdev->read_mask[0] = 1;
+		raid_bdev->write_mask[raid_bdev->K] = 1;
+		raid_bdev->read_mask[raid_bdev->K] = 1;
+		raid_bdev->write_mask[raid_bdev->K + 1] = 1;
+		raid_bdev->read_mask[raid_bdev->K +1 ] = 1;
+#if 0
 		for (i = 1; i < raid_bdev->config->num_base_bdevs; ++i) {
 			if (i < raid_bdev->K) {
 				raid_bdev->read_mask[i] = 1; /* We need data blocks for parity calculation */
@@ -1832,7 +1837,7 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 		} else {
 			raid_bdev->read_mask[0] = 0;
 		}
-
+#endif
 		SPDK_NOTICELOG("RAID6 emulated flow: %s\n", raid_bdev->config->erased_device == -1 ?
 				"Good flow" : "Bad flow");
 
