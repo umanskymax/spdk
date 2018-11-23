@@ -73,9 +73,11 @@ struct ec_comp {
     unsigned long long       bytes;
     struct async_ec_context  *ctx;
     int                      index;
-    int                      out_fd;
     char                     **jerasure_src;
     char                     **jerasure_dst;
+    char                     *user_dst_code;
+    void                     *user_ctx;
+    void                     *user_arg;
     SLIST_ENTRY(ec_comp)     entry;
 };
 

@@ -740,16 +740,38 @@ ec_offload_close_ctx(struct ec_offload_context *ctx)
 
 int
 ec_offload_decode_block_sync(struct ec_offload_context *ctx,
-			     char* data,
-			     char* code)
+			     char *data,
+			     char *code)
 {
 	return 0;
 }
 
 int
 ec_offload_encode_block_sync(struct ec_offload_context *ctx,
-			     char* data,
-			     char* code)
+			     char *data,
+			     char *code)
+{
+	return 0;
+}
+
+
+struct ec_offload_context *
+ec_offload_init_async_ctx(struct ec_offload_opts *opts)
+{
+	return NULL;
+}
+
+void
+ec_offload_close_async_ctx(struct ec_offload_context *ctx)
+{
+	return;
+}
+
+int
+ec_offload_encode_block_async(struct ec_offload_context *ctx,
+			      char *data,
+			      char *code,
+			      void *arg)
 {
 	return 0;
 }

@@ -209,7 +209,8 @@ struct raid_base_bdev_config {
 enum raid_bdev_ec_mode {
 	RAID_BDEV_EC_MODE_SKIP,
 	RAID_BDEV_EC_MODE_SW,
-	RAID_BDEV_EC_MODE_HW_OFFLOAD
+	RAID_BDEV_EC_MODE_HW_OFFLOAD,
+	RAID_BDEV_EC_MODE_HW_OFFLOAD_ASYNC
 };
 /*
  * raid_bdev_config contains the raid bdev  config related information after

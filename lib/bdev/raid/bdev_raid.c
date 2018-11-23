@@ -47,6 +47,8 @@
 
 #include "ec_offload.h"
 
+#define RAID6_MAX_IO 256
+
 static bool g_shutdown_started = false;
 
 /* raid bdev config as read from config file */
@@ -74,7 +76,7 @@ static void   raid_bdev_examine(struct spdk_bdev *bdev);
 static int    raid_bdev_init(void);
 static void   raid_bdev_waitq_io_process(void *ctx);
 static void   raid_bdev_deconfigure(struct raid_bdev *raid_bdev);
-
+static void   ec_offload_async_encode_done(struct ec_offload_context *ctx, void *arg);
 
 /*
  * brief:
@@ -123,7 +125,8 @@ raid_bdev_create_cb(void *io_device, void *ctx_buf)
 	}
 
 	if ((raid_bdev->config->raid_level == 6) &&
-	    (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD)) {
+	    ((raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD) ||
+	     (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD_ASYNC))) {
 		/* Initialize EC offload */
 		struct ec_offload_opts opts = {};
 		int32_t i, l;
@@ -142,10 +145,21 @@ raid_bdev_create_cb(void *io_device, void *ctx_buf)
 		}
 		failed_blocks[l] = '\0';
 		opts.failed_blocks = failed_blocks;
-		raid_ch->ec_offload_ctx = ec_offload_init_ctx(&opts);
-		if (!raid_ch->ec_offload_ctx) {
-			SPDK_ERRLOG("Failed to initialize EC offload context.\n");
-			return -ENOMEM;
+		if (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD) {
+			raid_ch->ec_offload_ctx = ec_offload_init_ctx(&opts);
+			if (!raid_ch->ec_offload_ctx) {
+				SPDK_ERRLOG("Failed to initialize EC offload context.\n");
+				return -ENOMEM;
+			}
+		} else {
+			/* @todo: make configurable or derive from other param? */
+			opts.max_inflight_calcs = RAID6_MAX_IO;
+			opts.async_encode_done_cb = ec_offload_async_encode_done;
+			raid_ch->ec_offload_ctx = ec_offload_init_async_ctx(&opts);
+			if (!raid_ch->ec_offload_ctx) {
+				SPDK_ERRLOG("Failed to initialize EC offload async context.\n");
+				return -ENOMEM;
+			}
 		}
 	}
 
@@ -173,9 +187,14 @@ raid_bdev_destroy_cb(void *io_device, void *ctx_buf)
 	assert(raid_bdev != NULL);
 	assert(raid_ch != NULL);
 	assert(raid_ch->base_channel);
-	if (raid_ch->ec_offload_ctx) {
+	if (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD) {
+		assert(raid_ch->ec_offload_ctx != NULL);
 		ec_offload_close_ctx(raid_ch->ec_offload_ctx);
+	} else if (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD_ASYNC) {
+		assert(raid_ch->ec_offload_ctx != NULL);
+		ec_offload_close_async_ctx(raid_ch->ec_offload_ctx);
 	}
+
 	for (uint32_t i = 0; i < raid_bdev->num_base_bdevs; i++) {
 		/* Free base bdev channels */
 		assert(raid_ch->base_channel[i] != NULL);
@@ -316,6 +335,71 @@ raid_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg
 	}
 }
 
+static void
+raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg);
+
+static void
+raid6_ec_calc_done(struct spdk_bdev_io *parent_io)
+{
+	struct raid_bdev_io		*raid_io = (struct raid_bdev_io *)parent_io->driver_ctx;
+	struct raid_bdev_io_channel	*raid_ch = spdk_io_channel_get_ctx(raid_io->ch);
+	struct raid_bdev		*raid_bdev = (struct raid_bdev *)parent_io->bdev->ctxt;
+	uint64_t			pd_strip;
+	uint64_t			pd_lba;
+	struct raid6_block_op		*op;
+	uint32_t			i;
+	int				ret;
+
+	switch (raid_io->raid6_stage) {
+	case RAID6_STAGE_UPDATE_CALC:
+		/* Submit write requests*/
+		raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
+		pd_strip = raid_io->start_strip / raid_bdev->K;
+		pd_lba = pd_strip << raid_bdev->strip_size_shift;
+
+		for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
+			if (!raid_bdev->write_mask[i]) {
+				continue;
+			}
+
+			op = &raid_io->raid6_block_ops[i];
+			op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
+			ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[i].desc,
+						      raid_ch->base_channel[i],
+						      &op->iov, 1,
+						      pd_lba, raid_bdev->strip_size,
+						      raid6_bdev_io_completion,
+						      op);
+			if (ret) {
+				SPDK_ERRLOG("Failed to submit RAID6 block operation: res %d, idx %u, bdev_io %p\n",
+					    ret,
+					    i,
+					    parent_io);
+				op->status = RAID6_BLOCK_STATUS_FAILED;
+				if (i == 0) {
+					/* Nothing was submited. Fail this IO. */
+					assert(raid_io->raid6_buf != NULL);
+					spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
+					spdk_bdev_io_complete(parent_io, SPDK_BDEV_IO_STATUS_FAILED);
+				} else {
+					/* Partly OK. Request will be failed when submited operations are done. */
+					ret = 0;
+				}
+				break;
+			}
+		}
+		break;
+	default:
+		SPDK_ERRLOG("Unexpected RAID6 stage %d\n", raid_io->raid6_stage);
+	}
+}
+
+static void
+ec_offload_async_encode_done(struct ec_offload_context *ctx, void *arg)
+{
+	SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "EC offload async encode done: ctx %p, arg %p\n", ctx, arg);
+	raid6_ec_calc_done(arg);
+}
 
 /*
  * brief:
@@ -343,8 +427,6 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 	size_t				nbytes = 0;
 	char				*data[raid_bdev->K];
 	char				*coding[raid_bdev->M];
-	uint64_t			pd_strip;
-	uint64_t			pd_lba;
 
 	/*
 	SPDK_WARNLOG("raid bdev io base_bdev_reset_submitted;  %u\n", raid_io->base_bdev_reset_submitted);
@@ -405,17 +487,21 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 				ret = jerasure_matrix_decode(raid_bdev->K, raid_bdev->M, raid_bdev->W,
 							     raid_bdev->matrix_raid6, 1, raid_bdev->erasures,
 							     data, coding, raid_bdev->strip_size << raid_bdev->blocklen_shift);
-			} else {
+			} else if (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD) {
 				ret = ec_offload_decode_block_sync(raid_ch->ec_offload_ctx,
 								   data[0],
 								   coding[0]);
+			} else {
+				SPDK_NOTICELOG("Decode is not supported for EC mode %d\n",
+					       raid_bdev->config->ec_mode);
+				ret = 0;
 			}
 
 			if (ret) {
 				SPDK_ERRLOG("Failed to decode erased disk: ret %d\n", ret);
 				assert(raid_io->raid6_buf != NULL);
 				spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
-				raid_bdev_io_completion(bdev_io, false, parent_io);
+				spdk_bdev_io_complete(parent_io, SPDK_BDEV_IO_STATUS_FAILED);
 				return ;
 			}
 		}
@@ -433,8 +519,8 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 					    nbytes);
 				assert(raid_io->raid6_buf != NULL);
 				spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
-				raid_bdev_io_completion(bdev_io, false, parent_io);
-				return ;
+				spdk_bdev_io_complete(parent_io, SPDK_BDEV_IO_STATUS_FAILED);
+				return;
 			}
 
 			memcpy(raid_io->raid6_block_ops[0].iov.iov_base +
@@ -448,7 +534,7 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 			if (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_SW) {
 				reed_sol_r6_encode(raid_bdev->K, raid_bdev->W, data, coding,
 						   raid_bdev->strip_size << raid_bdev->blocklen_shift);
-			} else {
+			} else if (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD) {
 				ret = ec_offload_encode_block_sync(raid_ch->ec_offload_ctx,
 								   data[0],
 								   coding[0]);
@@ -456,48 +542,28 @@ raid6_bdev_io_completion(struct spdk_bdev_io *bdev_io, bool success, void *cb_ar
 					SPDK_ERRLOG("Failed to encode: ret %d\n", ret);
 					assert(raid_io->raid6_buf != NULL);
 					spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
-					raid_bdev_io_completion(bdev_io, false, parent_io);
-					return ;
-}
-			}
-		}
-
-		/* Submit write requests*/
-		raid_io->raid6_stage = RAID6_STAGE_UPDATE_WRITE;
-		pd_strip = raid_io->start_strip / raid_bdev->K;
-		pd_lba = pd_strip << raid_bdev->strip_size_shift;
-
-		for (i = 0; i < raid_bdev->num_base_bdevs; ++i) {
-			if (!raid_bdev->write_mask[i]) {
-				continue;
-			}
-
-			op = &raid_io->raid6_block_ops[i];
-			op->status = RAID6_BLOCK_STATUS_IN_PROGRESS;
-			ret = spdk_bdev_writev_blocks(raid_bdev->base_bdev_info[i].desc,
-						      raid_ch->base_channel[i],
-						      &op->iov, 1,
-						      pd_lba, raid_bdev->strip_size,
-						      raid6_bdev_io_completion,
-						      op);
-			if (ret) {
-				SPDK_ERRLOG("Failed to submit RAID6 block operation: res %d, idx %u, bdev_io %p\n",
-					    ret,
-					    i,
-					    parent_io);
-				op->status = RAID6_BLOCK_STATUS_FAILED;
-				if (i == 0) {
-					/* Nothing was submited. Fail this IO. */
+					spdk_bdev_io_complete(parent_io, SPDK_BDEV_IO_STATUS_FAILED);
+					return;
+				}
+			} else if (raid_bdev->config->ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD_ASYNC) {
+				ret = ec_offload_encode_block_async(raid_ch->ec_offload_ctx,
+								    data[0],
+								    coding[0],
+								    parent_io);
+				if (ret) {
+					SPDK_ERRLOG("Failed to async encode: ret %d\n", ret);
 					assert(raid_io->raid6_buf != NULL);
 					spdk_mempool_put(raid_bdev->raid6_buf_pool, raid_io->raid6_buf);
-					raid_bdev_io_completion(bdev_io, false, parent_io);
-				} else {
-					/* Partly OK. Request will be failed when submited operations are done. */
-					ret = 0;
+					spdk_bdev_io_complete(parent_io, SPDK_BDEV_IO_STATUS_FAILED);
+					return;
 				}
-				break;
+				SPDK_DEBUGLOG(SPDK_LOG_BDEV_RAID, "EC offload async encode submit: ctx %p, arg %p\n",
+					       raid_ch->ec_offload_ctx, parent_io);
+				return;
 			}
 		}
+
+		raid6_ec_calc_done(parent_io);
 		break;
 	case RAID6_STAGE_UPDATE_CALC:
 	default:
@@ -1155,8 +1221,10 @@ raid_bdev_config_add(const char *raid_name, int strip_size, int num_base_bdevs,
 		return -EINVAL;
 	}
 
-	if (!ec_offload_device && (ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD)) {
-		SPDK_ERRLOG("EC offload device must be specified when EC mode is HW_OFFLOAD\n");
+	if (!ec_offload_device &&
+	    ((ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD) ||
+	     (ec_mode == RAID_BDEV_EC_MODE_HW_OFFLOAD_ASYNC))) {
+		SPDK_ERRLOG("EC offload device must be specified when EC mode is HW_OFFLOAD(_ASYNC)\n");
 		return -EINVAL;
 	}
 
@@ -1302,6 +1370,8 @@ raid_bdev_parse_raid(struct spdk_conf_section *conf_section)
 			ec_mode = RAID_BDEV_EC_MODE_SW;
 		} else if (0 == strcmp(ec_mode_str, "HW_OFFLOAD")) {
 			ec_mode = RAID_BDEV_EC_MODE_HW_OFFLOAD;
+		} else if (0 == strcmp(ec_mode_str, "HW_OFFLOAD_ASYNC")) {
+			ec_mode = RAID_BDEV_EC_MODE_HW_OFFLOAD_ASYNC;
 		} else {
 			SPDK_ERRLOG("Invalid EcMode %s\n", ec_mode_str);
 			return -EINVAL;
@@ -1760,7 +1830,7 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 					 i >= raid_bdev->K ? 'y' : 'n');
 		}
 		raid_bdev->raid6_buf_pool = spdk_mempool_create("spdk_bdev_raid6",
-								1024,
+								RAID6_MAX_IO,
 								(raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs,
 								SPDK_MEMPOOL_DEFAULT_CACHE_SIZE,
 								SPDK_ENV_SOCKET_ID_ANY);
@@ -1769,7 +1839,7 @@ raid_bdev_configure(struct raid_bdev *raid_bdev)
 			return -ENOMEM;
 		}
 		SPDK_NOTICELOG("Allocated RAID buffer pool: %d*%d\n",
-			    1024,
+			    RAID6_MAX_IO,
 			    (raid_bdev->strip_size << raid_bdev->blocklen_shift) * raid_bdev->num_base_bdevs);
 
 		raid_bdev->matrix_raid6 = reed_sol_r6_coding_matrix(raid_bdev->K, raid_bdev->W);
