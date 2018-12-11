@@ -1257,7 +1257,7 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
     p.add_argument('-i', '--max-io-size', help='Max I/O size (bytes)', type=int)
     p.add_argument('-u', '--io-unit-size', help='I/O unit size (bytes)', type=int)
     p.add_argument('-a', '--max-aq-depth', help='Max number of admin cmds per AQ', type=int)
-    p.add_argument('-s', '--max-srq-depth', help='Max number of outstanding I/O per shared receive queue', type=int)
+    p.add_argument('-s', '--max-srq-depth', help='Max number of outstanding I/O per SRQ. Relevant only for RDMA transport', type=int)
     p.set_defaults(func=nvmf_create_transport)
 
     def get_nvmf_transports(args):

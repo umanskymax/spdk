@@ -522,7 +522,14 @@ spdk_nvmf_parse_transport(struct spdk_nvmf_parse_transport_ctx *ctx)
 	}
 	val = spdk_conf_section_get_intval(ctx->sp, "MaxSRQDepth");
 	if (val >= 0) {
-		opts.max_srq_depth = val;
+		if (trtype == SPDK_NVME_TRANSPORT_RDMA) {
+			opts.max_srq_depth = val;
+		} else {
+			SPDK_ERRLOG("MaxSRQDepth is relevant only for RDMA transport '%s'\n", type);
+			ctx->cb_fn(-1);
+			free(ctx);
+			return;
+		}
 	}
 
 	transport = spdk_nvmf_transport_create(trtype, &opts);
