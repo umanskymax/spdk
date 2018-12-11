@@ -36,12 +36,6 @@ Size of shared receive queue is defined by transport configuration file paramete
 `MaxSRQDepth` and `nvmf_create_transport` RPC method parameter `max_srq_depth`.
 Default size is 4096.
 
-### nvme
-
-Add a new TCP/IP transport(located in lib/nvme/nvme_tcp.c) in nvme driver. With
-this new transport, it can be used to connect the NVMe-oF target with the
-same TCP/IP support.
-
 ### nvmf
 
 Add a new TCP/IP transport (located in lib/nvmf/tcp.c). With this tranport,
