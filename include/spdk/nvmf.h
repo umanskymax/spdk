@@ -191,6 +191,10 @@ void spdk_nvmf_poll_group_destroy(struct spdk_nvmf_poll_group *group);
 int spdk_nvmf_poll_group_add(struct spdk_nvmf_poll_group *group,
 			     struct spdk_nvmf_qpair *qpair);
 
+void spdk_nvmf_poll_group_write_stats_json(struct spdk_nvmf_poll_group *group,
+					   struct spdk_json_write_ctx *w,
+					   bool reset);
+
 typedef void (*nvmf_qpair_disconnect_cb)(void *ctx);
 
 /**

@@ -1560,3 +1560,33 @@ nvmf_rpc_create_transport(struct spdk_jsonrpc_request *request,
 }
 
 SPDK_RPC_REGISTER("nvmf_create_transport", nvmf_rpc_create_transport, SPDK_RPC_RUNTIME)
+
+static const struct spdk_json_object_decoder rpc_get_nvmf_stats_decoders[] = {
+	{"reset", 0, spdk_json_decode_bool, true},
+};
+
+static void
+spdk_rpc_get_nvmf_stats(struct spdk_jsonrpc_request *request,
+			  const struct spdk_json_val *params)
+{
+	struct spdk_json_write_ctx *w;
+	bool reset = false;
+
+	if (params != NULL) {
+		if (spdk_json_decode_object(params, rpc_get_nvmf_stats_decoders,
+					    SPDK_COUNTOF(rpc_get_nvmf_stats_decoders),
+					    &reset)) {
+			SPDK_ERRLOG("spdk_json_decode_object failed\n");
+			spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS, "Invalid parameters");
+			return;
+		}
+	}
+
+	w = spdk_jsonrpc_begin_result(request);
+	if (w == NULL) {
+		return;
+	}
+	spdk_nvmf_tgt_write_stats_json(w, reset);
+	spdk_jsonrpc_end_result(request, w);
+}
+SPDK_RPC_REGISTER("get_nvmf_stats", spdk_rpc_get_nvmf_stats, SPDK_RPC_RUNTIME)

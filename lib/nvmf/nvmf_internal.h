@@ -110,6 +110,7 @@ struct spdk_nvmf_subsystem_poll_group {
 };
 
 struct spdk_nvmf_poll_group {
+	uint64_t					reqs;
 	struct spdk_thread				*thread;
 	struct spdk_poller				*poller;
 
@@ -121,6 +122,8 @@ struct spdk_nvmf_poll_group {
 
 	/* All of the queue pairs that belong to this poll group */
 	TAILQ_HEAD(, spdk_nvmf_qpair)			qpairs;
+	uint32_t					admin_qps;
+	uint32_t					io_qps;
 };
 
 typedef enum _spdk_nvmf_request_exec_status {
@@ -166,6 +169,7 @@ struct spdk_nvmf_ns {
 };
 
 struct spdk_nvmf_qpair {
+	uint64_t				reqs;
 	enum spdk_nvmf_qpair_state		state;
 	spdk_nvmf_state_change_done		state_cb;
 	void					*state_cb_arg;

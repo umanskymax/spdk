@@ -63,5 +63,6 @@ extern struct spdk_nvmf_tgt *g_spdk_nvmf_tgt;
 typedef void (*spdk_nvmf_parse_conf_done_fn)(int status);
 
 int spdk_nvmf_parse_conf(spdk_nvmf_parse_conf_done_fn cb_fn);
+void spdk_nvmf_tgt_write_stats_json(struct spdk_json_write_ctx *w, bool reset);
 
 #endif

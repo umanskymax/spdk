@@ -1509,6 +1509,16 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
     p.add_argument('-d', '--disable', action='store_true', help='Disable allowing any host')
     p.set_defaults(func=nvmf_subsystem_allow_any_host)
 
+    @call_cmd
+    def get_nvmf_stats(args):
+        print_dict(rpc.nvmf.get_nvmf_stats(args.client,
+                                           reset=args.reset))
+
+    p = subparsers.add_parser('get_nvmf_stats', help='Get NVMf statistics')
+    p.add_argument('-r', '--reset', action='store_true', help='Reset stats')
+    p.set_defaults(func=get_nvmf_stats)
+
+
     # pmem
     @call_cmd
     def create_pmem_pool(args):

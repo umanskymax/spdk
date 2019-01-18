@@ -684,6 +684,9 @@ spdk_nvmf_poll_group_add(struct spdk_nvmf_poll_group *group,
 	int rc = -1;
 	struct spdk_nvmf_transport_poll_group *tgroup;
 
+	if (qpair->qid == 0) group->admin_qps++;
+	else group->io_qps++;
+
 	TAILQ_INIT(&qpair->outstanding);
 	qpair->group = group;
 	spdk_nvmf_qpair_set_state(qpair, SPDK_NVMF_QPAIR_ACTIVATING);
@@ -1168,5 +1171,36 @@ spdk_nvmf_poll_group_resume_subsystem(struct spdk_nvmf_poll_group *group,
 fini:
 	if (cb_fn) {
 		cb_fn(cb_arg, rc);
+	}
+}
+
+void
+spdk_nvmf_poll_group_write_stats_json(struct spdk_nvmf_poll_group *group,
+				      struct spdk_json_write_ctx *w,
+				      bool reset)
+{
+	struct spdk_nvmf_qpair *qpair;
+
+	spdk_json_write_object_begin(w);
+	spdk_json_write_named_string(w, "name", spdk_thread_get_name(group->thread));
+
+	spdk_json_write_name(w, "qps");
+	spdk_json_write_array_begin(w);
+	TAILQ_FOREACH(qpair, &group->qpairs, link) {
+		spdk_json_write_object_begin(w);
+		spdk_json_write_named_uint32(w, "qid", qpair->qid);
+		spdk_json_write_named_uint64(w, "reqs", qpair->reqs);
+		spdk_json_write_object_end(w);
+		if (reset) qpair->reqs = 0;
+	}
+	spdk_json_write_array_end(w);
+	spdk_json_write_named_uint64(w, "admin_qps", group->admin_qps);
+	spdk_json_write_named_uint64(w, "io_qps", group->io_qps);
+	spdk_json_write_named_uint64(w, "reqs", group->reqs);
+	spdk_json_write_object_end(w);
+	if (reset) {
+		group->admin_qps = 0;
+		group->io_qps = 0;
+		group->reqs = 0;
 	}
 }

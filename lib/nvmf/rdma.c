@@ -1014,6 +1014,7 @@ nvmf_rdma_connect(struct spdk_nvmf_transport *transport, struct rdma_cm_event *e
 		return -1;
 	}
 
+	rqpair->qpair.qid = private_data->qid;
 	rqpair->port = port;
 	rqpair->max_queue_depth = max_queue_depth;
 	rqpair->max_rw_depth = max_rw_depth;
@@ -1340,6 +1341,8 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			/* The next state transition depends on the data transfer needs of this request. */
 			rdma_req->req.xfer = spdk_nvmf_rdma_request_get_xfer(rdma_req);
 
+			rdma_req->req.qpair->reqs++;
+			rdma_req->req.qpair->group->reqs++;
 			/* If no data to transfer, ready to execute. */
 			if (rdma_req->req.xfer == SPDK_NVME_DATA_NONE) {
 				spdk_nvmf_rdma_request_set_state(rdma_req, RDMA_REQUEST_STATE_READY_TO_EXECUTE);

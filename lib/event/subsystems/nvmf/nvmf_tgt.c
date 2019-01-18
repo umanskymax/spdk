@@ -492,6 +492,27 @@ spdk_nvmf_subsystem_write_config_json(struct spdk_json_write_ctx *w, struct spdk
 	spdk_event_call(done_ev);
 }
 
+void
+spdk_nvmf_tgt_write_stats_json(struct spdk_json_write_ctx *w, bool reset)
+{
+	struct nvmf_tgt_poll_group *pg;
+	size_t i;
+
+	spdk_json_write_object_begin(w);
+	spdk_json_write_name(w, "poll_groups");
+	spdk_json_write_array_begin(w);
+
+	for (i = 0; i < g_num_poll_groups; i++) {
+		pg = &g_poll_groups[i];
+		if (pg->group == NULL) {
+			continue;
+		}
+		spdk_nvmf_poll_group_write_stats_json(pg->group, w, reset);
+	}
+	spdk_json_write_array_end(w);
+	spdk_json_write_object_end(w);
+}
+
 static struct spdk_subsystem g_spdk_subsystem_nvmf = {
 	.name = "nvmf",
 	.init = spdk_nvmf_subsystem_init,
