@@ -125,10 +125,13 @@ endif
 
 ifeq ($(CONFIG_RDMA),y)
 ifneq ($(CONFIG_RDMA_DIR),)
-LIBS += -L$(CONFIG_RDMA_DIR)/lib64
+LIBS += -L$(CONFIG_RDMA_DIR)/lib
 COMMON_CFLAGS += -I$(CONFIG_RDMA_DIR)/include
 endif
 SYS_LIBS += -libverbs -lrdmacm
+ifeq ($(CONFIG_NVMF_OFFLOAD),y)
+SYS_LIBS += -lmlx5
+endif
 endif
 
 #Attach only if FreeBSD and RDMA is specified with configure

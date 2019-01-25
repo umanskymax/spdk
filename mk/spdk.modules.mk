@@ -45,6 +45,9 @@ endif
 
 ifeq ($(CONFIG_RDMA),y)
 BLOCKDEV_MODULES_DEPS += -libverbs -lrdmacm
+ifeq ($(CONFIG_NVMF_OFFLOAD),y)
+	SYS_LIBS += -lmlx5
+endif
 endif
 
 ifeq ($(OS),Linux)
