@@ -111,6 +111,9 @@ struct spdk_nvmf_subsystem_poll_group {
 
 struct spdk_nvmf_poll_group {
 	uint64_t					reqs;
+	uint64_t					pending_buf;
+	uint64_t					pending_bdev;
+	uint64_t					pending_rw;
 	struct spdk_thread				*thread;
 	struct spdk_poller				*poller;
 
@@ -170,6 +173,9 @@ struct spdk_nvmf_ns {
 
 struct spdk_nvmf_qpair {
 	uint64_t				reqs;
+	uint64_t				pending_buf;
+	uint64_t				pending_bdev;
+	uint64_t				pending_rw;
 	enum spdk_nvmf_qpair_state		state;
 	spdk_nvmf_state_change_done		state_cb;
 	void					*state_cb_arg;

@@ -1190,17 +1190,31 @@ spdk_nvmf_poll_group_write_stats_json(struct spdk_nvmf_poll_group *group,
 		spdk_json_write_object_begin(w);
 		spdk_json_write_named_uint32(w, "qid", qpair->qid);
 		spdk_json_write_named_uint64(w, "reqs", qpair->reqs);
+		spdk_json_write_named_uint64(w, "pending_buf", qpair->pending_buf);
+		spdk_json_write_named_uint64(w, "pending_bdev", qpair->pending_bdev);
+		spdk_json_write_named_uint64(w, "pending_rw", qpair->pending_rw);
 		spdk_json_write_object_end(w);
-		if (reset) qpair->reqs = 0;
+		if (reset) {
+			qpair->reqs = 0;
+			qpair->pending_buf = 0;
+			qpair->pending_bdev = 0;
+			qpair->pending_rw = 0;
+		}
 	}
 	spdk_json_write_array_end(w);
 	spdk_json_write_named_uint64(w, "admin_qps", group->admin_qps);
 	spdk_json_write_named_uint64(w, "io_qps", group->io_qps);
 	spdk_json_write_named_uint64(w, "reqs", group->reqs);
+	spdk_json_write_named_uint64(w, "pending_buf", group->pending_buf);
+	spdk_json_write_named_uint64(w, "pending_bdev", group->pending_bdev);
+	spdk_json_write_named_uint64(w, "pending_rw", group->pending_rw);
 	spdk_json_write_object_end(w);
 	if (reset) {
 		group->admin_qps = 0;
 		group->io_qps = 0;
 		group->reqs = 0;
+		group->pending_buf = 0;
+		group->pending_bdev = 0;
+		group->pending_rw = 0;
 	}
 }

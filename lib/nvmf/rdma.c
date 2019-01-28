@@ -1360,6 +1360,8 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 
 			if (rdma_req != TAILQ_FIRST(&rqpair->ch->pending_data_buf_queue)) {
 				/* This request needs to wait in line to obtain a buffer */
+				rdma_req->req.qpair->pending_buf++;
+				rdma_req->req.qpair->group->pending_buf++;
 				break;
 			}
 
@@ -1374,6 +1376,8 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 
 			if (!rdma_req->req.data) {
 				/* No buffers available. */
+				rdma_req->req.qpair->pending_buf++;
+				rdma_req->req.qpair->group->pending_buf++;
 				break;
 			}
 
@@ -1401,6 +1405,8 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 
 			if (cur_rdma_rw_depth >= rqpair->max_rw_depth) {
 				/* R/W queue is full, need to wait */
+				rdma_req->req.qpair->pending_rw++;
+				rdma_req->req.qpair->group->pending_rw++;
 				break;
 			}
 
