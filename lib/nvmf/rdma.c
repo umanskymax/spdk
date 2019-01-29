@@ -214,7 +214,7 @@ struct spdk_nvmf_rdma_recv {
 	uint8_t				*buf;
 
 	struct spdk_nvmf_rdma_wr	rdma_wr;
-
+	uint64_t			submit_tsc;
 	TAILQ_ENTRY(spdk_nvmf_rdma_recv) link;
 };
 
@@ -239,7 +239,7 @@ struct spdk_nvmf_rdma_request {
 		void				*buffers[SPDK_NVMF_MAX_SGL_ENTRIES];
 	} data;
 
-	struct spdk_nvmf_rdma_wr		rdma_wr;
+	uint64_t				submit_tsc;
 
 	TAILQ_ENTRY(spdk_nvmf_rdma_request)	link;
 	TAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
@@ -886,7 +886,7 @@ request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 	if (rc) {
 		SPDK_ERRLOG("Unable to send response capsule\n");
 	}
-
+	rdma_req->req.qpair->group->recv_latency += spdk_get_ticks() - rdma_req->submit_tsc;
 	return rc;
 }
 
@@ -1501,6 +1501,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			rdma_req->req.length = 0;
 			rdma_req->req.iovcnt = 0;
 			rdma_req->req.data = NULL;
+			rdma_req->req.qpair->group->req_latency += spdk_get_ticks() - rdma_req->submit_tsc;
 			spdk_nvmf_rdma_request_set_state(rdma_req, RDMA_REQUEST_STATE_FREE);
 			break;
 		case RDMA_REQUEST_NUM_STATES:
@@ -1992,6 +1993,7 @@ spdk_nvmf_rdma_qpair_process_pending(struct spdk_nvmf_rdma_transport *rtransport
 
 		rdma_req = TAILQ_FIRST(&rqpair->state_queue[RDMA_REQUEST_STATE_FREE]);
 		rdma_req->recv = rdma_recv;
+		rdma_req->submit_tsc = rdma_recv->submit_tsc;
 		spdk_nvmf_rdma_request_set_state(rdma_req, RDMA_REQUEST_STATE_NEW);
 		if (spdk_nvmf_rdma_request_process(rtransport, rdma_req) == false) {
 			break;
@@ -2654,6 +2656,7 @@ spdk_nvmf_rdma_poller_poll(struct spdk_nvmf_rdma_transport *rtransport,
 		case IBV_WC_RECV:
 			assert(rdma_wr->type == RDMA_WR_TYPE_RECV);
 			rdma_recv = SPDK_CONTAINEROF(rdma_wr, struct spdk_nvmf_rdma_recv, rdma_wr);
+			rdma_recv->submit_tsc = spdk_get_ticks();
 			rqpair = rdma_recv->qpair;
 
 			TAILQ_INSERT_TAIL(&rqpair->incoming_queue, rdma_recv, link);

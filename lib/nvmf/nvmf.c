@@ -1208,6 +1208,9 @@ spdk_nvmf_poll_group_write_stats_json(struct spdk_nvmf_poll_group *group,
 	spdk_json_write_named_uint64(w, "pending_buf", group->pending_buf);
 	spdk_json_write_named_uint64(w, "pending_bdev", group->pending_bdev);
 	spdk_json_write_named_uint64(w, "pending_rw", group->pending_rw);
+	spdk_json_write_named_uint64(w, "req_latency", group->req_latency);
+	spdk_json_write_named_uint64(w, "recv_latency", group->recv_latency);
+	spdk_json_write_named_uint64(w, "tick_rate", spdk_get_ticks_hz());
 	spdk_json_write_object_end(w);
 	if (reset) {
 		group->admin_qps = 0;
@@ -1216,5 +1219,7 @@ spdk_nvmf_poll_group_write_stats_json(struct spdk_nvmf_poll_group *group,
 		group->pending_buf = 0;
 		group->pending_bdev = 0;
 		group->pending_rw = 0;
+		group->req_latency = 0;
+		group->recv_latency = 0;
 	}
 }
