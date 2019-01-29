@@ -1180,6 +1180,22 @@ spdk_nvmf_poll_group_write_stats_json(struct spdk_nvmf_poll_group *group,
 				      bool reset)
 {
 	struct spdk_nvmf_qpair *qpair;
+	static const char *state_names[] = {
+		"FREE",
+		"NEW",
+		"NEED_BUFFER",
+		"DATA_TRANSFER_PENDING",
+		"TRANSFERRING_HOST_TO_CONTROLLER",
+		"READY_TO_EXECUTE",
+		"EXECUTING",
+		"EXECUTED",
+		"READY_TO_COMPLETE",
+		"TRANSFERRING_CONTROLLER_TO_HOST",
+		"COMPLETING",
+		"COMPLETED"
+	};
+	const uint64_t tick_rate = spdk_get_ticks_hz();
+	double l[12];
 
 	spdk_json_write_object_begin(w);
 	spdk_json_write_named_string(w, "name", spdk_thread_get_name(group->thread));
@@ -1208,9 +1224,19 @@ spdk_nvmf_poll_group_write_stats_json(struct spdk_nvmf_poll_group *group,
 	spdk_json_write_named_uint64(w, "pending_buf", group->pending_buf);
 	spdk_json_write_named_uint64(w, "pending_bdev", group->pending_bdev);
 	spdk_json_write_named_uint64(w, "pending_rw", group->pending_rw);
-	spdk_json_write_named_uint64(w, "req_latency", group->req_latency);
-	spdk_json_write_named_uint64(w, "recv_latency", group->recv_latency);
-	spdk_json_write_named_uint64(w, "tick_rate", spdk_get_ticks_hz());
+
+	spdk_json_write_name(w, "latencies");
+	spdk_json_write_object_begin(w);
+	for (int i = 0; i < 12; ++i) {
+		l[i] = (double)group->latencies[i] / group->reqs / tick_rate * 1000000;
+		spdk_json_write_named_string_fmt(w, state_names[i], "%f", l[i]);
+	}
+	spdk_json_write_named_string_fmt(w, "lats", "| %f | %f | %f | %f | %f | %f | %f | %f | %f | %f | %f | %f |",
+					 l[0], l[1], l[2], l[3], l[4], l[5],
+					 l[6], l[7], l[8], l[9], l[10], l[11]);
+	spdk_json_write_named_uint64(w, "tick_rate", tick_rate);
+	spdk_json_write_object_end(w);
+
 	spdk_json_write_object_end(w);
 	if (reset) {
 		group->admin_qps = 0;
@@ -1219,7 +1245,6 @@ spdk_nvmf_poll_group_write_stats_json(struct spdk_nvmf_poll_group *group,
 		group->pending_buf = 0;
 		group->pending_bdev = 0;
 		group->pending_rw = 0;
-		group->req_latency = 0;
-		group->recv_latency = 0;
+		memset(group->latencies, 0, sizeof(group->latencies));
 	}
 }

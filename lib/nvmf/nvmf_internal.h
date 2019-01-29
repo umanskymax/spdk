@@ -114,8 +114,7 @@ struct spdk_nvmf_poll_group {
 	uint64_t					pending_buf;
 	uint64_t					pending_bdev;
 	uint64_t					pending_rw;
-	uint64_t					req_latency;
-	uint64_t					recv_latency;
+	uint64_t					latencies[12];
 	struct spdk_thread				*thread;
 	struct spdk_poller				*poller;
 
