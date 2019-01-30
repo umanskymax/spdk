@@ -1360,8 +1360,6 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 
 			if (rdma_req != TAILQ_FIRST(&rqpair->ch->pending_data_buf_queue)) {
 				/* This request needs to wait in line to obtain a buffer */
-				rdma_req->req.qpair->pending_buf++;
-				rdma_req->req.qpair->group->pending_buf++;
 				break;
 			}
 
@@ -1376,8 +1374,6 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 
 			if (!rdma_req->req.data) {
 				/* No buffers available. */
-				rdma_req->req.qpair->pending_buf++;
-				rdma_req->req.qpair->group->pending_buf++;
 				break;
 			}
 
@@ -1407,8 +1403,6 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 
 			if (cur_rdma_rw_depth >= rqpair->max_rw_depth) {
 				/* R/W queue is full, need to wait */
-				rdma_req->req.qpair->pending_rw++;
-				rdma_req->req.qpair->group->pending_rw++;
 				break;
 			}
 
@@ -2549,6 +2543,9 @@ spdk_nvmf_rdma_poller_poll(struct spdk_nvmf_rdma_transport *rtransport,
 	int reaped, i;
 	int count = 0;
 	bool error = false;
+	struct spdk_nvmf_poll_group *group = rpoller->group->group.group;
+
+	if (TAILQ_EMPTY(&rpoller->qpairs)) return 0;
 
 	/* Poll for completing operations. */
 	reaped = ibv_poll_cq(rpoller->cq, 32, wc);
@@ -2557,6 +2554,9 @@ spdk_nvmf_rdma_poller_poll(struct spdk_nvmf_rdma_transport *rtransport,
 			    errno, spdk_strerror(errno));
 		return -1;
 	}
+
+	group->polls++;
+	group->reaps += reaped;
 
 	for (i = 0; i < reaped; i++) {
 
