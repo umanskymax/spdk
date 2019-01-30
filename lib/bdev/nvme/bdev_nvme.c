@@ -562,6 +562,8 @@ bdev_nvme_create_cb(void *io_device, void *ctx_buf)
 	}
 
 	ch->poller = spdk_poller_register(bdev_nvme_poll, ch, 0);
+	SPDK_NOTICELOG("BDEV NVMe poller fn %p\n", bdev_nvme_poll);
+
 	return 0;
 }
 

@@ -256,6 +256,7 @@ null_bdev_create_cb(void *io_device, void *ctx_buf)
 
 	TAILQ_INIT(&ch->io);
 	ch->poller = spdk_poller_register(null_io_poll, ch, 0);
+	SPDK_NOTICELOG("BDEV NULL poller fn %p\n", null_io_poll);
 
 	return 0;
 }

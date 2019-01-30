@@ -57,6 +57,12 @@ enum spdk_poller_state {
 	SPDK_POLLER_STATE_UNREGISTERED,
 };
 
+struct spdk_poller_stats {
+	uint64_t calls;
+	uint64_t count;
+	uint64_t ticks;
+};
+
 struct spdk_poller {
 	TAILQ_ENTRY(spdk_poller)	tailq;
 	uint32_t			lcore;
@@ -64,6 +70,7 @@ struct spdk_poller {
 	/* Current state of the poller; should only be accessed from the poller's thread. */
 	enum spdk_poller_state		state;
 
+	struct spdk_poller_stats	stats;
 	uint64_t			period_ticks;
 	uint64_t			next_run_tick;
 	spdk_poller_fn			fn;
@@ -473,7 +480,7 @@ _spdk_reactor_run(void *arg)
 	struct spdk_reactor	*reactor = arg;
 	struct spdk_poller	*poller;
 	uint32_t		event_count;
-	uint64_t		now;
+	uint64_t		now, then;
 	uint64_t		sleep_cycles;
 	uint32_t		sleep_us;
 	int			rc = -1;
@@ -511,9 +518,13 @@ _spdk_reactor_run(void *arg)
 		if (poller) {
 			TAILQ_REMOVE(&reactor->active_pollers, poller, tailq);
 			poller->state = SPDK_POLLER_STATE_RUNNING;
+			then = now;
 			rc = poller->fn(poller->arg);
 			now = spdk_get_ticks();
 			spdk_reactor_add_tsc_stats(reactor, rc, now);
+			poller->stats.calls++;
+			poller->stats.count += rc;
+			poller->stats.ticks += now - then;
 			if (poller->state == SPDK_POLLER_STATE_UNREGISTERED) {
 				free(poller);
 			} else {
@@ -800,5 +811,48 @@ spdk_reactors_fini(void)
 	free(g_reactors);
 	g_reactors = NULL;
 }
+
+void
+spdk_reactor_write_stats_json(uint32_t core, struct spdk_json_write_ctx *w, bool reset)
+{
+	struct spdk_reactor_tsc_stats reactor_stats;
+	struct spdk_poller *poller, *tmp_poller;
+	struct spdk_reactor *reactor;
+	const uint64_t tick_rate = spdk_get_ticks_hz();
+
+	reactor = spdk_reactor_get(core);
+	if (reactor && (0 == spdk_reactor_get_tsc_stats(&reactor_stats, reactor->lcore))) {
+		spdk_json_write_object_begin(w);
+		spdk_json_write_named_uint64(w, "core", reactor->lcore);
+		spdk_json_write_named_string_fmt(w, "busy_time_s", "%f",
+						 (double) reactor_stats.busy_tsc / tick_rate);
+		spdk_json_write_named_string_fmt(w, "idle_time_s", "%f",
+						 (double) reactor_stats.idle_tsc / tick_rate);
+		spdk_json_write_named_string_fmt(w, "unknown_time_s", "%f",
+						 (double) reactor_stats.unknown_tsc / tick_rate);
+		spdk_json_write_name(w, "pollers");
+		spdk_json_write_array_begin(w);
+		TAILQ_FOREACH_SAFE(poller, &reactor->active_pollers, tailq, tmp_poller) {
+			spdk_json_write_object_begin(w);
+			spdk_json_write_named_string_fmt(w, "fn", "%p", poller->fn);
+			spdk_json_write_named_uint64(w, "calls", poller->stats.calls);
+			spdk_json_write_named_uint64(w, "count", poller->stats.count);
+			spdk_json_write_named_uint64(w, "ticks", poller->stats.ticks);
+			spdk_json_write_named_string_fmt(w, "stats", "| %f | %f | %f | %f |",
+							 (double) poller->stats.ticks / tick_rate,
+							 (double) poller->stats.count / poller->stats.calls,
+							 (double) poller->stats.ticks / poller->stats.calls / tick_rate * 1000000,
+							 (double) poller->stats.ticks / poller->stats.count / tick_rate * 1000000);
+
+			spdk_json_write_object_end(w);
+			if (reset) {
+				memset(&poller->stats, 0, sizeof(poller->stats));
+			}
+		}
+		spdk_json_write_array_end(w);
+		spdk_json_write_object_end(w);
+	}
+}
+
 
 SPDK_LOG_REGISTER_COMPONENT("reactor", SPDK_LOG_REACTOR)

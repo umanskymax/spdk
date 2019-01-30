@@ -496,7 +496,6 @@ void
 spdk_nvmf_tgt_write_stats_json(struct spdk_json_write_ctx *w, bool reset)
 {
 	struct nvmf_tgt_poll_group *pg;
-	struct spdk_reactor_tsc_stats reactor_stats;
 	size_t i;
 
 	spdk_json_write_object_begin(w);
@@ -514,14 +513,8 @@ spdk_nvmf_tgt_write_stats_json(struct spdk_json_write_ctx *w, bool reset)
 
 	spdk_json_write_name(w, "reactor_stats");
 	spdk_json_write_array_begin(w);
-	for (i = 0; i < 128; ++i) {
-		if (0 != spdk_reactor_get_tsc_stats(&reactor_stats, i)) continue;
-		spdk_json_write_object_begin(w);
-		spdk_json_write_named_uint64(w, "core", i);
-		spdk_json_write_named_uint64(w, "busy", reactor_stats.busy_tsc);
-		spdk_json_write_named_uint64(w, "idle", reactor_stats.idle_tsc);
-		spdk_json_write_named_uint64(w, "unknown", reactor_stats.unknown_tsc);
-		spdk_json_write_object_end(w);
+	SPDK_ENV_FOREACH_CORE(i) {
+		spdk_reactor_write_stats_json(i, w, reset);
 	}
 	spdk_json_write_array_end(w);
 	spdk_json_write_object_end(w);
