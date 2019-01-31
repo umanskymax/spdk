@@ -2535,7 +2535,7 @@ static int
 spdk_nvmf_rdma_poller_poll(struct spdk_nvmf_rdma_transport *rtransport,
 			   struct spdk_nvmf_rdma_poller *rpoller)
 {
-	struct ibv_wc wc[32];
+	struct ibv_wc wc[128];
 	struct spdk_nvmf_rdma_wr	*rdma_wr;
 	struct spdk_nvmf_rdma_request	*rdma_req;
 	struct spdk_nvmf_rdma_recv	*rdma_recv;
@@ -2544,11 +2544,13 @@ spdk_nvmf_rdma_poller_poll(struct spdk_nvmf_rdma_transport *rtransport,
 	int count = 0;
 	bool error = false;
 	struct spdk_nvmf_poll_group *group = rpoller->group->group.group;
+	uint64_t ticks;
 
 	if (TAILQ_EMPTY(&rpoller->qpairs)) return 0;
 
+	ticks = spdk_get_ticks();
 	/* Poll for completing operations. */
-	reaped = ibv_poll_cq(rpoller->cq, 32, wc);
+	reaped = ibv_poll_cq(rpoller->cq, 128, wc);
 	if (reaped < 0) {
 		SPDK_ERRLOG("Error polling CQ! (%d): %s\n",
 			    errno, spdk_strerror(errno));
@@ -2668,7 +2670,7 @@ spdk_nvmf_rdma_poller_poll(struct spdk_nvmf_rdma_transport *rtransport,
 		case IBV_WC_RECV:
 			assert(rdma_wr->type == RDMA_WR_TYPE_RECV);
 			rdma_recv = SPDK_CONTAINEROF(rdma_wr, struct spdk_nvmf_rdma_recv, rdma_wr);
-			rdma_recv->submit_tsc = spdk_get_ticks();
+			rdma_recv->submit_tsc = ticks;
 			rqpair = rdma_recv->qpair;
 
 			TAILQ_INSERT_TAIL(&rqpair->incoming_queue, rdma_recv, link);
