@@ -239,8 +239,6 @@ struct spdk_nvmf_rdma_request {
 		void				*buffers[SPDK_NVMF_MAX_SGL_ENTRIES];
 	} data;
 
-	uint64_t				submit_tsc;
-
 	TAILQ_ENTRY(spdk_nvmf_rdma_request)	link;
 	TAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
 };
@@ -1295,6 +1293,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 	bool				progress = false;
 	int				data_posted;
 	int				cur_rdma_rw_depth;
+	uint64_t			ticks;
 
 	rqpair = SPDK_CONTAINEROF(rdma_req->req.qpair, struct spdk_nvmf_rdma_qpair, qpair);
 	device = rqpair->port->device;
@@ -1350,7 +1349,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 
 			spdk_nvmf_rdma_request_set_state(rdma_req, RDMA_REQUEST_STATE_NEED_BUFFER);
 			TAILQ_INSERT_TAIL(&rqpair->ch->pending_data_buf_queue, rdma_req, link);
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_NEW] += spdk_get_ticks() - rdma_req->submit_tsc;
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_NEW] += spdk_get_ticks() - rdma_req->req.submit_tsc;
 			break;
 		case RDMA_REQUEST_STATE_NEED_BUFFER:
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_NEED_BUFFER, 0, 0,
@@ -1384,12 +1383,12 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			 */
 			if (rdma_req->req.xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER && rdma_req->data_from_pool) {
 				spdk_nvmf_rdma_request_set_state(rdma_req, RDMA_REQUEST_STATE_DATA_TRANSFER_PENDING);
-				rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_NEED_BUFFER] += spdk_get_ticks() - rdma_req->submit_tsc;
+				rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_NEED_BUFFER] += spdk_get_ticks() - rdma_req->req.submit_tsc;
 				break;
 			}
 
 			spdk_nvmf_rdma_request_set_state(rdma_req, RDMA_REQUEST_STATE_READY_TO_EXECUTE);
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_NEED_BUFFER] += spdk_get_ticks() - rdma_req->submit_tsc;
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_NEED_BUFFER] += spdk_get_ticks() - rdma_req->req.submit_tsc;
 			break;
 		case RDMA_REQUEST_STATE_DATA_TRANSFER_PENDING:
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_DATA_TRANSFER_PENDING, 0, 0,
@@ -1427,21 +1426,21 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 					    rdma_req->req.xfer);
 				assert(0);
 			}
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_DATA_TRANSFER_PENDING] += spdk_get_ticks() - rdma_req->submit_tsc;
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_DATA_TRANSFER_PENDING] += spdk_get_ticks() - rdma_req->req.submit_tsc;
 			break;
 		case RDMA_REQUEST_STATE_TRANSFERRING_HOST_TO_CONTROLLER:
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_TRANSFERRING_HOST_TO_CONTROLLER, 0, 0,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
 			/* Some external code must kick a request into RDMA_REQUEST_STATE_READY_TO_EXECUTE
 			 * to escape this state. */
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_TRANSFERRING_HOST_TO_CONTROLLER] += spdk_get_ticks() - rdma_req->submit_tsc;
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_TRANSFERRING_HOST_TO_CONTROLLER] += spdk_get_ticks() - rdma_req->req.submit_tsc;
 			break;
 		case RDMA_REQUEST_STATE_READY_TO_EXECUTE:
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_READY_TO_EXECUTE, 0, 0,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
 			spdk_nvmf_rdma_request_set_state(rdma_req, RDMA_REQUEST_STATE_EXECUTING);
 			spdk_nvmf_request_exec(&rdma_req->req);
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_READY_TO_EXECUTE] += spdk_get_ticks() - rdma_req->submit_tsc;
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_READY_TO_EXECUTE] += spdk_get_ticks() - rdma_req->req.submit_tsc;
 
 			break;
 		case RDMA_REQUEST_STATE_EXECUTING:
@@ -1449,7 +1448,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
 			/* Some external code must kick a request into RDMA_REQUEST_STATE_EXECUTED
 			 * to escape this state. */
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_EXECUTING] += spdk_get_ticks() - rdma_req->submit_tsc;
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_EXECUTING] += spdk_get_ticks() - rdma_req->req.submit_tsc;
 			break;
 		case RDMA_REQUEST_STATE_EXECUTED:
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_EXECUTED, 0, 0,
@@ -1459,7 +1458,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			} else {
 				spdk_nvmf_rdma_request_set_state(rdma_req, RDMA_REQUEST_STATE_READY_TO_COMPLETE);
 			}
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_EXECUTED] += spdk_get_ticks() - rdma_req->submit_tsc;
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_EXECUTED] += spdk_get_ticks() - rdma_req->req.submit_tsc;
 
 			break;
 		case RDMA_REQUEST_STATE_READY_TO_COMPLETE:
@@ -1475,21 +1474,25 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 								 RDMA_REQUEST_STATE_TRANSFERRING_CONTROLLER_TO_HOST :
 								 RDMA_REQUEST_STATE_COMPLETING);
 			}
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_READY_TO_COMPLETE] += spdk_get_ticks() - rdma_req->submit_tsc;
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_READY_TO_COMPLETE] += spdk_get_ticks() - rdma_req->req.submit_tsc;
 			break;
 		case RDMA_REQUEST_STATE_TRANSFERRING_CONTROLLER_TO_HOST:
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_TRANSFERRING_CONTROLLER_TO_HOST, 0, 0,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
 			/* Some external code must kick a request into RDMA_REQUEST_STATE_COMPLETED
 			 * to escape this state. */
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_TRANSFERRING_CONTROLLER_TO_HOST] += spdk_get_ticks() - rdma_req->submit_tsc;
+			ticks = spdk_get_ticks();
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_TRANSFERRING_CONTROLLER_TO_HOST] += ticks - rdma_req->req.submit_tsc;
+			rdma_req->req.qpair->group->bw_run += ticks - rdma_req->req.bdev_poll_tsc;
 			break;
 		case RDMA_REQUEST_STATE_COMPLETING:
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_COMPLETING, 0, 0,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
 			/* Some external code must kick a request into RDMA_REQUEST_STATE_COMPLETED
 			 * to escape this state. */
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_COMPLETING] += spdk_get_ticks() - rdma_req->submit_tsc;
+			ticks = spdk_get_ticks();
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_COMPLETING] += spdk_get_ticks() - rdma_req->req.submit_tsc;
+			rdma_req->req.qpair->group->bw_run += ticks - rdma_req->req.bdev_poll_tsc;
 			break;
 		case RDMA_REQUEST_STATE_COMPLETED:
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_COMPLETED, 0, 0,
@@ -1507,7 +1510,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			rdma_req->req.length = 0;
 			rdma_req->req.iovcnt = 0;
 			rdma_req->req.data = NULL;
-			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_COMPLETED] += spdk_get_ticks() - rdma_req->submit_tsc;
+			rdma_req->req.qpair->group->latencies[RDMA_REQUEST_STATE_COMPLETED] += spdk_get_ticks() - rdma_req->req.submit_tsc;
 			spdk_nvmf_rdma_request_set_state(rdma_req, RDMA_REQUEST_STATE_FREE);
 			break;
 		case RDMA_REQUEST_NUM_STATES:
@@ -1999,7 +2002,9 @@ spdk_nvmf_rdma_qpair_process_pending(struct spdk_nvmf_rdma_transport *rtransport
 
 		rdma_req = TAILQ_FIRST(&rqpair->state_queue[RDMA_REQUEST_STATE_FREE]);
 		rdma_req->recv = rdma_recv;
-		rdma_req->submit_tsc = rdma_recv->submit_tsc;
+		rdma_req->req.submit_tsc = rdma_recv->submit_tsc;
+		/* Must be initialized to something for admin commands */
+		rdma_req->req.bdev_poll_tsc = rdma_recv->submit_tsc;
 		spdk_nvmf_rdma_request_set_state(rdma_req, RDMA_REQUEST_STATE_NEW);
 		if (spdk_nvmf_rdma_request_process(rtransport, rdma_req) == false) {
 			break;

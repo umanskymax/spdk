@@ -232,7 +232,8 @@ null_io_poll(void *arg)
 	struct null_io_channel		*ch = arg;
 	TAILQ_HEAD(, spdk_bdev_io)	io;
 	struct spdk_bdev_io		*bdev_io;
-	uint32_t count = 0;
+	uint32_t			count = 0;
+	uint64_t			ticks = spdk_get_ticks();
 
 	TAILQ_INIT(&io);
 	TAILQ_SWAP(&ch->io, &io, spdk_bdev_io, module_link);
@@ -243,6 +244,7 @@ null_io_poll(void *arg)
 
 	while (!TAILQ_EMPTY(&io)) {
 		bdev_io = TAILQ_FIRST(&io);
+		bdev_io->poll_tsc = ticks;
 		TAILQ_REMOVE(&io, bdev_io, module_link);
 		spdk_bdev_io_complete(bdev_io, SPDK_BDEV_IO_STATUS_SUCCESS);
 		count++;

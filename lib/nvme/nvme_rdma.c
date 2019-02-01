@@ -446,7 +446,7 @@ fail:
 }
 
 static int
-nvme_rdma_recv(struct nvme_rdma_qpair *rqpair, uint64_t rsp_idx)
+nvme_rdma_recv(struct nvme_rdma_qpair *rqpair, uint64_t rsp_idx, uint64_t poll_tsc)
 {
 	struct spdk_nvme_qpair *qpair = &rqpair->qpair;
 	struct spdk_nvme_rdma_req *rdma_req;
@@ -458,6 +458,7 @@ nvme_rdma_recv(struct nvme_rdma_qpair *rqpair, uint64_t rsp_idx)
 	rdma_req = &rqpair->rdma_reqs[rsp->cid];
 
 	req = rdma_req->req;
+	req->poll_tsc = poll_tsc;
 	nvme_rdma_req_complete(req, rsp);
 
 	nvme_rdma_req_put(rqpair, rdma_req);
@@ -1564,6 +1565,7 @@ nvme_rdma_qpair_process_completions(struct spdk_nvme_qpair *qpair,
 	int			i, rc, batch_size;
 	uint32_t		reaped;
 	struct ibv_cq		*cq;
+	uint64_t		ticks;
 
 	if (max_completions == 0) {
 		max_completions = rqpair->num_entries;
@@ -1575,6 +1577,7 @@ nvme_rdma_qpair_process_completions(struct spdk_nvme_qpair *qpair,
 
 	reaped = 0;
 	do {
+		ticks = spdk_get_ticks();
 		batch_size = spdk_min((max_completions - reaped),
 				      MAX_COMPLETIONS_PER_POLL);
 		rc = ibv_poll_cq(cq, batch_size, wc);
@@ -1605,7 +1608,7 @@ nvme_rdma_qpair_process_completions(struct spdk_nvme_qpair *qpair,
 					return -1;
 				}
 
-				if (nvme_rdma_recv(rqpair, wc[i].wr_id)) {
+				if (nvme_rdma_recv(rqpair, wc[i].wr_id, ticks)) {
 					SPDK_ERRLOG("nvme_rdma_recv processing failure\n");
 					return -1;
 				}

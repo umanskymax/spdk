@@ -113,6 +113,7 @@ struct spdk_nvmf_subsystem_poll_group {
 struct spdk_nvmf_poll_group {
 	uint64_t					reqs;
 	uint64_t					latencies[12];
+	uint64_t					bw_run;
 	uint64_t					polls;
 	uint64_t					reaps;
 	struct spdk_thread				*thread;
@@ -161,6 +162,8 @@ struct spdk_nvmf_request {
 	struct iovec			iov[SPDK_NVMF_MAX_SGL_ENTRIES];
 	uint32_t			iovcnt;
 	struct spdk_bdev_io_wait_entry	bdev_io_wait;
+	uint64_t			submit_tsc;
+	uint64_t			bdev_poll_tsc;
 
 	TAILQ_ENTRY(spdk_nvmf_request)	link;
 };

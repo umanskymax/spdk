@@ -1230,6 +1230,8 @@ spdk_nvmf_poll_group_write_stats_json(struct spdk_nvmf_poll_group *group,
 	spdk_json_write_named_string_fmt(w, "states", "| %f | %f | %f | %f | %f | %f | %f | %f | %f | %f | %f | %f |",
 					 l[0], l[1], l[2], l[3], l[4], l[5],
 					 l[6], l[7], l[8], l[9], l[10], l[11]);
+	spdk_json_write_named_string_fmt(w, "bw_run", "%f",
+					 (double)group->bw_run / group->reqs / tick_rate * 1000000);
 	spdk_json_write_named_uint64(w, "tick_rate", tick_rate);
 	spdk_json_write_object_end(w);
 
@@ -1240,6 +1242,7 @@ spdk_nvmf_poll_group_write_stats_json(struct spdk_nvmf_poll_group *group,
 		group->reqs = 0;
 		group->polls = 0;
 		group->reaps = 0;
+		group->bw_run = 0;
 		memset(group->latencies, 0, sizeof(group->latencies));
 	}
 }

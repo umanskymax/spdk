@@ -53,6 +53,7 @@
 #include "spdk/nvme_intel.h"
 #include "spdk/nvmf_spec.h"
 #include "spdk/uuid.h"
+#include "spdk/bdev_module.h"
 
 #include "spdk_internal/assert.h"
 #include "spdk_internal/log.h"
@@ -238,6 +239,7 @@ struct nvme_request {
 	 * to support per-request timeout feature.
 	 */
 	uint64_t			timeout_tsc;
+	uint64_t			poll_tsc;
 
 	/**
 	 * Data payload for this request's command.
@@ -922,6 +924,11 @@ nvme_complete_request(struct nvme_request *req, struct spdk_nvme_cpl *cpl)
 	}
 
 	if (req->cb_fn) {
+		if (req->cb_arg) {
+			struct nvme_bdev_io *bio = req->cb_arg;
+			struct spdk_bdev_io *bdev_io = spdk_bdev_io_from_ctx(bio);
+			bdev_io->poll_tsc = req->poll_tsc;
+		}
 		req->cb_fn(req->cb_arg, cpl);
 	}
 }

@@ -45,6 +45,7 @@
 #include "spdk/scsi_spec.h"
 #include "spdk/string.h"
 #include "spdk/util.h"
+#include "spdk/bdev_module.h"
 
 #include "spdk_internal/log.h"
 
@@ -97,6 +98,7 @@ nvmf_bdev_ctrlr_complete_cmd(struct spdk_bdev_io *bdev_io, bool success,
 	spdk_bdev_io_get_nvme_status(bdev_io, &sct, &sc);
 	response->status.sc = sc;
 	response->status.sct = sct;
+	req->bdev_poll_tsc = bdev_io->poll_tsc;
 
 	spdk_nvmf_request_complete(req);
 	spdk_bdev_free_io(bdev_io);
