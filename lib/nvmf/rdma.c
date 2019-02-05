@@ -255,6 +255,9 @@ struct spdk_nvmf_rdma_qpair {
 
 	struct rdma_cm_id			*cm_id;
 	struct rdma_cm_id			*listen_id;
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	struct ibv_qp				*qp;
+#endif
 
 	/* The maximum number of I/O outstanding on this connection at one time */
 	uint16_t				max_queue_depth;
@@ -473,6 +476,16 @@ static const char *str_ibv_qp_state[] = {
 	"IBV_QPS_ERR"
 };
 
+static inline struct ibv_qp *
+spdk_nvmf_rdma_get_qp(struct spdk_nvmf_rdma_qpair *rqpair)
+{
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	return rqpair->qp;
+#else
+	return rqpair->cm_id->qp;
+#endif
+}
+
 static enum ibv_qp_state
 spdk_nvmf_rdma_update_ibv_state(struct spdk_nvmf_rdma_qpair *rqpair) {
 	enum ibv_qp_state old_state, new_state;
@@ -497,7 +510,7 @@ spdk_nvmf_rdma_update_ibv_state(struct spdk_nvmf_rdma_qpair *rqpair) {
 	IBV_QP_MAX_QP_RD_ATOMIC;
 
 	old_state = rqpair->ibv_attr.qp_state;
-	rc = ibv_query_qp(rqpair->cm_id->qp, &rqpair->ibv_attr,
+	rc = ibv_query_qp(spdk_nvmf_rdma_get_qp(rqpair), &rqpair->ibv_attr,
 			  spdk_nvmf_ibv_attr_mask, &rqpair->ibv_init_attr);
 
 	if (rc)
@@ -544,7 +557,7 @@ spdk_nvmf_rdma_set_ibv_state(struct spdk_nvmf_rdma_qpair *rqpair,
 		[IBV_QPS_SQE] = IBV_QP_STATE,
 		[IBV_QPS_ERR] = IBV_QP_STATE,
 	};
-
+	int attr_mask;
 	switch (new_state) {
 	case IBV_QPS_RESET:
 	case IBV_QPS_INIT:
@@ -562,9 +575,17 @@ spdk_nvmf_rdma_set_ibv_state(struct spdk_nvmf_rdma_qpair *rqpair,
 	rqpair->ibv_attr.cur_qp_state = rqpair->ibv_attr.qp_state;
 	rqpair->ibv_attr.qp_state = new_state;
 	rqpair->ibv_attr.ah_attr.port_num = rqpair->ibv_attr.port_num;
+	attr_mask = attr_mask_rc[new_state];
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	rc = rdma_init_qp_attr(rqpair->cm_id, &rqpair->ibv_attr, &attr_mask);
+	if (rc) {
+		SPDK_ERRLOG("QP#%d: failed to set attrs, err %d\n",
+			   rqpair->qpair.qid, rc);
+	}
+#endif
+	rc = ibv_modify_qp(spdk_nvmf_rdma_get_qp(rqpair), &rqpair->ibv_attr,
+			   attr_mask);
 
-	rc = ibv_modify_qp(rqpair->cm_id->qp, &rqpair->ibv_attr,
-			   attr_mask_rc[new_state]);
 
 	if (rc) {
 		SPDK_ERRLOG("QP#%d: failed to set state to: %s, %d (%s)\n",
@@ -728,8 +749,15 @@ spdk_nvmf_rdma_qpair_destroy(struct spdk_nvmf_rdma_qpair *rqpair)
 	}
 #endif
 
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	if (rqpair->qp) {
+		ibv_destroy_qp(rqpair->qp);
+	}
+#endif
 	if (rqpair->cm_id) {
+#ifndef SPDK_CONFIG_NVMF_OFFLOAD
 		rdma_destroy_qp(rqpair->cm_id);
+#endif
 		rdma_destroy_id(rqpair->cm_id);
 	}
 
@@ -778,7 +806,12 @@ spdk_nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 	rqpair->ibv_init_attr.cap.max_send_sge	= rqpair->max_sge;
 	rqpair->ibv_init_attr.cap.max_recv_sge	= NVMF_DEFAULT_RX_SGE;
 
+#ifndef SPDK_CONFIG_NVMF_OFFLOAD
 	rc = rdma_create_qp(rqpair->cm_id, rqpair->port->device->pd, &rqpair->ibv_init_attr);
+#else
+	rqpair->qp = ibv_create_qp(rqpair->port->device->pd, &rqpair->ibv_init_attr);
+	rc = rqpair->qp ? 0 : -1;
+#endif
 	if (rc) {
 		SPDK_ERRLOG("rdma_create_qp failed: errno %d: %s\n", errno, spdk_strerror(errno));
 		rdma_destroy_id(rqpair->cm_id);
@@ -880,7 +913,8 @@ spdk_nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 		rdma_recv->wr.wr_id = (uintptr_t)rdma_recv;
 		rdma_recv->wr.sg_list = rdma_recv->sgl;
 
-		rc = ibv_post_recv(rqpair->cm_id->qp, &rdma_recv->wr, &bad_wr);
+		rc = ibv_post_recv(spdk_nvmf_rdma_get_qp(rqpair),
+				   &rdma_recv->wr, &bad_wr);
 		if (rc) {
 			SPDK_ERRLOG("Unable to post capsule for RDMA RECV\n");
 			spdk_nvmf_rdma_qpair_destroy(rqpair);
@@ -944,7 +978,8 @@ request_transfer_in(struct spdk_nvmf_request *req)
 
 	rdma_req->data.wr.opcode = IBV_WR_RDMA_READ;
 	rdma_req->data.wr.next = NULL;
-	rc = ibv_post_send(rqpair->cm_id->qp, &rdma_req->data.wr, &bad_wr);
+	rc = ibv_post_send(spdk_nvmf_rdma_get_qp(rqpair), &rdma_req->data.wr,
+			   &bad_wr);
 	if (rc) {
 		SPDK_ERRLOG("Unable to transfer data from host to target\n");
 		return -1;
@@ -982,7 +1017,8 @@ request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 	SPDK_DEBUGLOG(SPDK_LOG_RDMA, "RDMA RECV POSTED. Recv: %p Connection: %p\n", rdma_req->recv,
 		      rqpair);
 #ifndef SPDK_CONFIG_RDMA_SRQ
-	rc = ibv_post_recv(rqpair->cm_id->qp, &rdma_req->recv->wr, &bad_recv_wr);
+	rc = ibv_post_recv(spdk_nvmf_rdma_get_qp(rqpair), &rdma_req->recv->wr,
+			   &bad_recv_wr);
 #else
 	rc = ibv_post_srq_recv(rqpair->poller->srq, &rdma_req->recv->wr, &bad_recv_wr);
 #endif
@@ -1012,7 +1048,8 @@ request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 	SPDK_DEBUGLOG(SPDK_LOG_RDMA, "RDMA SEND POSTED. Request: %p Connection: %p\n", req, qpair);
 
 	/* Send the completion */
-	rc = ibv_post_send(rqpair->cm_id->qp, send_wr, &bad_send_wr);
+	rc = ibv_post_send(spdk_nvmf_rdma_get_qp(rqpair), send_wr,
+			   &bad_send_wr);
 	if (rc) {
 		SPDK_ERRLOG("Unable to send response capsule\n");
 	}
@@ -1020,6 +1057,55 @@ request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 	return rc;
 }
 
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+static int
+spdk_nvmf_rdma_modify_qp(struct spdk_nvmf_rdma_qpair *rqpair, struct rdma_cm_id *id)
+{
+	struct ibv_qp_attr qp_attr;
+	int qp_attr_mask, ret;
+
+	qp_attr.qp_state = IBV_QPS_INIT;
+	ret = rdma_init_qp_attr(id, &qp_attr, &qp_attr_mask);
+	if (ret) {
+		SPDK_ERRLOG("Error %d on rdma_init_qp_attr\n", ret);
+		return ret;
+	}
+
+	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
+	if (ret) {
+		SPDK_ERRLOG("Error %d on ibv_modify_qp\n", ret);
+		return ret;
+	}
+
+	qp_attr.qp_state = IBV_QPS_RTR;
+	ret = rdma_init_qp_attr(id, &qp_attr, &qp_attr_mask);
+	if (ret) {
+		SPDK_ERRLOG("Error %d on rdma_init_qp_attr\n", ret);
+		return ret;
+	}
+
+	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
+	if (ret) {
+		SPDK_ERRLOG("Error %d on ibv_modify_qp\n", ret);
+		return ret;
+	}
+
+	qp_attr.qp_state = IBV_QPS_RTS;
+	ret = rdma_init_qp_attr(id, &qp_attr, &qp_attr_mask);
+	if (ret) {
+		SPDK_ERRLOG("Error %d on rdma_init_qp_attr\n", ret);
+		return ret;
+	}
+
+	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
+	if (ret) {
+		SPDK_ERRLOG("Error %d on ibv_modify_qp\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+#endif
 static int
 spdk_nvmf_rdma_event_accept(struct rdma_cm_id *id, struct spdk_nvmf_rdma_qpair *rqpair)
 {
@@ -1027,11 +1113,20 @@ spdk_nvmf_rdma_event_accept(struct rdma_cm_id *id, struct spdk_nvmf_rdma_qpair *
 	struct rdma_conn_param				ctrlr_event_data = {};
 	int						rc;
 
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	rc = spdk_nvmf_rdma_modify_qp(rqpair, id);
+	if (rc)
+		return rc;
+#endif
 	accept_data.recfmt = 0;
 	accept_data.crqsize = rqpair->max_queue_depth;
 
 	ctrlr_event_data.private_data = &accept_data;
 	ctrlr_event_data.private_data_len = sizeof(accept_data);
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	ctrlr_event_data.qp_num = rqpair->qp->qp_num;
+	ctrlr_event_data.srq = (rqpair->qp->srq) ? 1 : 0;
+#endif
 	if (id->ps == RDMA_PS_TCP) {
 		ctrlr_event_data.responder_resources = 0; /* We accept 0 reads from the host */
 		ctrlr_event_data.initiator_depth = rqpair->max_rw_depth;
@@ -3186,9 +3281,11 @@ static struct spdk_nvmf_rdma_qpair *
 get_rdma_qpair_from_wc(struct spdk_nvmf_rdma_poller *rpoller, struct ibv_wc *wc)
 {
 	struct spdk_nvmf_rdma_qpair *rqpair;
+	struct ibv_qp *qp;
 	/* @todo: improve QP search */
 	TAILQ_FOREACH(rqpair, &rpoller->qpairs, link) {
-		if (wc->qp_num == rqpair->cm_id->qp->qp_num) {
+		qp = spdk_nvmf_rdma_get_qp(rqpair);
+		if (wc->qp_num == qp->qp_num) {
 			return rqpair;
 		}
 	}
@@ -3726,7 +3823,8 @@ spdk_nvmf_rdma_qpair_enable_offload(struct spdk_nvmf_qpair *qpair,
 		return -1;
 	}
 
-	rc = mlx5dv_qp_set_nvmf(rqpair->cm_id->qp, MLNX5DV_QP_NVMF_ATTR_FLAG_ENABLE);
+	rc = mlx5dv_qp_set_nvmf(spdk_nvmf_rdma_get_qp(rqpair),
+			        MLNX5DV_QP_NVMF_ATTR_FLAG_ENABLE);
 	if (rc) {
 		SPDK_ERRLOG("Failed to enable offload for RDMA QP\n");
 		spdk_nvmf_rdma_release_offload_ctrlr(offload_ctrlr);
