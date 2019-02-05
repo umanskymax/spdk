@@ -2926,8 +2926,10 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 		srq_init_attr_ex.srq_type = IBV_SRQT_DRIVER;
 		srq_init_attr_ex.pd =
 			device->pd; /* @todo: ibv_create_srq_ex doesn't work without PD for some reason. Need to debug */
+		srq_init_attr_ex.cq = poller->cq;
 		srq_init_attr_ex.comp_mask = IBV_SRQ_INIT_ATTR_TYPE |
-					     IBV_SRQ_INIT_ATTR_PD;
+					     IBV_SRQ_INIT_ATTR_PD |
+					     IBV_SRQ_INIT_ATTR_CQ;
 		/* @todo: check where to take these values from */
 		/* @todo: what if some operations are not supported by HCA */
 		mlx5_attr.nvmf_attr.offload_ops = MLX5DV_NVMF_OPS_READ_WRITE_FLUSH;
