@@ -2281,7 +2281,8 @@ spdk_nvmf_rdma_listen(struct spdk_nvmf_transport *transport,
 	}
 
 	TAILQ_FOREACH(device, &rtransport->devices, link) {
-		if (device->context == port->id->verbs) {
+		if (ibv_get_device_name(device->context->device) ==
+		    ibv_get_device_name(port->id->verbs->device)) {
 			port->device = device;
 			break;
 		}
