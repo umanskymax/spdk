@@ -800,11 +800,11 @@ spdk_nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 #endif
 	rqpair->ibv_init_attr.cap.max_send_wr	= rqpair->max_queue_depth *
 			2; /* SEND, READ, and WRITE operations */
+	rqpair->ibv_init_attr.cap.max_send_sge	= rqpair->max_sge;
 #ifndef SPDK_CONFIG_RDMA_SRQ
 	rqpair->ibv_init_attr.cap.max_recv_wr	= rqpair->max_queue_depth; /* RECV operations */
-#endif
-	rqpair->ibv_init_attr.cap.max_send_sge	= rqpair->max_sge;
 	rqpair->ibv_init_attr.cap.max_recv_sge	= NVMF_DEFAULT_RX_SGE;
+#endif
 
 #ifndef SPDK_CONFIG_NVMF_OFFLOAD
 	rc = rdma_create_qp(rqpair->cm_id, rqpair->port->device->pd, &rqpair->ibv_init_attr);
