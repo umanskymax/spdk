@@ -3734,6 +3734,12 @@ spdk_nvmf_rdma_create_offload_ctrlr(struct spdk_nvmf_rdma_poller *rpoller,
 	/* 				  ctrlr_attrs->cqdb.len, */
 	/* 				  IBV_ACCESS_LOCAL_WRITE); */
 
+	/* Workaround */
+	ctrlr_attrs->sqdb.addr = pqpair->sq_tdbl;
+	ctrlr_attrs->sqdb.len = sizeof(*pqpair->sq_tdbl);
+	ctrlr_attrs->cqdb.addr = pqpair->cq_hdbl;
+	ctrlr_attrs->cqdb.len = sizeof(*pqpair->cq_hdbl);
+
 	if (!ctrlr_attrs->sq_buf.mr ||
 	    !ctrlr_attrs->cq_buf.mr/*  || */ /* @todo: Uncomment when fixed */
 	    /* !ctrlr_attrs->sqdb.mr || */
