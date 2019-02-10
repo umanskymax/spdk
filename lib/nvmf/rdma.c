@@ -898,7 +898,7 @@ spdk_nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 		rdma_req->rsp.wr.wr_id = (uintptr_t)&rdma_req->rsp.rdma_wr;
 		rdma_req->rsp.wr.next = NULL;
 		rdma_req->rsp.wr.opcode = IBV_WR_SEND;
-		rdma_req->rsp.wr.send_flags = IBV_SEND_SIGNALED;
+		rdma_req->rsp.wr.send_flags = IBV_SEND_SIGNALED | IBV_SEND_INLINE ;
 		rdma_req->rsp.wr.sg_list = rdma_req->rsp.sgl;
 		rdma_req->rsp.wr.num_sge = SPDK_COUNTOF(rdma_req->rsp.sgl);
 
