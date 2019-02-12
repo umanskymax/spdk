@@ -2897,9 +2897,11 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 #else
 		/* @todo: it should be checked somewhere that device supports offload */
 		/* @todo: staging buffer length shall be configurable or calculated somehow */
-#define DEFAULT_STAGING_BUFFER_LENGTH 4*1024*1024
+#define DEFAULT_STAGING_BUFFER_LENGTH 512*1024*1024
+/* Align staging buffer pages to 2M */
+#define STAGING_BUFFER_ALIGN (1ULL << 21)
 		poller->staging_buf = spdk_dma_zmalloc(DEFAULT_STAGING_BUFFER_LENGTH,
-						       0x1000,
+						       STAGING_BUFFER_ALIGN,
 						       NULL);
 		if (!poller->staging_buf) {
 			SPDK_ERRLOG("Failed to allocate staging buffer\n");
