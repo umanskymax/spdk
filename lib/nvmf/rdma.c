@@ -2958,11 +2958,11 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 			      srq_init_attr.attr.max_sge,
 			      srq_init_attr.attr.srq_limit);
 #else
-		SPDK_DEBUGLOG(SPDK_LOG_RDMA, "Created RDMA offload SRQ %p: max_wr %u, max_sge %u, srq_limit %u\n",
+		SPDK_NOTICELOG("Created RDMA offload SRQ %p: max_wr %u, max_sge %u, nvme_qdepth %u\n",
 			      poller->srq,
 			      srq_init_attr_ex.attr.max_wr,
 			      srq_init_attr_ex.attr.max_sge,
-			      srq_init_attr_ex.attr.srq_limit);
+			      mlx5_attr.nvmf_attr.nvme_queue_depth);
 #endif
 		poller->reqs = calloc(poller->max_srq_depth, sizeof(*poller->reqs));
 		poller->recvs = calloc(poller->max_srq_depth, sizeof(*poller->recvs));
@@ -3661,6 +3661,7 @@ spdk_nvmf_rdma_create_offload_ctrlr(struct spdk_nvmf_rdma_poller *rpoller,
 	struct spdk_nvmf_ns			*ns;
 	struct nvme_bdev			*nvme_bdev;
 	struct nvme_pcie_qpair			*pqpair;
+	struct spdk_nvme_io_qpair_opts		pqpair_opts = {};
 	int					rc;
 
 	/* @todo: what if subsystem contains multiple namespaces? */
@@ -3671,8 +3672,8 @@ spdk_nvmf_rdma_create_offload_ctrlr(struct spdk_nvmf_rdma_poller *rpoller,
 	}
 	/* @todo: Is there a better way to check BDEV type? */
 	if (0 != strcmp(ns->bdev->module->name, "nvme")) {
-		SPDK_ERRLOG("Offload is only supported for NVMe devices %d\n",
-			    nvme_bdev->nvme_ctrlr->trid.trtype);
+		SPDK_ERRLOG("Offload is only supported for NVMe devices %s\n",
+			    ns->bdev->module->name);
 		return NULL;
 	}
 	nvme_bdev = SPDK_CONTAINEROF(ns->bdev, struct nvme_bdev, disk);
@@ -3694,16 +3695,20 @@ spdk_nvmf_rdma_create_offload_ctrlr(struct spdk_nvmf_rdma_poller *rpoller,
 	/* @todo: this should be safe since we work from the poll group thread but need to check */
 	TAILQ_INSERT_TAIL(&rpoller->offload_ctrlrs, offload_ctrlr, link);
 
+	pqpair_opts.io_queue_size = rpoller->group->group.transport->opts.max_queue_depth;
+	pqpair_opts.io_queue_requests = pqpair_opts.io_queue_size * 2;
 	/* @todo: This NVMe function allocates lots of extra stuff which is not needed for offload. */
 	offload_ctrlr->nvme_io_qpair = spdk_nvme_ctrlr_alloc_io_qpair(nvme_bdev->nvme_ctrlr->ctrlr,
-				       NULL,
-				       0);
+								      &pqpair_opts,
+								      sizeof(pqpair_opts));
 	if (!offload_ctrlr->nvme_io_qpair) {
 		SPDK_ERRLOG("Failed to create PCIe NVMe IO queue pair\n");
 		spdk_nvmf_rdma_destroy_offload_ctrlr(offload_ctrlr);
 		return NULL;
 	}
 	pqpair = SPDK_CONTAINEROF(offload_ctrlr->nvme_io_qpair, struct nvme_pcie_qpair, qpair);
+
+	SPDK_NOTICELOG("Created NVMe IO qpair: num entries %u\n", pqpair->num_entries);
 
 	ctrlr_attrs = &offload_ctrlr->attrs;
 	/* @todo: there are also bus addresses for CMB. Check if we should use it. */
