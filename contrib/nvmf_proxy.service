@@ -1,0 +1,23 @@
+[Unit]
+Description=SPDK NVMf target as a proxy
+Wants=network-online.target openibd.service
+After=network.target network-online.target openibd.service
+
+[Service]
+EnvironmentFile=/etc/default/nvmf_proxy
+ExecStartPre=/usr/sbin/setup_hugepages.sh
+# ExecStartPre=/usr/sbin/arp_fixup.sh
+ExecStart=/usr/sbin/nvmf_tgt -m $CPU_MASK -c $NVMF_TGT_CONF $EXTRA_ARGS
+ExecStartPost=/usr/bin/sleep 1
+ExecStartPost=/usr/bin/spdk_rpc.py start_subsystem_init
+# Restart=on-failure
+User=root
+#RuntimeDirectory=/tmp
+#RuntimeDirectoryMode=0700
+# KillSignal=Term
+SendSIGKILL=no
+SendSIGHUP=no
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
