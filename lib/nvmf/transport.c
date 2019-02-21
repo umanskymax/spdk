@@ -42,28 +42,40 @@
 #include "spdk/queue.h"
 #include "spdk/util.h"
 
-static const struct spdk_nvmf_transport_ops *const g_transport_ops[] = {
-#ifdef SPDK_CONFIG_RDMA
-	&spdk_nvmf_transport_rdma,
-#endif
-	&spdk_nvmf_transport_tcp,
-};
+static TAILQ_HEAD(, spdk_nvmf_transport_ops) g_transport_ops =
+	TAILQ_HEAD_INITIALIZER(g_transport_ops);
 
-#define NUM_TRANSPORTS (SPDK_COUNTOF(g_transport_ops))
 #define MAX_MEMPOOL_NAME_LENGTH 40
+
+void
+spdk_nvmf_transport_register(struct spdk_nvmf_transport_ops *new_ops)
+{
+	struct spdk_nvmf_transport_ops *ops;
+
+	TAILQ_FOREACH(ops, &g_transport_ops, link) {
+		if (ops->type == new_ops->type) {
+			SPDK_ERRLOG("Duplicated transport type %d\n", new_ops->type);
+			return;
+		}
+	}
+	TAILQ_INSERT_TAIL(&g_transport_ops, new_ops, link);
+	SPDK_NOTICELOG("Registered transport type %s (%d)\n",
+		       new_ops->get_trtype_str(),
+		       new_ops->type);
+}
 
 int
 spdk_nvmf_transport_id_parse_trtype(spdk_nvmf_transport_type *trtype, const char *str)
 {
-	size_t i;
+	struct spdk_nvmf_transport_ops *ops;
 
 	if (trtype == NULL || str == NULL) {
 		return -EINVAL;
 	}
 
-	for (i = 0; i != NUM_TRANSPORTS; i++) {
-		if (strcasecmp(str, g_transport_ops[i]->get_trtype_str()) == 0) {
-			*trtype = g_transport_ops[i]->type;
+	TAILQ_FOREACH(ops, &g_transport_ops, link) {
+		if (strcasecmp(str, ops->get_trtype_str()) == 0) {
+			*trtype = ops->type;
 			return 0;
 		}
 	}
@@ -73,10 +85,10 @@ spdk_nvmf_transport_id_parse_trtype(spdk_nvmf_transport_type *trtype, const char
 const char *
 spdk_nvmf_transport_id_trtype_str(int trtype)
 {
-	size_t i;
-	for (i = 0; i != NUM_TRANSPORTS; i++) {
-		if (g_transport_ops[i]->type == trtype) {
-			return g_transport_ops[i]->get_trtype_str();
+	struct spdk_nvmf_transport_ops *ops;
+	TAILQ_FOREACH(ops, &g_transport_ops, link) {
+		if (ops->type == trtype) {
+			return ops->get_trtype_str();
 		}
 	}
 	return NULL;
@@ -120,10 +132,11 @@ spdk_nvmf_transport_id_compare(const struct spdk_nvmf_transport_id *trid1,
 static inline const struct spdk_nvmf_transport_ops *
 spdk_nvmf_get_transport_ops(spdk_nvmf_transport_type type)
 {
-	size_t i;
-	for (i = 0; i != NUM_TRANSPORTS; i++) {
-		if (g_transport_ops[i]->type == type) {
-			return g_transport_ops[i];
+	struct spdk_nvmf_transport_ops *ops;
+
+	TAILQ_FOREACH(ops, &g_transport_ops, link) {
+		if (ops->type == type) {
+			return ops;
 		}
 	}
 	return NULL;

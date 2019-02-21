@@ -76,6 +76,9 @@ DEFINE_STUB(spdk_nvmf_transport_id_compare, int, (const struct spdk_nvmf_transpo
 		const struct spdk_nvmf_transport_id *trid2), 0);
 DEFINE_STUB_V(spdk_nvmf_ctrlr_abort_aer, (struct spdk_nvmf_ctrlr *ctrlr));
 
+DEFINE_STUB_V(spdk_nvmf_transport_register,
+	      (struct spdk_nvmf_transport_ops *ops));
+
 uint64_t
 spdk_mem_map_translate(const struct spdk_mem_map *map, uint64_t vaddr, uint64_t *size)
 {

@@ -51,8 +51,9 @@
 
 #include "spdk_internal/log.h"
 
-extern struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma;
-struct spdk_nvme_rdma_hooks g_nvmf_hooks = {};
+#define SPDK_NVMF_TRANSPORT_RDMA_SRQ 0x1000
+extern struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma_srq;
+static struct spdk_nvme_rdma_hooks g_nvmf_hooks = {};
 
 /*
  RDMA Connection Resource Defaults
@@ -115,29 +116,29 @@ enum spdk_nvmf_rdma_request_state {
 	RDMA_REQUEST_NUM_STATES,
 };
 
-#define OBJECT_NVMF_RDMA_IO				0x40
+#define OBJECT_NVMF_RDMA_IO				0x60
 
-#define TRACE_GROUP_NVMF_RDMA				0x4
-#define TRACE_RDMA_REQUEST_STATE_NEW					SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x0)
-#define TRACE_RDMA_REQUEST_STATE_NEED_BUFFER				SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x1)
-#define TRACE_RDMA_REQUEST_STATE_DATA_TRANSFER_TO_CONTROLLER_PENDING	SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x2)
-#define TRACE_RDMA_REQUEST_STATE_TRANSFERRING_HOST_TO_CONTROLLER	SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x3)
-#define TRACE_RDMA_REQUEST_STATE_READY_TO_EXECUTE			SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x4)
-#define TRACE_RDMA_REQUEST_STATE_EXECUTING				SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x5)
-#define TRACE_RDMA_REQUEST_STATE_EXECUTED				SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x6)
-#define TRACE_RDMA_REQUEST_STATE_DATA_TRANSFER_TO_HOST_PENDING		SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x7)
-#define TRACE_RDMA_REQUEST_STATE_READY_TO_COMPLETE			SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x8)
-#define TRACE_RDMA_REQUEST_STATE_TRANSFERRING_CONTROLLER_TO_HOST	SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x9)
-#define TRACE_RDMA_REQUEST_STATE_COMPLETING				SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0xA)
-#define TRACE_RDMA_REQUEST_STATE_COMPLETED				SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0xB)
-#define TRACE_RDMA_QP_CREATE						SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0xC)
-#define TRACE_RDMA_IBV_ASYNC_EVENT					SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0xD)
-#define TRACE_RDMA_CM_ASYNC_EVENT					SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0xE)
-#define TRACE_RDMA_QP_STATE_CHANGE					SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0xF)
-#define TRACE_RDMA_QP_DISCONNECT					SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x10)
-#define TRACE_RDMA_QP_DESTROY						SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA, 0x11)
+#define TRACE_GROUP_NVMF_RDMA_SRQ				0x6
+#define TRACE_RDMA_REQUEST_STATE_NEW					SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x0)
+#define TRACE_RDMA_REQUEST_STATE_NEED_BUFFER				SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x1)
+#define TRACE_RDMA_REQUEST_STATE_DATA_TRANSFER_TO_CONTROLLER_PENDING	SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x2)
+#define TRACE_RDMA_REQUEST_STATE_TRANSFERRING_HOST_TO_CONTROLLER	SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x3)
+#define TRACE_RDMA_REQUEST_STATE_READY_TO_EXECUTE			SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x4)
+#define TRACE_RDMA_REQUEST_STATE_EXECUTING				SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x5)
+#define TRACE_RDMA_REQUEST_STATE_EXECUTED				SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x6)
+#define TRACE_RDMA_REQUEST_STATE_DATA_TRANSFER_TO_HOST_PENDING		SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x7)
+#define TRACE_RDMA_REQUEST_STATE_READY_TO_COMPLETE			SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x8)
+#define TRACE_RDMA_REQUEST_STATE_TRANSFERRING_CONTROLLER_TO_HOST	SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x9)
+#define TRACE_RDMA_REQUEST_STATE_COMPLETING				SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0xA)
+#define TRACE_RDMA_REQUEST_STATE_COMPLETED				SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0xB)
+#define TRACE_RDMA_QP_CREATE						SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0xC)
+#define TRACE_RDMA_IBV_ASYNC_EVENT					SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0xD)
+#define TRACE_RDMA_CM_ASYNC_EVENT					SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0xE)
+#define TRACE_RDMA_QP_STATE_CHANGE					SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0xF)
+#define TRACE_RDMA_QP_DISCONNECT					SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x10)
+#define TRACE_RDMA_QP_DESTROY						SPDK_TPOINT_ID(TRACE_GROUP_NVMF_RDMA_SRQ, 0x11)
 
-SPDK_TRACE_REGISTER_FN(nvmf_trace, "nvmf_rdma", TRACE_GROUP_NVMF_RDMA)
+SPDK_TRACE_REGISTER_FN(nvmf_trace_srq, "nvmf_rdma_srq", TRACE_GROUP_NVMF_RDMA_SRQ)
 {
 	spdk_trace_register_object(OBJECT_NVMF_RDMA_IO, 'r');
 	spdk_trace_register_description("RDMA_REQ_NEW", "",
@@ -1368,7 +1369,7 @@ spdk_nvmf_rdma_request_parse_sgl(struct spdk_nvmf_rdma_transport *rtransport,
 		uint64_t offset = sgl->address;
 		uint32_t max_len = rtransport->transport.opts.in_capsule_data_size;
 
-		SPDK_DEBUGLOG(SPDK_LOG_NVMF, "In-capsule data: offset 0x%" PRIx64 ", length 0x%x\n",
+		SPDK_DEBUGLOG(SPDK_LOG_RDMA, "In-capsule data: offset 0x%" PRIx64 ", length 0x%x\n",
 			      offset, sgl->unkeyed.length);
 
 		if (offset > max_len) {
@@ -1699,7 +1700,7 @@ spdk_nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 	TAILQ_INIT(&rtransport->devices);
 	TAILQ_INIT(&rtransport->ports);
 
-	rtransport->transport.ops = &spdk_nvmf_transport_rdma;
+	rtransport->transport.ops = &spdk_nvmf_transport_rdma_srq;
 
 	SPDK_INFOLOG(SPDK_LOG_RDMA, "*** RDMA Transport Init ***\n"
 		     "  Transport opts:  max_ioq_depth=%d, max_io_size=%d,\n"
@@ -1759,7 +1760,7 @@ spdk_nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 		return NULL;
 	}
 
-	rtransport->data_wr_pool = spdk_mempool_create("spdk_nvmf_rdma_wr_data",
+	rtransport->data_wr_pool = spdk_mempool_create("spdk_nvmf_srq_wr_data",
 				   opts->max_queue_depth * SPDK_NVMF_MAX_SGL_ENTRIES,
 				   sizeof(struct spdk_nvmf_rdma_request_data),
 				   SPDK_MEMPOOL_DEFAULT_CACHE_SIZE,
@@ -1928,7 +1929,7 @@ spdk_nvmf_rdma_trid_from_cm_id(struct rdma_cm_id *id,
 			       struct spdk_nvmf_transport_id *trid,
 			       bool peer);
 
-const struct spdk_mem_map_ops g_nvmf_rdma_map_ops = {
+static const struct spdk_mem_map_ops g_nvmf_rdma_map_ops = {
 	.notify_cb = spdk_nvmf_rdma_mem_notify,
 	.are_contiguous = spdk_nvmf_rdma_check_contiguous_entries
 };
@@ -1956,7 +1957,7 @@ spdk_nvmf_rdma_listen(struct spdk_nvmf_transport *transport,
 	/* Selectively copy the trid. Things like NQN don't matter here - that
 	 * mapping is enforced elsewhere.
 	 */
-	port->trid.trtype = SPDK_NVME_TRANSPORT_RDMA;
+	port->trid.trtype = SPDK_NVMF_TRANSPORT_RDMA_SRQ;
 	port->trid.adrfam = trid->adrfam;
 	snprintf(port->trid.traddr, sizeof(port->trid.traddr), "%s", trid->traddr);
 	snprintf(port->trid.trsvcid, sizeof(port->trid.trsvcid), "%s", trid->trsvcid);
@@ -2013,7 +2014,7 @@ spdk_nvmf_rdma_listen(struct spdk_nvmf_transport *transport,
 	freeaddrinfo(res);
 
 	if (rc < 0) {
-		SPDK_ERRLOG("rdma_bind_addr() failed\n");
+		SPDK_ERRLOG("rdma_bind_addr() failed: errno %d\n", errno);
 		rdma_destroy_id(port->id);
 		free(port);
 		pthread_mutex_unlock(&rtransport->lock);
@@ -2132,7 +2133,7 @@ spdk_nvmf_rdma_stop_listen(struct spdk_nvmf_transport *transport,
 	/* Selectively copy the trid. Things like NQN don't matter here - that
 	 * mapping is enforced elsewhere.
 	 */
-	trid.trtype = SPDK_NVME_TRANSPORT_RDMA;
+	trid.trtype = SPDK_NVMF_TRANSPORT_RDMA_SRQ;
 	trid.adrfam = _trid->adrfam;
 	snprintf(trid.traddr, sizeof(port->trid.traddr), "%s", _trid->traddr);
 	snprintf(trid.trsvcid, sizeof(port->trid.trsvcid), "%s", _trid->trsvcid);
@@ -2970,7 +2971,7 @@ spdk_nvmf_rdma_trid_from_cm_id(struct rdma_cm_id *id,
 	struct sockaddr *saddr;
 	uint16_t port;
 
-	trid->trtype = SPDK_NVME_TRANSPORT_RDMA;
+	trid->trtype = SPDK_NVMF_TRANSPORT_RDMA_SRQ;
 
 	if (peer) {
 		saddr = rdma_get_peer_addr(id);
@@ -3049,17 +3050,17 @@ spdk_nvmf_rdma_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
 static const char *
 spdk_nvmf_rdma_get_trtype_str(void)
 {
-	return "RDMA";
+	return "RDMA_SRQ";
 }
 
 void
-spdk_nvmf_rdma_init_hooks(struct spdk_nvme_rdma_hooks *hooks)
+spdk_nvmf_rdma_srq_init_hooks(struct spdk_nvme_rdma_hooks *hooks)
 {
 	g_nvmf_hooks = *hooks;
 }
 
-struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma = {
-	.type = SPDK_NVME_TRANSPORT_RDMA,
+struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma_srq = {
+	.type = SPDK_NVMF_TRANSPORT_RDMA_SRQ,
 	.get_trtype_str = spdk_nvmf_rdma_get_trtype_str,
 	.opts_init = spdk_nvmf_rdma_opts_init,
 	.create = spdk_nvmf_rdma_create,
@@ -3087,5 +3088,5 @@ struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma = {
 
 };
 
-SPDK_TRANSPORT_REGISTER(RDMA, &spdk_nvmf_transport_rdma)
-SPDK_LOG_REGISTER_COMPONENT("rdma", SPDK_LOG_RDMA)
+SPDK_TRANSPORT_REGISTER(RDMA_SRQ, &spdk_nvmf_transport_rdma_srq)
+SPDK_LOG_REGISTER_COMPONENT("rdma_srq", SPDK_LOG_RDMA_SRQ)

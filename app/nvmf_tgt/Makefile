@@ -38,6 +38,7 @@ include $(SPDK_ROOT_DIR)/mk/spdk.modules.mk
 APP = nvmf_tgt
 
 C_SRCS := nvmf_main.c
+LDFLAGS += -export-dynamic
 
 SPDK_LIB_LIST = $(ALL_MODULES_LIST)
 SPDK_LIB_LIST += event_bdev event_copy event_nvmf event_net

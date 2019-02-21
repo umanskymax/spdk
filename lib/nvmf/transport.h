@@ -172,8 +172,18 @@ struct spdk_nvmf_transport_ops {
 	 * set the submission queue size of the queue pair
 	 */
 	int (*qpair_set_sqsize)(struct spdk_nvmf_qpair *qpair);
+
+	TAILQ_ENTRY(spdk_nvmf_transport_ops) link;
 };
 
+void spdk_nvmf_transport_register(struct spdk_nvmf_transport_ops *new_ops);
+
+#define SPDK_TRANSPORT_REGISTER(name, ops)				\
+	static void __attribute__((constructor))			\
+	spdk_nvmf_register_transport_##name(void)			\
+	{								\
+		spdk_nvmf_transport_register(ops);			\
+	}
 
 int spdk_nvmf_transport_stop_listen(struct spdk_nvmf_transport *transport,
 				    const struct spdk_nvmf_transport_id *trid);
@@ -217,8 +227,5 @@ int spdk_nvmf_transport_qpair_set_sqsize(struct spdk_nvmf_qpair *qpair);
 
 bool spdk_nvmf_transport_opts_init(spdk_nvmf_transport_type type,
 				   struct spdk_nvmf_transport_opts *opts);
-
-extern const struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma;
-extern const struct spdk_nvmf_transport_ops spdk_nvmf_transport_tcp;
 
 #endif /* SPDK_NVMF_TRANSPORT_H */

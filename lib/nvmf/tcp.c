@@ -58,6 +58,8 @@
 /* This is used to support the Linux kernel NVMe-oF initiator */
 #define LINUX_KERNEL_SUPPORT_NOT_SENDING_RESP_FOR_C2H 0
 
+extern struct spdk_nvmf_transport_ops spdk_nvmf_transport_tcp;
+
 /* spdk nvmf related structure */
 enum spdk_nvmf_tcp_req_state {
 
@@ -2853,7 +2855,7 @@ spdk_nvmf_tcp_get_trtype_str(void)
 	return "TCP";
 }
 
-const struct spdk_nvmf_transport_ops spdk_nvmf_transport_tcp = {
+struct spdk_nvmf_transport_ops spdk_nvmf_transport_tcp = {
 	.type = SPDK_NVME_TRANSPORT_TCP,
 	.get_trtype_str = spdk_nvmf_tcp_get_trtype_str,
 	.opts_init = spdk_nvmf_tcp_opts_init,
@@ -2883,4 +2885,5 @@ const struct spdk_nvmf_transport_ops spdk_nvmf_transport_tcp = {
 	.qpair_set_sqsize = spdk_nvmf_tcp_qpair_set_sq_size,
 };
 
+SPDK_TRANSPORT_REGISTER(TCP, &spdk_nvmf_transport_tcp)
 SPDK_LOG_REGISTER_COMPONENT("nvmf_tcp", SPDK_LOG_NVMF_TCP)
