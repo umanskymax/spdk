@@ -279,7 +279,7 @@ struct spdk_nvmf_tcp_poll_group {
 };
 
 struct spdk_nvmf_tcp_port {
-	struct spdk_nvme_transport_id		trid;
+	struct spdk_nvmf_transport_id		trid;
 	struct spdk_sock			*listen_sock;
 	uint32_t				ref;
 	TAILQ_ENTRY(spdk_nvmf_tcp_port)		link;
@@ -605,8 +605,8 @@ _spdk_nvmf_tcp_trsvcid_to_int(const char *trsvcid)
  * Canonicalize a listen address trid.
  */
 static int
-_spdk_nvmf_tcp_canon_listen_trid(struct spdk_nvme_transport_id *canon_trid,
-				 const struct spdk_nvme_transport_id *trid)
+_spdk_nvmf_tcp_canon_listen_trid(struct spdk_nvmf_transport_id *canon_trid,
+				 const struct spdk_nvmf_transport_id *trid)
 {
 	int trsvcid_int;
 
@@ -631,9 +631,9 @@ _spdk_nvmf_tcp_canon_listen_trid(struct spdk_nvme_transport_id *canon_trid,
  */
 static struct spdk_nvmf_tcp_port *
 _spdk_nvmf_tcp_find_port(struct spdk_nvmf_tcp_transport *ttransport,
-			 const struct spdk_nvme_transport_id *trid)
+			 const struct spdk_nvmf_transport_id *trid)
 {
-	struct spdk_nvme_transport_id canon_trid;
+	struct spdk_nvmf_transport_id canon_trid;
 	struct spdk_nvmf_tcp_port *port;
 
 	if (_spdk_nvmf_tcp_canon_listen_trid(&canon_trid, trid) != 0) {
@@ -641,7 +641,7 @@ _spdk_nvmf_tcp_find_port(struct spdk_nvmf_tcp_transport *ttransport,
 	}
 
 	TAILQ_FOREACH(port, &ttransport->ports, link) {
-		if (spdk_nvme_transport_id_compare(&canon_trid, &port->trid) == 0) {
+		if (spdk_nvmf_transport_id_compare(&canon_trid, &port->trid) == 0) {
 			return port;
 		}
 	}
@@ -651,7 +651,7 @@ _spdk_nvmf_tcp_find_port(struct spdk_nvmf_tcp_transport *ttransport,
 
 static int
 spdk_nvmf_tcp_listen(struct spdk_nvmf_transport *transport,
-		     const struct spdk_nvme_transport_id *trid)
+		     const struct spdk_nvmf_transport_id *trid)
 {
 	struct spdk_nvmf_tcp_transport *ttransport;
 	struct spdk_nvmf_tcp_port *port;
@@ -733,7 +733,7 @@ spdk_nvmf_tcp_listen(struct spdk_nvmf_transport *transport,
 
 static int
 spdk_nvmf_tcp_stop_listen(struct spdk_nvmf_transport *transport,
-			  const struct spdk_nvme_transport_id *trid)
+			  const struct spdk_nvmf_transport_id *trid)
 {
 	struct spdk_nvmf_tcp_transport *ttransport;
 	struct spdk_nvmf_tcp_port *port;
@@ -1168,7 +1168,7 @@ spdk_nvmf_tcp_accept(struct spdk_nvmf_transport *transport, new_qpair_fn cb_fn)
 
 static void
 spdk_nvmf_tcp_discover(struct spdk_nvmf_transport *transport,
-		       struct spdk_nvme_transport_id *trid,
+		       struct spdk_nvmf_transport_id *trid,
 		       struct spdk_nvmf_discovery_log_page_entry *entry)
 {
 	entry->trtype = SPDK_NVMF_TRTYPE_TCP;
@@ -2756,7 +2756,7 @@ spdk_nvmf_tcp_qpair_is_idle(struct spdk_nvmf_qpair *qpair)
 
 static int
 spdk_nvmf_tcp_qpair_get_trid(struct spdk_nvmf_qpair *qpair,
-			     struct spdk_nvme_transport_id *trid, bool peer)
+			     struct spdk_nvmf_transport_id *trid, bool peer)
 {
 	struct spdk_nvmf_tcp_qpair     *tqpair;
 	uint16_t			port;
@@ -2786,21 +2786,21 @@ spdk_nvmf_tcp_qpair_get_trid(struct spdk_nvmf_qpair *qpair,
 
 static int
 spdk_nvmf_tcp_qpair_get_local_trid(struct spdk_nvmf_qpair *qpair,
-				   struct spdk_nvme_transport_id *trid)
+				   struct spdk_nvmf_transport_id *trid)
 {
 	return spdk_nvmf_tcp_qpair_get_trid(qpair, trid, 0);
 }
 
 static int
 spdk_nvmf_tcp_qpair_get_peer_trid(struct spdk_nvmf_qpair *qpair,
-				  struct spdk_nvme_transport_id *trid)
+				  struct spdk_nvmf_transport_id *trid)
 {
 	return spdk_nvmf_tcp_qpair_get_trid(qpair, trid, 1);
 }
 
 static int
 spdk_nvmf_tcp_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
-				    struct spdk_nvme_transport_id *trid)
+				    struct spdk_nvmf_transport_id *trid)
 {
 	return spdk_nvmf_tcp_qpair_get_trid(qpair, trid, 0);
 }

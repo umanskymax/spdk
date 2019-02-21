@@ -72,8 +72,8 @@ DEFINE_STUB_V(_spdk_trace_record, (uint64_t tsc, uint16_t tpoint_id, uint16_t po
 				   uint32_t size, uint64_t object_id, uint64_t arg1));
 
 DEFINE_STUB_V(spdk_nvmf_request_exec, (struct spdk_nvmf_request *req));
-DEFINE_STUB(spdk_nvme_transport_id_compare, int, (const struct spdk_nvme_transport_id *trid1,
-		const struct spdk_nvme_transport_id *trid2), 0);
+DEFINE_STUB(spdk_nvmf_transport_id_compare, int, (const struct spdk_nvmf_transport_id *trid1,
+		const struct spdk_nvmf_transport_id *trid2), 0);
 DEFINE_STUB_V(spdk_nvmf_ctrlr_abort_aer, (struct spdk_nvmf_ctrlr *ctrlr));
 
 uint64_t

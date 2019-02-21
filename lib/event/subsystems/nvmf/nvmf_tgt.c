@@ -60,7 +60,7 @@ struct nvmf_tgt_poll_group {
 };
 
 struct nvmf_tgt_host_trid {
-	struct spdk_nvme_transport_id       host_trid;
+	struct spdk_nvmf_transport_id       host_trid;
 	uint32_t                            core;
 	uint32_t                            ref;
 	TAILQ_ENTRY(nvmf_tgt_host_trid)     link;
@@ -143,7 +143,7 @@ spdk_nvmf_get_core_rr(void)
 static void
 nvmf_tgt_remove_host_trid(struct spdk_nvmf_qpair *qpair)
 {
-	struct spdk_nvme_transport_id trid_to_remove;
+	struct spdk_nvmf_transport_id trid_to_remove;
 	struct nvmf_tgt_host_trid *trid = NULL, *tmp_trid = NULL;
 
 	if (g_spdk_nvmf_tgt_conf->conn_sched != CONNECT_SCHED_HOST_IP) {
@@ -173,7 +173,7 @@ nvmf_tgt_remove_host_trid(struct spdk_nvmf_qpair *qpair)
 static uint32_t
 nvmf_tgt_get_qpair_core(struct spdk_nvmf_qpair *qpair)
 {
-	struct spdk_nvme_transport_id trid;
+	struct spdk_nvmf_transport_id trid;
 	struct nvmf_tgt_host_trid *tmp_trid = NULL, *new_trid = NULL;
 	int ret;
 	uint32_t core = 0;

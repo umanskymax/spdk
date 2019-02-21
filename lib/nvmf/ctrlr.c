@@ -460,7 +460,7 @@ spdk_nvmf_ctrlr_connect(struct spdk_nvmf_request *req)
 	struct spdk_nvmf_ctrlr *ctrlr;
 	struct spdk_nvmf_subsystem *subsystem;
 	const char *subnqn, *hostnqn;
-	struct spdk_nvme_transport_id listen_trid = {};
+	struct spdk_nvmf_transport_id listen_trid = {};
 	void *end;
 
 	if (req->length < sizeof(struct spdk_nvmf_fabric_connect_data)) {

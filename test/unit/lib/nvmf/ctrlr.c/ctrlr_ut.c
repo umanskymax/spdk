@@ -102,12 +102,12 @@ DEFINE_STUB_V(spdk_nvmf_get_discovery_log_page,
 
 DEFINE_STUB(spdk_nvmf_qpair_get_listen_trid,
 	    int,
-	    (struct spdk_nvmf_qpair *qpair, struct spdk_nvme_transport_id *trid),
+	    (struct spdk_nvmf_qpair *qpair, struct spdk_nvmf_transport_id *trid),
 	    0);
 
 DEFINE_STUB(spdk_nvmf_subsystem_listener_allowed,
 	    bool,
-	    (struct spdk_nvmf_subsystem *subsystem, struct spdk_nvme_transport_id *trid),
+	    (struct spdk_nvmf_subsystem *subsystem, struct spdk_nvmf_transport_id *trid),
 	    true);
 
 DEFINE_STUB(spdk_nvmf_transport_qpair_set_sqsize,

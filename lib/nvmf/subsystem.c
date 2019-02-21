@@ -714,12 +714,12 @@ spdk_nvmf_host_get_nqn(struct spdk_nvmf_host *host)
 
 static struct spdk_nvmf_listener *
 _spdk_nvmf_subsystem_find_listener(struct spdk_nvmf_subsystem *subsystem,
-				   const struct spdk_nvme_transport_id *trid)
+				   const struct spdk_nvmf_transport_id *trid)
 {
 	struct spdk_nvmf_listener *listener;
 
 	TAILQ_FOREACH(listener, &subsystem->listeners, link) {
-		if (spdk_nvme_transport_id_compare(&listener->trid, trid) == 0) {
+		if (spdk_nvmf_transport_id_compare(&listener->trid, trid) == 0) {
 			return listener;
 		}
 	}
@@ -729,7 +729,7 @@ _spdk_nvmf_subsystem_find_listener(struct spdk_nvmf_subsystem *subsystem,
 
 int
 spdk_nvmf_subsystem_add_listener(struct spdk_nvmf_subsystem *subsystem,
-				 struct spdk_nvme_transport_id *trid)
+				 struct spdk_nvmf_transport_id *trid)
 {
 	struct spdk_nvmf_transport *transport;
 	struct spdk_nvmf_listener *listener;
@@ -765,7 +765,7 @@ spdk_nvmf_subsystem_add_listener(struct spdk_nvmf_subsystem *subsystem,
 
 int
 spdk_nvmf_subsystem_remove_listener(struct spdk_nvmf_subsystem *subsystem,
-				    const struct spdk_nvme_transport_id *trid)
+				    const struct spdk_nvmf_transport_id *trid)
 {
 	struct spdk_nvmf_listener *listener;
 
@@ -787,7 +787,7 @@ spdk_nvmf_subsystem_remove_listener(struct spdk_nvmf_subsystem *subsystem,
 
 bool
 spdk_nvmf_subsystem_listener_allowed(struct spdk_nvmf_subsystem *subsystem,
-				     struct spdk_nvme_transport_id *trid)
+				     struct spdk_nvmf_transport_id *trid)
 {
 	struct spdk_nvmf_listener *listener;
 
@@ -796,7 +796,7 @@ spdk_nvmf_subsystem_listener_allowed(struct spdk_nvmf_subsystem *subsystem,
 	}
 
 	TAILQ_FOREACH(listener, &subsystem->listeners, link) {
-		if (spdk_nvme_transport_id_compare(&listener->trid, trid) == 0) {
+		if (spdk_nvmf_transport_id_compare(&listener->trid, trid) == 0) {
 			return true;
 		}
 	}
@@ -817,7 +817,7 @@ spdk_nvmf_subsystem_get_next_listener(struct spdk_nvmf_subsystem *subsystem,
 	return TAILQ_NEXT(prev_listener, link);
 }
 
-const struct spdk_nvme_transport_id *
+const struct spdk_nvmf_transport_id *
 spdk_nvmf_listener_get_trid(struct spdk_nvmf_listener *listener)
 {
 	return &listener->trid;

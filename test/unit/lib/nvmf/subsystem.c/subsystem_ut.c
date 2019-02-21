@@ -78,14 +78,14 @@ spdk_event_call(struct spdk_event *event)
 
 int
 spdk_nvmf_transport_listen(struct spdk_nvmf_transport *transport,
-			   const struct spdk_nvme_transport_id *trid)
+			   const struct spdk_nvmf_transport_id *trid)
 {
 	return 0;
 }
 
 void
 spdk_nvmf_transport_listener_discover(struct spdk_nvmf_transport *transport,
-				      struct spdk_nvme_transport_id *trid,
+				      struct spdk_nvmf_transport_id *trid,
 				      struct spdk_nvmf_discovery_log_page_entry *entry)
 {
 	entry->trtype = 42;
@@ -163,8 +163,8 @@ spdk_nvmf_poll_group_resume_subsystem(struct spdk_nvmf_poll_group *group,
 }
 
 int
-spdk_nvme_transport_id_compare(const struct spdk_nvme_transport_id *trid1,
-			       const struct spdk_nvme_transport_id *trid2)
+spdk_nvmf_transport_id_compare(const struct spdk_nvmf_transport_id *trid1,
+			       const struct spdk_nvmf_transport_id *trid2)
 {
 	return 0;
 }

@@ -81,13 +81,13 @@ struct spdk_nvmf_transport_ops {
 	  * provided. This may be called multiple times.
 	  */
 	int (*listen)(struct spdk_nvmf_transport *transport,
-		      const struct spdk_nvme_transport_id *trid);
+		      const struct spdk_nvmf_transport_id *trid);
 
 	/**
 	  * Stop accepting new connections at the given address.
 	  */
 	int (*stop_listen)(struct spdk_nvmf_transport *transport,
-			   const struct spdk_nvme_transport_id *trid);
+			   const struct spdk_nvmf_transport_id *trid);
 
 	/**
 	 * Check for new connections on the transport.
@@ -98,7 +98,7 @@ struct spdk_nvmf_transport_ops {
 	 * Fill out a discovery log entry for a specific listen address.
 	 */
 	void (*listener_discover)(struct spdk_nvmf_transport *transport,
-				  struct spdk_nvme_transport_id *trid,
+				  struct spdk_nvmf_transport_id *trid,
 				  struct spdk_nvmf_discovery_log_page_entry *entry);
 
 	/**
@@ -154,19 +154,19 @@ struct spdk_nvmf_transport_ops {
 	 * Get the peer transport ID for the queue pair.
 	 */
 	int (*qpair_get_peer_trid)(struct spdk_nvmf_qpair *qpair,
-				   struct spdk_nvme_transport_id *trid);
+				   struct spdk_nvmf_transport_id *trid);
 
 	/*
 	 * Get the local transport ID for the queue pair.
 	 */
 	int (*qpair_get_local_trid)(struct spdk_nvmf_qpair *qpair,
-				    struct spdk_nvme_transport_id *trid);
+				    struct spdk_nvmf_transport_id *trid);
 
 	/*
 	 * Get the listener transport ID that accepted this qpair originally.
 	 */
 	int (*qpair_get_listen_trid)(struct spdk_nvmf_qpair *qpair,
-				     struct spdk_nvme_transport_id *trid);
+				     struct spdk_nvmf_transport_id *trid);
 
 	/*
 	 * set the submission queue size of the queue pair
@@ -176,12 +176,12 @@ struct spdk_nvmf_transport_ops {
 
 
 int spdk_nvmf_transport_stop_listen(struct spdk_nvmf_transport *transport,
-				    const struct spdk_nvme_transport_id *trid);
+				    const struct spdk_nvmf_transport_id *trid);
 
 void spdk_nvmf_transport_accept(struct spdk_nvmf_transport *transport, new_qpair_fn cb_fn);
 
 void spdk_nvmf_transport_listener_discover(struct spdk_nvmf_transport *transport,
-		struct spdk_nvme_transport_id *trid,
+		struct spdk_nvmf_transport_id *trid,
 		struct spdk_nvmf_discovery_log_page_entry *entry);
 
 struct spdk_nvmf_transport_poll_group *spdk_nvmf_transport_poll_group_create(
@@ -206,13 +206,13 @@ void spdk_nvmf_transport_qpair_fini(struct spdk_nvmf_qpair *qpair);
 bool spdk_nvmf_transport_qpair_is_idle(struct spdk_nvmf_qpair *qpair);
 
 int spdk_nvmf_transport_qpair_get_peer_trid(struct spdk_nvmf_qpair *qpair,
-		struct spdk_nvme_transport_id *trid);
+		struct spdk_nvmf_transport_id *trid);
 
 int spdk_nvmf_transport_qpair_get_local_trid(struct spdk_nvmf_qpair *qpair,
-		struct spdk_nvme_transport_id *trid);
+		struct spdk_nvmf_transport_id *trid);
 
 int spdk_nvmf_transport_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
-		struct spdk_nvme_transport_id *trid);
+		struct spdk_nvmf_transport_id *trid);
 int spdk_nvmf_transport_qpair_set_sqsize(struct spdk_nvmf_qpair *qpair);
 
 bool spdk_nvmf_transport_opts_init(spdk_nvmf_transport_type type,

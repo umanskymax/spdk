@@ -58,7 +58,7 @@ SPDK_LOG_REGISTER_COMPONENT("nvme", SPDK_LOG_NVME)
 
 DEFINE_STUB(spdk_nvmf_qpair_get_listen_trid,
 	    int,
-	    (struct spdk_nvmf_qpair *qpair, struct spdk_nvme_transport_id *trid),
+	    (struct spdk_nvmf_qpair *qpair, struct spdk_nvmf_transport_id *trid),
 	    0);
 
 DEFINE_STUB(spdk_nvmf_subsystem_add_ctrlr,
@@ -78,7 +78,7 @@ DEFINE_STUB(spdk_nvmf_tgt_find_subsystem,
 
 DEFINE_STUB(spdk_nvmf_subsystem_listener_allowed,
 	    bool,
-	    (struct spdk_nvmf_subsystem *subsystem, struct spdk_nvme_transport_id *trid),
+	    (struct spdk_nvmf_subsystem *subsystem, struct spdk_nvmf_transport_id *trid),
 	    true);
 
 DEFINE_STUB(spdk_nvmf_transport_qpair_set_sqsize,
@@ -166,8 +166,8 @@ struct spdk_bdev {
 };
 
 int
-spdk_nvme_transport_id_compare(const struct spdk_nvme_transport_id *trid1,
-			       const struct spdk_nvme_transport_id *trid2)
+spdk_nvmf_transport_id_compare(const struct spdk_nvmf_transport_id *trid1,
+			       const struct spdk_nvmf_transport_id *trid2)
 {
 	return 0;
 }

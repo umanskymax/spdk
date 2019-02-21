@@ -201,7 +201,7 @@ dump_nvmf_subsystem(struct spdk_json_write_ctx *w, struct spdk_nvmf_subsystem *s
 
 	for (listener = spdk_nvmf_subsystem_get_first_listener(subsystem); listener != NULL;
 	     listener = spdk_nvmf_subsystem_get_next_listener(subsystem, listener)) {
-		const struct spdk_nvme_transport_id *trid;
+		const struct spdk_nvmf_transport_id *trid;
 		const char *trtype;
 		const char *adrfam;
 
@@ -527,7 +527,7 @@ struct nvmf_rpc_listener_ctx {
 	struct rpc_listen_address	address;
 
 	struct spdk_jsonrpc_request	*request;
-	struct spdk_nvme_transport_id	trid;
+	struct spdk_nvmf_transport_id	trid;
 	enum nvmf_rpc_listen_op		op;
 	bool				response_sent;
 };
@@ -630,13 +630,13 @@ nvmf_rpc_listen_paused(struct spdk_nvmf_subsystem *subsystem,
 
 static int
 rpc_listen_address_to_trid(const struct rpc_listen_address *address,
-			   struct spdk_nvme_transport_id *trid)
+			   struct spdk_nvmf_transport_id *trid)
 {
 	size_t len;
 
 	memset(trid, 0, sizeof(*trid));
 
-	if (spdk_nvme_transport_id_parse_trtype(&trid->trtype, address->transport)) {
+	if (spdk_nvmf_transport_id_parse_trtype(&trid->trtype, address->transport)) {
 		SPDK_ERRLOG("Invalid transport type: %s\n", address->transport);
 		return -EINVAL;
 	}

@@ -77,6 +77,41 @@ struct spdk_nvmf_transport_opts {
 typedef int spdk_nvmf_transport_type;
 
 /**
+ * NVMf listener identifier.
+ *
+ * This identifies a unique endpoint on an NVMf fabric.
+ *
+ * A string representation of a transport ID may be converted to this type using
+ * spdk_nvmf_transport_id_parse().
+ */
+struct spdk_nvmf_transport_id {
+	/**
+	 * NVMf transport type.
+	 */
+	spdk_nvmf_transport_type trtype;
+
+	/**
+	 * Address family of the transport address.
+	 */
+	enum spdk_nvmf_adrfam adrfam;
+
+	/**
+	 * Transport address of the NVMe-oF endpoint. For transports which use IP
+	 * addressing (e.g. RDMA), this should be an IP address. For FC the string is
+	 * formatted as: nn-0xWWNN:pn-0xWWPN” where WWNN is the Node_Name of the
+	 * target NVMe_Port and WWPN is the N_Port_Name of the target NVMe_Port.
+	 */
+	char traddr[SPDK_NVMF_TRADDR_MAX_LEN + 1];
+
+	/**
+	 * Transport service id of the NVMe-oF endpoint.  For transports which use
+	 * IP addressing (e.g. RDMA), this field shoud be the port number. For FC this
+	 * is always a zero length string.
+	 */
+	char trsvcid[SPDK_NVMF_TRSVCID_MAX_LEN + 1];
+};
+
+/**
  * Construct an NVMe-oF target.
  *
  * \param max_subsystems the maximum number of subsystems allowed by the target.
@@ -129,7 +164,7 @@ typedef void (*spdk_nvmf_tgt_listen_done_fn)(void *ctx, int status);
  *	   or a negated errno on failure.
  */
 void spdk_nvmf_tgt_listen(struct spdk_nvmf_tgt *tgt,
-			  struct spdk_nvme_transport_id *trid,
+			  struct spdk_nvmf_transport_id *trid,
 			  spdk_nvmf_tgt_listen_done_fn cb_fn,
 			  void *cb_arg);
 
@@ -204,7 +239,7 @@ int spdk_nvmf_qpair_disconnect(struct spdk_nvmf_qpair *qpair, nvmf_qpair_disconn
  * \return -EINVAL if the qpair is not connected.
  */
 int spdk_nvmf_qpair_get_peer_trid(struct spdk_nvmf_qpair *qpair,
-				  struct spdk_nvme_transport_id *trid);
+				  struct spdk_nvmf_transport_id *trid);
 
 /**
  * Get the local transport ID for this queue pair.
@@ -216,7 +251,7 @@ int spdk_nvmf_qpair_get_peer_trid(struct spdk_nvmf_qpair *qpair,
  * \return -EINVAL if the qpair is not connected.
  */
 int spdk_nvmf_qpair_get_local_trid(struct spdk_nvmf_qpair *qpair,
-				   struct spdk_nvme_transport_id *trid);
+				   struct spdk_nvmf_transport_id *trid);
 
 /**
  * Get the associated listener transport ID for this queue pair.
@@ -228,7 +263,7 @@ int spdk_nvmf_qpair_get_local_trid(struct spdk_nvmf_qpair *qpair,
  * \return -EINVAL if the qpair is not connected.
  */
 int spdk_nvmf_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
-				    struct spdk_nvme_transport_id *trid);
+				    struct spdk_nvmf_transport_id *trid);
 
 /**
  * Create an NVMe-oF subsystem.
@@ -454,7 +489,7 @@ const char *spdk_nvmf_host_get_nqn(struct spdk_nvmf_host *host);
  * \return 0 on success, or negated errno value on failure.
  */
 int spdk_nvmf_subsystem_add_listener(struct spdk_nvmf_subsystem *subsystem,
-				     struct spdk_nvme_transport_id *trid);
+				     struct spdk_nvmf_transport_id *trid);
 
 /**
  * Stop accepting new connections on the address provided
@@ -467,7 +502,7 @@ int spdk_nvmf_subsystem_add_listener(struct spdk_nvmf_subsystem *subsystem,
  * \return 0 on success, or negated errno value on failure.
  */
 int spdk_nvmf_subsystem_remove_listener(struct spdk_nvmf_subsystem *subsystem,
-					const struct spdk_nvme_transport_id *trid);
+					const struct spdk_nvmf_transport_id *trid);
 
 /**
  * Check if connections originated from the given address are allowed to connect
@@ -479,7 +514,7 @@ int spdk_nvmf_subsystem_remove_listener(struct spdk_nvmf_subsystem *subsystem,
  * \return true if allowed, or false if not.
  */
 bool spdk_nvmf_subsystem_listener_allowed(struct spdk_nvmf_subsystem *subsystem,
-		struct spdk_nvme_transport_id *trid);
+		struct spdk_nvmf_transport_id *trid);
 
 /**
  * Get the first allowed listen address in the subsystem.
@@ -511,7 +546,7 @@ struct spdk_nvmf_listener *spdk_nvmf_subsystem_get_next_listener(
  *
  * \return the transport ID for this listener.
  */
-const struct spdk_nvme_transport_id *spdk_nvmf_listener_get_trid(
+const struct spdk_nvmf_transport_id *spdk_nvmf_listener_get_trid(
 	struct spdk_nvmf_listener *listener);
 
 /** NVMe-oF target namespace creation options */
@@ -697,6 +732,10 @@ spdk_nvmf_transport_id_parse_trtype(spdk_nvmf_transport_type *trtype, const char
 const char *
 spdk_nvmf_transport_id_trtype_str(spdk_nvmf_transport_type trtype);
 
+int
+spdk_nvmf_transport_id_compare(const struct spdk_nvmf_transport_id *trid1,
+			       const struct spdk_nvmf_transport_id *trid2);
+
 /**
  * Initialize transport options
  *
@@ -813,7 +852,7 @@ void spdk_nvmf_tgt_add_transport(struct spdk_nvmf_tgt *tgt,
  */
 
 int spdk_nvmf_transport_listen(struct spdk_nvmf_transport *transport,
-			       const struct spdk_nvme_transport_id *trid);
+			       const struct spdk_nvmf_transport_id *trid);
 
 /**
  * Write NVMe-oF target's transport configurations into provided JSON context.

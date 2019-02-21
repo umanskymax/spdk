@@ -92,14 +92,14 @@ spdk_bdev_get_uuid(const struct spdk_bdev *bdev)
 
 int
 spdk_nvmf_transport_listen(struct spdk_nvmf_transport *transport,
-			   const struct spdk_nvme_transport_id *trid)
+			   const struct spdk_nvmf_transport_id *trid)
 {
 	return 0;
 }
 
 void
 spdk_nvmf_transport_listener_discover(struct spdk_nvmf_transport *transport,
-				      struct spdk_nvme_transport_id *trid,
+				      struct spdk_nvmf_transport_id *trid,
 				      struct spdk_nvmf_discovery_log_page_entry *entry)
 {
 	entry->trtype = 42;
@@ -137,8 +137,8 @@ spdk_nvmf_transport_qpair_is_idle(struct spdk_nvmf_qpair *qpair)
 }
 
 int
-spdk_nvme_transport_id_compare(const struct spdk_nvme_transport_id *trid1,
-			       const struct spdk_nvme_transport_id *trid2)
+spdk_nvmf_transport_id_compare(const struct spdk_nvmf_transport_id *trid1,
+			       const struct spdk_nvmf_transport_id *trid2)
 {
 	return 0;
 }
@@ -198,7 +198,7 @@ test_discovery_log(void)
 	struct iovec iov;
 	struct spdk_nvmf_discovery_log_page *disc_log;
 	struct spdk_nvmf_discovery_log_page_entry *entry;
-	struct spdk_nvme_transport_id trid = {};
+	struct spdk_nvmf_transport_id trid = {};
 
 	iov.iov_base = buffer;
 	iov.iov_len = 8192;

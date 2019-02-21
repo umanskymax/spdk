@@ -380,7 +380,7 @@ struct spdk_nvmf_rdma_device {
 };
 
 struct spdk_nvmf_rdma_port {
-	struct spdk_nvme_transport_id		trid;
+	struct spdk_nvmf_transport_id		trid;
 	struct rdma_cm_id			*id;
 	struct spdk_nvmf_rdma_device		*device;
 	uint32_t				ref;
@@ -1924,7 +1924,7 @@ spdk_nvmf_rdma_destroy(struct spdk_nvmf_transport *transport)
 
 static int
 spdk_nvmf_rdma_trid_from_cm_id(struct rdma_cm_id *id,
-			       struct spdk_nvme_transport_id *trid,
+			       struct spdk_nvmf_transport_id *trid,
 			       bool peer);
 
 const struct spdk_mem_map_ops g_nvmf_rdma_map_ops = {
@@ -1934,7 +1934,7 @@ const struct spdk_mem_map_ops g_nvmf_rdma_map_ops = {
 
 static int
 spdk_nvmf_rdma_listen(struct spdk_nvmf_transport *transport,
-		      const struct spdk_nvme_transport_id *trid)
+		      const struct spdk_nvmf_transport_id *trid)
 {
 	struct spdk_nvmf_rdma_transport	*rtransport;
 	struct spdk_nvmf_rdma_device	*device;
@@ -1963,7 +1963,7 @@ spdk_nvmf_rdma_listen(struct spdk_nvmf_transport *transport,
 	pthread_mutex_lock(&rtransport->lock);
 	assert(rtransport->event_channel != NULL);
 	TAILQ_FOREACH(port_tmp, &rtransport->ports, link) {
-		if (spdk_nvme_transport_id_compare(&port_tmp->trid, &port->trid) == 0) {
+		if (spdk_nvmf_transport_id_compare(&port_tmp->trid, &port->trid) == 0) {
 			port_tmp->ref++;
 			free(port);
 			/* Already listening at this address */
@@ -2120,11 +2120,11 @@ spdk_nvmf_rdma_listen(struct spdk_nvmf_transport *transport,
 
 static int
 spdk_nvmf_rdma_stop_listen(struct spdk_nvmf_transport *transport,
-			   const struct spdk_nvme_transport_id *_trid)
+			   const struct spdk_nvmf_transport_id *_trid)
 {
 	struct spdk_nvmf_rdma_transport *rtransport;
 	struct spdk_nvmf_rdma_port *port, *tmp;
-	struct spdk_nvme_transport_id trid = {};
+	struct spdk_nvmf_transport_id trid = {};
 
 	rtransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_rdma_transport, transport);
 
@@ -2138,7 +2138,7 @@ spdk_nvmf_rdma_stop_listen(struct spdk_nvmf_transport *transport,
 
 	pthread_mutex_lock(&rtransport->lock);
 	TAILQ_FOREACH_SAFE(port, &rtransport->ports, link, tmp) {
-		if (spdk_nvme_transport_id_compare(&port->trid, &trid) == 0) {
+		if (spdk_nvmf_transport_id_compare(&port->trid, &trid) == 0) {
 			assert(port->ref > 0);
 			port->ref--;
 			if (port->ref == 0) {
@@ -2492,7 +2492,7 @@ spdk_nvmf_rdma_accept(struct spdk_nvmf_transport *transport, new_qpair_fn cb_fn)
 
 static void
 spdk_nvmf_rdma_discover(struct spdk_nvmf_transport *transport,
-			struct spdk_nvme_transport_id *trid,
+			struct spdk_nvmf_transport_id *trid,
 			struct spdk_nvmf_discovery_log_page_entry *entry)
 {
 	entry->trtype = SPDK_NVMF_TRTYPE_RDMA;
@@ -2963,7 +2963,7 @@ spdk_nvmf_rdma_poll_group_poll(struct spdk_nvmf_transport_poll_group *group)
 
 static int
 spdk_nvmf_rdma_trid_from_cm_id(struct rdma_cm_id *id,
-			       struct spdk_nvme_transport_id *trid,
+			       struct spdk_nvmf_transport_id *trid,
 			       bool peer)
 {
 	struct sockaddr *saddr;
@@ -3014,7 +3014,7 @@ spdk_nvmf_rdma_trid_from_cm_id(struct rdma_cm_id *id,
 
 static int
 spdk_nvmf_rdma_qpair_get_peer_trid(struct spdk_nvmf_qpair *qpair,
-				   struct spdk_nvme_transport_id *trid)
+				   struct spdk_nvmf_transport_id *trid)
 {
 	struct spdk_nvmf_rdma_qpair	*rqpair;
 
@@ -3025,7 +3025,7 @@ spdk_nvmf_rdma_qpair_get_peer_trid(struct spdk_nvmf_qpair *qpair,
 
 static int
 spdk_nvmf_rdma_qpair_get_local_trid(struct spdk_nvmf_qpair *qpair,
-				    struct spdk_nvme_transport_id *trid)
+				    struct spdk_nvmf_transport_id *trid)
 {
 	struct spdk_nvmf_rdma_qpair	*rqpair;
 
@@ -3036,7 +3036,7 @@ spdk_nvmf_rdma_qpair_get_local_trid(struct spdk_nvmf_qpair *qpair,
 
 static int
 spdk_nvmf_rdma_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
-				     struct spdk_nvme_transport_id *trid)
+				     struct spdk_nvmf_transport_id *trid)
 {
 	struct spdk_nvmf_rdma_qpair	*rqpair;
 
