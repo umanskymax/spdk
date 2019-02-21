@@ -52,8 +52,38 @@ static const struct spdk_nvmf_transport_ops *const g_transport_ops[] = {
 #define NUM_TRANSPORTS (SPDK_COUNTOF(g_transport_ops))
 #define MAX_MEMPOOL_NAME_LENGTH 40
 
+int
+spdk_nvmf_transport_id_parse_trtype(spdk_nvmf_transport_type *trtype, const char *str)
+{
+	size_t i;
+
+	if (trtype == NULL || str == NULL) {
+		return -EINVAL;
+	}
+
+	for (i = 0; i != NUM_TRANSPORTS; i++) {
+		if (strcasecmp(str, g_transport_ops[i]->get_trtype_str()) == 0) {
+			*trtype = g_transport_ops[i]->type;
+			return 0;
+		}
+	}
+	return -ENOENT;
+}
+
+const char *
+spdk_nvmf_transport_id_trtype_str(int trtype)
+{
+	size_t i;
+	for (i = 0; i != NUM_TRANSPORTS; i++) {
+		if (g_transport_ops[i]->type == trtype) {
+			return g_transport_ops[i]->get_trtype_str();
+		}
+	}
+	return NULL;
+}
+
 static inline const struct spdk_nvmf_transport_ops *
-spdk_nvmf_get_transport_ops(enum spdk_nvme_transport_type type)
+spdk_nvmf_get_transport_ops(spdk_nvmf_transport_type type)
 {
 	size_t i;
 	for (i = 0; i != NUM_TRANSPORTS; i++) {
@@ -70,14 +100,14 @@ spdk_nvmf_get_transport_opts(struct spdk_nvmf_transport *transport)
 	return &transport->opts;
 }
 
-spdk_nvme_transport_type_t
+spdk_nvmf_transport_type
 spdk_nvmf_get_transport_type(struct spdk_nvmf_transport *transport)
 {
 	return transport->ops->type;
 }
 
 struct spdk_nvmf_transport *
-spdk_nvmf_transport_create(enum spdk_nvme_transport_type type,
+spdk_nvmf_transport_create(spdk_nvmf_transport_type type,
 			   struct spdk_nvmf_transport_opts *opts)
 {
 	const struct spdk_nvmf_transport_ops *ops = NULL;
@@ -89,7 +119,7 @@ spdk_nvmf_transport_create(enum spdk_nvme_transport_type type,
 	    (opts->max_io_size / opts->io_unit_size >
 	     SPDK_NVMF_MAX_SGL_ENTRIES)) {
 		SPDK_ERRLOG("%s: invalid IO size, MaxIO:%d, UnitIO:%d, MaxSGL:%d\n",
-			    spdk_nvme_transport_id_trtype_str(type),
+			    spdk_nvmf_transport_id_trtype_str(type),
 			    opts->max_io_size,
 			    opts->io_unit_size,
 			    SPDK_NVMF_MAX_SGL_ENTRIES);
@@ -99,21 +129,21 @@ spdk_nvmf_transport_create(enum spdk_nvme_transport_type type,
 	ops = spdk_nvmf_get_transport_ops(type);
 	if (!ops) {
 		SPDK_ERRLOG("Transport type %s unavailable.\n",
-			    spdk_nvme_transport_id_trtype_str(type));
+			    spdk_nvmf_transport_id_trtype_str(type));
 		return NULL;
 	}
 
 	transport = ops->create(opts);
 	if (!transport) {
 		SPDK_ERRLOG("Unable to create new transport of type %s\n",
-			    spdk_nvme_transport_id_trtype_str(type));
+			    spdk_nvmf_transport_id_trtype_str(type));
 		return NULL;
 	}
 
 	transport->ops = ops;
 	transport->opts = *opts;
 	chars_written = snprintf(spdk_mempool_name, MAX_MEMPOOL_NAME_LENGTH, "%s_%s_%s", "spdk_nvmf",
-				 spdk_nvme_transport_id_trtype_str(type), "data");
+				 spdk_nvmf_transport_id_trtype_str(type), "data");
 	if (chars_written < 0) {
 		SPDK_ERRLOG("Unable to generate transport data buffer pool name.\n");
 		ops->destroy(transport);
@@ -316,7 +346,7 @@ spdk_nvmf_transport_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
 }
 
 bool
-spdk_nvmf_transport_opts_init(enum spdk_nvme_transport_type type,
+spdk_nvmf_transport_opts_init(spdk_nvmf_transport_type type,
 			      struct spdk_nvmf_transport_opts *opts)
 {
 	const struct spdk_nvmf_transport_ops *ops;
@@ -324,7 +354,7 @@ spdk_nvmf_transport_opts_init(enum spdk_nvme_transport_type type,
 	ops = spdk_nvmf_get_transport_ops(type);
 	if (!ops) {
 		SPDK_ERRLOG("Transport type %s unavailable.\n",
-			    spdk_nvme_transport_id_trtype_str(type));
+			    spdk_nvmf_transport_id_trtype_str(type));
 		return false;
 	}
 

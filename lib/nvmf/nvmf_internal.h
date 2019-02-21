@@ -276,7 +276,7 @@ struct spdk_nvmf_subsystem {
 typedef void(*spdk_nvmf_poll_group_mod_done)(void *cb_arg, int status);
 
 struct spdk_nvmf_transport *spdk_nvmf_tgt_get_transport(struct spdk_nvmf_tgt *tgt,
-		enum spdk_nvme_transport_type);
+		spdk_nvmf_transport_type);
 
 int spdk_nvmf_poll_group_add_transport(struct spdk_nvmf_poll_group *group,
 				       struct spdk_nvmf_transport *transport);

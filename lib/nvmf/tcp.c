@@ -2847,8 +2847,15 @@ spdk_nvmf_tcp_opts_init(struct spdk_nvmf_transport_opts *opts)
 	opts->buf_cache_size =		SPDK_NVMF_TCP_DEFAULT_BUFFER_CACHE_SIZE;
 }
 
+static const char *
+spdk_nvmf_tcp_get_trtype_str(void)
+{
+	return "TCP";
+}
+
 const struct spdk_nvmf_transport_ops spdk_nvmf_transport_tcp = {
 	.type = SPDK_NVME_TRANSPORT_TCP,
+	.get_trtype_str = spdk_nvmf_tcp_get_trtype_str,
 	.opts_init = spdk_nvmf_tcp_opts_init,
 	.create = spdk_nvmf_tcp_create,
 	.destroy = spdk_nvmf_tcp_destroy,

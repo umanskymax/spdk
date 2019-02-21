@@ -3045,6 +3045,12 @@ spdk_nvmf_rdma_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
 	return spdk_nvmf_rdma_trid_from_cm_id(rqpair->listen_id, trid, false);
 }
 
+static const char *
+spdk_nvmf_rdma_get_trtype_str(void)
+{
+	return "RDMA";
+}
+
 void
 spdk_nvmf_rdma_init_hooks(struct spdk_nvme_rdma_hooks *hooks)
 {
@@ -3053,6 +3059,7 @@ spdk_nvmf_rdma_init_hooks(struct spdk_nvme_rdma_hooks *hooks)
 
 const struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma = {
 	.type = SPDK_NVME_TRANSPORT_RDMA,
+	.get_trtype_str = spdk_nvmf_rdma_get_trtype_str,
 	.opts_init = spdk_nvmf_rdma_opts_init,
 	.create = spdk_nvmf_rdma_create,
 	.destroy = spdk_nvmf_rdma_destroy,

@@ -464,7 +464,7 @@ spdk_nvmf_parse_transport(struct spdk_nvmf_parse_transport_ctx *ctx)
 {
 	const char *type;
 	struct spdk_nvmf_transport_opts opts = { 0 };
-	enum spdk_nvme_transport_type trtype;
+	spdk_nvmf_transport_type trtype;
 	struct spdk_nvmf_transport *transport;
 	int val;
 
@@ -476,7 +476,7 @@ spdk_nvmf_parse_transport(struct spdk_nvmf_parse_transport_ctx *ctx)
 		return;
 	}
 
-	if (spdk_nvme_transport_id_parse_trtype(&trtype, type)) {
+	if (spdk_nvmf_transport_id_parse_trtype(&trtype, type)) {
 		SPDK_ERRLOG("Invalid transport type '%s'\n", type);
 		ctx->cb_fn(-1);
 		free(ctx);

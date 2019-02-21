@@ -490,7 +490,7 @@ spdk_nvmf_tgt_listen(struct spdk_nvmf_tgt *tgt,
 
 	transport = spdk_nvmf_tgt_get_transport(tgt, trid->trtype);
 	if (!transport) {
-		trtype = spdk_nvme_transport_id_trtype_str(trid->trtype);
+		trtype = spdk_nvmf_transport_id_trtype_str(trid->trtype);
 		if (trtype != NULL) {
 			SPDK_ERRLOG("Unable to listen on transport %s. The transport must be created first.\n", trtype);
 		} else {
@@ -599,7 +599,7 @@ spdk_nvmf_tgt_find_subsystem(struct spdk_nvmf_tgt *tgt, const char *subnqn)
 }
 
 struct spdk_nvmf_transport *
-spdk_nvmf_tgt_get_transport(struct spdk_nvmf_tgt *tgt, enum spdk_nvme_transport_type type)
+spdk_nvmf_tgt_get_transport(struct spdk_nvmf_tgt *tgt, spdk_nvmf_transport_type type)
 {
 	struct spdk_nvmf_transport *transport;
 

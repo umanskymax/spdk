@@ -74,6 +74,8 @@ struct spdk_nvmf_transport_opts {
 	uint32_t buf_cache_size;
 };
 
+typedef int spdk_nvmf_transport_type;
+
 /**
  * Construct an NVMe-oF target.
  *
@@ -689,6 +691,12 @@ const char *spdk_nvmf_subsystem_get_nqn(struct spdk_nvmf_subsystem *subsystem);
  */
 enum spdk_nvmf_subtype spdk_nvmf_subsystem_get_type(struct spdk_nvmf_subsystem *subsystem);
 
+int
+spdk_nvmf_transport_id_parse_trtype(spdk_nvmf_transport_type *trtype, const char *str);
+
+const char *
+spdk_nvmf_transport_id_trtype_str(spdk_nvmf_transport_type trtype);
+
 /**
  * Initialize transport options
  *
@@ -699,7 +707,7 @@ enum spdk_nvmf_subtype spdk_nvmf_subsystem_get_type(struct spdk_nvmf_subsystem *
  *	   not found.
  */
 bool
-spdk_nvmf_transport_opts_init(enum spdk_nvme_transport_type type,
+spdk_nvmf_transport_opts_init(spdk_nvmf_transport_type type,
 			      struct spdk_nvmf_transport_opts *opts);
 
 /**
@@ -710,7 +718,7 @@ spdk_nvmf_transport_opts_init(enum spdk_nvme_transport_type type,
  *
  * \return new transport or NULL if create fails
  */
-struct spdk_nvmf_transport *spdk_nvmf_transport_create(enum spdk_nvme_transport_type type,
+struct spdk_nvmf_transport *spdk_nvmf_transport_create(spdk_nvmf_transport_type type,
 		struct spdk_nvmf_transport_opts *opts);
 
 /**
@@ -731,7 +739,7 @@ int spdk_nvmf_transport_destroy(struct spdk_nvmf_transport *transport);
  * \return the transport or NULL if not found
  */
 struct spdk_nvmf_transport *spdk_nvmf_tgt_get_transport(struct spdk_nvmf_tgt *tgt,
-		enum spdk_nvme_transport_type type);
+		spdk_nvmf_transport_type type);
 
 /**
  * Get the first transport registered with the given target
@@ -768,7 +776,7 @@ const struct spdk_nvmf_transport_opts *spdk_nvmf_get_transport_opts(struct spdk_
  *
  * \return the transport type for the given transport
  */
-spdk_nvme_transport_type_t spdk_nvmf_get_transport_type(struct spdk_nvmf_transport *transport);
+spdk_nvmf_transport_type spdk_nvmf_get_transport_type(struct spdk_nvmf_transport *transport);
 
 /**
  * Function to be called once transport add is complete

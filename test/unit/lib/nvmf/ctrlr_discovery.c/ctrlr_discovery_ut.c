@@ -108,7 +108,7 @@ spdk_nvmf_transport_listener_discover(struct spdk_nvmf_transport *transport,
 static struct spdk_nvmf_transport g_transport = {};
 
 struct spdk_nvmf_transport *
-spdk_nvmf_transport_create(enum spdk_nvme_transport_type type,
+spdk_nvmf_transport_create(spdk_nvmf_transport_type type,
 			   struct spdk_nvmf_transport_opts *tprt_opts)
 {
 	if (type == SPDK_NVME_TRANSPORT_RDMA) {
@@ -125,7 +125,7 @@ spdk_nvmf_tgt_find_subsystem(struct spdk_nvmf_tgt *tgt, const char *subnqn)
 }
 
 struct spdk_nvmf_transport *
-spdk_nvmf_tgt_get_transport(struct spdk_nvmf_tgt *tgt, enum spdk_nvme_transport_type trtype)
+spdk_nvmf_tgt_get_transport(struct spdk_nvmf_tgt *tgt, spdk_nvmf_transport_type trtype)
 {
 	return &g_transport;
 }
@@ -134,23 +134,6 @@ bool
 spdk_nvmf_transport_qpair_is_idle(struct spdk_nvmf_qpair *qpair)
 {
 	return false;
-}
-
-int
-spdk_nvme_transport_id_parse_trtype(enum spdk_nvme_transport_type *trtype, const char *str)
-{
-	if (trtype == NULL || str == NULL) {
-		return -EINVAL;
-	}
-
-	if (strcasecmp(str, "PCIe") == 0) {
-		*trtype = SPDK_NVME_TRANSPORT_PCIE;
-	} else if (strcasecmp(str, "RDMA") == 0) {
-		*trtype = SPDK_NVME_TRANSPORT_RDMA;
-	} else {
-		return -ENOENT;
-	}
-	return 0;
 }
 
 int

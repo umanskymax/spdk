@@ -208,7 +208,7 @@ dump_nvmf_subsystem(struct spdk_json_write_ctx *w, struct spdk_nvmf_subsystem *s
 		trid = spdk_nvmf_listener_get_trid(listener);
 
 		spdk_json_write_object_begin(w);
-		trtype = spdk_nvme_transport_id_trtype_str(trid->trtype);
+		trtype = spdk_nvmf_transport_id_trtype_str(trid->trtype);
 		if (trtype == NULL) {
 			trtype = "unknown";
 		}
@@ -1476,7 +1476,7 @@ nvmf_rpc_create_transport(struct spdk_jsonrpc_request *request,
 			  const struct spdk_json_val *params)
 {
 	struct nvmf_rpc_create_transport_ctx *ctx;
-	enum spdk_nvme_transport_type trtype;
+	spdk_nvmf_transport_type trtype;
 	struct spdk_nvmf_transport *transport;
 
 	ctx = calloc(1, sizeof(*ctx));
@@ -1495,7 +1495,7 @@ nvmf_rpc_create_transport(struct spdk_jsonrpc_request *request,
 		return;
 	}
 
-	if (spdk_nvme_transport_id_parse_trtype(&trtype, ctx->trtype)) {
+	if (spdk_nvmf_transport_id_parse_trtype(&trtype, ctx->trtype)) {
 		SPDK_ERRLOG("Invalid transport type '%s'\n", ctx->trtype);
 		spdk_jsonrpc_send_error_response_fmt(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
 						     "Invalid transport type '%s'\n", ctx->trtype);
@@ -1555,11 +1555,11 @@ static void
 dump_nvmf_transport(struct spdk_json_write_ctx *w, struct spdk_nvmf_transport *transport)
 {
 	const struct spdk_nvmf_transport_opts *opts = spdk_nvmf_get_transport_opts(transport);
-	spdk_nvme_transport_type_t type = spdk_nvmf_get_transport_type(transport);
+	spdk_nvmf_transport_type type = spdk_nvmf_get_transport_type(transport);
 
 	spdk_json_write_object_begin(w);
 
-	spdk_json_write_named_string(w, "trtype", spdk_nvme_transport_id_trtype_str(type));
+	spdk_json_write_named_string(w, "trtype", spdk_nvmf_transport_id_trtype_str(type));
 	spdk_json_write_named_uint32(w, "max_queue_depth", opts->max_queue_depth);
 	spdk_json_write_named_uint32(w, "max_qpairs_per_ctrlr", opts->max_qpairs_per_ctrlr);
 	spdk_json_write_named_uint32(w, "in_capsule_data_size", opts->in_capsule_data_size);
