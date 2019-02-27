@@ -376,6 +376,8 @@ struct spdk_nvmf_rdma_poller {
 	struct ibv_mr				*bufs_mr;
 
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	struct spdk_nvmf_subsystem *subsystem;
+
 	/* Staging buffer for offload */
 	void					*staging_buf;
 	struct ibv_mr				*staging_buf_mr;
@@ -439,6 +441,8 @@ struct spdk_nvmf_rdma_mgmt_channel {
 	/* Requests that are waiting to obtain a data buffer */
 	TAILQ_HEAD(, spdk_nvmf_rdma_request)	pending_data_buf_queue;
 };
+
+extern struct spdk_nvmf_tgt *g_spdk_nvmf_tgt;
 
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
 static int
@@ -1239,6 +1243,7 @@ nvmf_rdma_connect(struct spdk_nvmf_transport *transport, struct rdma_cm_event *e
 		return -1;
 	}
 
+	rqpair->qpair.qid = private_data->qid;
 	rqpair->port = port;
 	rqpair->max_queue_depth = max_queue_depth;
 	rqpair->max_rw_depth = max_rw_depth;
@@ -2831,82 +2836,66 @@ spdk_nvmf_rdma_discover(struct spdk_nvmf_transport *transport,
 static void
 spdk_nvmf_rdma_poll_group_destroy(struct spdk_nvmf_transport_poll_group *group);
 
-static struct spdk_nvmf_transport_poll_group *
-spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
+static struct spdk_nvmf_rdma_poller *
+spdk_nvmf_rdma_create_poller(struct spdk_nvmf_transport *transport,
+			     struct spdk_nvmf_rdma_poll_group *rgroup,
+			     struct spdk_nvmf_rdma_device *device,
+			     struct spdk_nvmf_subsystem *subsystem)
 {
-	struct spdk_nvmf_rdma_transport		*rtransport;
-	struct spdk_nvmf_rdma_poll_group	*rgroup;
 	struct spdk_nvmf_rdma_poller		*poller;
-	struct spdk_nvmf_rdma_device		*device;
 #ifdef SPDK_CONFIG_RDMA_SRQ
 	int					i, rc;
-#ifndef SPDK_CONFIG_NVMF_OFFLOAD
 	struct ibv_srq_init_attr		srq_init_attr;
-#else
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
 	struct ibv_srq_init_attr_ex		srq_init_attr_ex;
-	struct mlx5dv_srq_init_attr		mlx5_attr;
+	struct mlx5dv_srq_init_attr		mlx5_attr = {};
 #endif
 	struct spdk_nvmf_rdma_recv		*rdma_recv;
 	struct spdk_nvmf_rdma_request		*rdma_req;
 #endif
 
-	rtransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_rdma_transport, transport);
-
-	rgroup = calloc(1, sizeof(*rgroup));
-	if (!rgroup) {
+	poller = calloc(1, sizeof(*poller));
+	if (!poller) {
+		SPDK_ERRLOG("Unable to allocate memory for new RDMA poller\n");
 		return NULL;
 	}
 
-	TAILQ_INIT(&rgroup->pollers);
+	TAILQ_INSERT_TAIL(&rgroup->pollers, poller, link);
+	poller->device = device;
+	poller->group = rgroup;
 
-	pthread_mutex_lock(&rtransport->lock);
-	TAILQ_FOREACH(device, &rtransport->devices, link) {
-		poller = calloc(1, sizeof(*poller));
-		if (!poller) {
-			SPDK_ERRLOG("Unable to allocate memory for new RDMA poller\n");
-			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
-			pthread_mutex_unlock(&rtransport->lock);
-			return NULL;
-		}
-
-		TAILQ_INSERT_TAIL(&rgroup->pollers, poller, link);
-		poller->device = device;
-		poller->group = rgroup;
-
-		TAILQ_INIT(&poller->qpairs);
+	TAILQ_INIT(&poller->qpairs);
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
-		TAILQ_INIT(&poller->offload_ctrlrs);
+	TAILQ_INIT(&poller->offload_ctrlrs);
 #endif
 
-		poller->cq = ibv_create_cq(device->context, NVMF_RDMA_CQ_SIZE, poller, NULL, 0);
-		if (!poller->cq) {
-			SPDK_ERRLOG("Unable to create completion queue\n");
-			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
-			pthread_mutex_unlock(&rtransport->lock);
-			return NULL;
-		}
+	poller->cq = ibv_create_cq(device->context, NVMF_RDMA_CQ_SIZE, poller, NULL, 0);
+	if (!poller->cq) {
+		SPDK_ERRLOG("Unable to create completion queue\n");
+		return NULL;
+	}
 
 #ifdef SPDK_CONFIG_RDMA_SRQ
-		poller->max_srq_depth = transport->opts.max_srq_depth;
+	poller->max_srq_depth = transport->opts.max_srq_depth;
 
 #ifndef SPDK_CONFIG_NVMF_OFFLOAD
-		memset(&srq_init_attr, 0, sizeof(struct ibv_srq_init_attr));
-		srq_init_attr.attr.max_wr = poller->max_srq_depth;
-		srq_init_attr.attr.max_sge = NVMF_DEFAULT_RX_SGE;
-		poller->srq = ibv_create_srq(device->pd, &srq_init_attr);
+	memset(&srq_init_attr, 0, sizeof(struct ibv_srq_init_attr));
+	srq_init_attr.attr.max_wr = poller->max_srq_depth;
+	srq_init_attr.attr.max_sge = NVMF_DEFAULT_RX_SGE;
+	poller->srq = ibv_create_srq(device->pd, &srq_init_attr);
 #else
+	poller->subsystem = subsystem;
+	if (subsystem && subsystem->offload) {
 		/* @todo: it should be checked somewhere that device supports offload */
 		/* @todo: staging buffer length shall be configurable or calculated somehow */
 #define DEFAULT_STAGING_BUFFER_LENGTH 512*1024*1024
-/* Align staging buffer pages to 2M */
+		/* Align staging buffer pages to 2M */
 #define STAGING_BUFFER_ALIGN (1ULL << 21)
 		poller->staging_buf = spdk_dma_zmalloc(DEFAULT_STAGING_BUFFER_LENGTH,
 						       STAGING_BUFFER_ALIGN,
 						       NULL);
 		if (!poller->staging_buf) {
 			SPDK_ERRLOG("Failed to allocate staging buffer\n");
-			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
-			pthread_mutex_unlock(&rtransport->lock);
 			return NULL;
 		}
 
@@ -2917,8 +2906,6 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 						    IBV_ACCESS_LOCAL_WRITE);
 		if (!poller->staging_buf_mr) {
 			SPDK_ERRLOG("Failed to register staging buffer memory region\n");
-			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
-			pthread_mutex_unlock(&rtransport->lock);
 			return NULL;
 		}
 
@@ -2946,153 +2933,205 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 		mlx5_attr.nvmf_attr.staging_buf.len = DEFAULT_STAGING_BUFFER_LENGTH;
 		mlx5_attr.comp_mask = MLX5DV_SRQ_INIT_ATTR_MASK_NVMF;
 		poller->srq = mlx5dv_create_srq(device->context, &srq_init_attr_ex, &mlx5_attr);
+	} else {
+		memset(&srq_init_attr, 0, sizeof(struct ibv_srq_init_attr));
+		srq_init_attr.attr.max_wr = poller->max_srq_depth;
+		srq_init_attr.attr.max_sge = NVMF_DEFAULT_RX_SGE;
+		poller->srq = ibv_create_srq(device->pd, &srq_init_attr);
+	}
 #endif
-		if (!poller->srq) {
-			SPDK_ERRLOG("Unable to create shared receive queue, errno %d\n", errno);
-			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
-			pthread_mutex_unlock(&rtransport->lock);
-			return NULL;
-		}
+	if (!poller->srq) {
+		SPDK_ERRLOG("Unable to create shared receive queue, errno %d\n", errno);
+		return NULL;
+	}
 #ifndef SPDK_CONFIG_NVMF_OFFLOAD
-		SPDK_DEBUGLOG(SPDK_LOG_RDMA, "Created RDMA SRQ %p: max_wr %u, max_sge %u, srq_limit %u\n",
-			      poller->srq,
-			      srq_init_attr.attr.max_wr,
-			      srq_init_attr.attr.max_sge,
-			      srq_init_attr.attr.srq_limit);
+	SPDK_DEBUGLOG(SPDK_LOG_RDMA, "Created RDMA SRQ %p: max_wr %u, max_sge %u, srq_limit %u\n",
+		      poller->srq,
+		      srq_init_attr.attr.max_wr,
+		      srq_init_attr.attr.max_sge,
+		      srq_init_attr.attr.srq_limit);
 #else
+	if (subsystem && subsystem->offload) {
 		SPDK_NOTICELOG("Created RDMA offload SRQ %p: max_wr %u, max_sge %u, nvme_qdepth %u\n",
-			      poller->srq,
-			      srq_init_attr_ex.attr.max_wr,
-			      srq_init_attr_ex.attr.max_sge,
-			      mlx5_attr.nvmf_attr.nvme_queue_depth);
+			       poller->srq,
+			       srq_init_attr_ex.attr.max_wr,
+			       srq_init_attr_ex.attr.max_sge,
+			       mlx5_attr.nvmf_attr.nvme_queue_depth);
+	} else {
+		SPDK_NOTICELOG("Created RDMA non-offload SRQ %p: max_wr %u, max_sge %u\n",
+			       poller->srq,
+			       srq_init_attr.attr.max_wr,
+			       srq_init_attr.attr.max_sge);
+
+	}
 #endif
-		poller->reqs = calloc(poller->max_srq_depth, sizeof(*poller->reqs));
-		poller->recvs = calloc(poller->max_srq_depth, sizeof(*poller->recvs));
-		poller->cmds = spdk_dma_zmalloc(poller->max_srq_depth * sizeof(*poller->cmds),
-						0x1000, NULL);
-		poller->cpls = spdk_dma_zmalloc(poller->max_srq_depth * sizeof(*poller->cpls),
-						0x1000, NULL);
+	poller->reqs = calloc(poller->max_srq_depth, sizeof(*poller->reqs));
+	poller->recvs = calloc(poller->max_srq_depth, sizeof(*poller->recvs));
+	poller->cmds = spdk_dma_zmalloc(poller->max_srq_depth * sizeof(*poller->cmds),
+					0x1000, NULL);
+	poller->cpls = spdk_dma_zmalloc(poller->max_srq_depth * sizeof(*poller->cpls),
+					0x1000, NULL);
 
 
-		if (transport->opts.in_capsule_data_size > 0) {
-			poller->bufs = spdk_dma_zmalloc(poller->max_srq_depth *
-							transport->opts.in_capsule_data_size,
-							0x1000, NULL);
+	if (transport->opts.in_capsule_data_size > 0) {
+		poller->bufs = spdk_dma_zmalloc(poller->max_srq_depth *
+						transport->opts.in_capsule_data_size,
+						0x1000, NULL);
+	}
+
+	if (!poller->reqs || !poller->recvs || !poller->cmds ||
+	    !poller->cpls || (transport->opts.in_capsule_data_size && !poller->bufs)) {
+		SPDK_ERRLOG("Unable to allocate sufficient memory for RDMA shared receive queue.\n");
+		return NULL;
+	}
+
+	poller->cmds_mr = ibv_reg_mr(device->pd, poller->cmds,
+				     poller->max_srq_depth * sizeof(*poller->cmds),
+				     IBV_ACCESS_LOCAL_WRITE);
+	poller->cpls_mr = ibv_reg_mr(device->pd, poller->cpls,
+				     poller->max_srq_depth * sizeof(*poller->cpls),
+				     0);
+
+	if (transport->opts.in_capsule_data_size) {
+		poller->bufs_mr = ibv_reg_mr(device->pd, poller->bufs,
+					     poller->max_srq_depth *
+					     transport->opts.in_capsule_data_size,
+					     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+	}
+
+	if (!poller->cmds_mr || !poller->cpls_mr || (transport->opts.in_capsule_data_size &&
+						     !poller->bufs_mr)) {
+		SPDK_ERRLOG("Unable to register required memory for RDMA shared receive queue.\n");
+		return NULL;
+	}
+	SPDK_DEBUGLOG(SPDK_LOG_RDMA, "Command Array: %p Length: %lx LKey: %x\n",
+		      poller->cmds, poller->max_srq_depth * sizeof(*poller->cmds), poller->cmds_mr->lkey);
+	SPDK_DEBUGLOG(SPDK_LOG_RDMA, "Completion Array: %p Length: %lx LKey: %x\n",
+		      poller->cpls, poller->max_srq_depth * sizeof(*poller->cpls), poller->cpls_mr->lkey);
+	if (poller->bufs && poller->bufs_mr) {
+		SPDK_DEBUGLOG(SPDK_LOG_RDMA, "In Capsule Data Array: %p Length: %x LKey: %x\n",
+			      poller->bufs, poller->max_srq_depth *
+			      transport->opts.in_capsule_data_size, poller->bufs_mr->lkey);
+	}
+
+	/* Initialize queues */
+	TAILQ_INIT(&poller->incoming_queue);
+	TAILQ_INIT(&poller->free_queue);
+
+	for (i = 0; i < poller->max_srq_depth; i++) {
+		struct ibv_recv_wr *bad_wr = NULL;
+
+		rdma_recv = &poller->recvs[i];
+		rdma_recv->qpair = NULL;
+
+		/* Set up memory to receive commands */
+		if (poller->bufs) {
+			rdma_recv->buf = (void *)((uintptr_t)poller->bufs + (i *
+									     transport->opts.in_capsule_data_size));
 		}
 
-		if (!poller->reqs || !poller->recvs || !poller->cmds ||
-		    !poller->cpls || (transport->opts.in_capsule_data_size && !poller->bufs)) {
-			SPDK_ERRLOG("Unable to allocate sufficient memory for RDMA shared receive queue.\n");
+		rdma_recv->sgl[0].addr = (uintptr_t)&poller->cmds[i];
+		rdma_recv->sgl[0].length = sizeof(poller->cmds[i]);
+		rdma_recv->sgl[0].lkey = poller->cmds_mr->lkey;
+		rdma_recv->wr.num_sge = 1;
+
+		if (rdma_recv->buf && poller->bufs_mr) {
+			rdma_recv->sgl[1].addr = (uintptr_t)rdma_recv->buf;
+			rdma_recv->sgl[1].length = transport->opts.in_capsule_data_size;
+			rdma_recv->sgl[1].lkey = poller->bufs_mr->lkey;
+			rdma_recv->wr.num_sge++;
+		}
+
+		rdma_recv->wr.wr_id = (uintptr_t)rdma_recv;
+		rdma_recv->wr.sg_list = rdma_recv->sgl;
+
+		rc = ibv_post_srq_recv(poller->srq, &rdma_recv->wr, &bad_wr);
+		if (rc) {
+			SPDK_ERRLOG("Unable to post capsule for RDMA RECV\n");
+			return NULL;
+		}
+	}
+
+	for (i = 0; i < poller->max_srq_depth; i++) {
+		rdma_req = &poller->reqs[i];
+
+		rdma_req->req.qpair = NULL;
+		rdma_req->req.cmd = NULL;
+
+		/* Set up memory to send responses */
+		rdma_req->req.rsp = &poller->cpls[i];
+
+		rdma_req->rsp.sgl[0].addr = (uintptr_t)&poller->cpls[i];
+		rdma_req->rsp.sgl[0].length = sizeof(poller->cpls[i]);
+		rdma_req->rsp.sgl[0].lkey = poller->cpls_mr->lkey;
+
+		rdma_req->rsp.wr.wr_id = (uintptr_t)rdma_req;
+		rdma_req->rsp.wr.next = NULL;
+		rdma_req->rsp.wr.opcode = IBV_WR_SEND;
+		rdma_req->rsp.wr.send_flags = IBV_SEND_SIGNALED;
+		rdma_req->rsp.wr.sg_list = rdma_req->rsp.sgl;
+		rdma_req->rsp.wr.num_sge = SPDK_COUNTOF(rdma_req->rsp.sgl);
+
+		/* Set up memory for data buffers */
+		rdma_req->data.wr.wr_id = (uint64_t)rdma_req;
+		rdma_req->data.wr.next = NULL;
+		rdma_req->data.wr.send_flags = IBV_SEND_SIGNALED;
+		rdma_req->data.wr.sg_list = rdma_req->data.sgl;
+		rdma_req->data.wr.num_sge = SPDK_COUNTOF(rdma_req->data.sgl);
+
+		/* Initialize request state to FREE */
+		rdma_req->state = RDMA_REQUEST_STATE_FREE;
+		TAILQ_INSERT_TAIL(&poller->free_queue, rdma_req, state_link);
+	}
+#endif
+
+	return poller;
+}
+
+static struct spdk_nvmf_transport_poll_group *
+spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
+{
+	struct spdk_nvmf_rdma_transport		*rtransport;
+	struct spdk_nvmf_rdma_poll_group	*rgroup;
+	struct spdk_nvmf_rdma_poller		*poller;
+	struct spdk_nvmf_rdma_device		*device;
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	struct spdk_nvmf_subsystem              *subsystem;
+#endif
+
+	rtransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_rdma_transport, transport);
+
+	rgroup = calloc(1, sizeof(*rgroup));
+	if (!rgroup) {
+		return NULL;
+	}
+
+	TAILQ_INIT(&rgroup->pollers);
+
+	pthread_mutex_lock(&rtransport->lock);
+	TAILQ_FOREACH(device, &rtransport->devices, link) {
+		poller = spdk_nvmf_rdma_create_poller(transport, rgroup, device, NULL);
+		if (poller == NULL) {
 			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 			pthread_mutex_unlock(&rtransport->lock);
 			return NULL;
 		}
-
-		poller->cmds_mr = ibv_reg_mr(device->pd, poller->cmds,
-					     poller->max_srq_depth * sizeof(*poller->cmds),
-					     IBV_ACCESS_LOCAL_WRITE);
-		poller->cpls_mr = ibv_reg_mr(device->pd, poller->cpls,
-					     poller->max_srq_depth * sizeof(*poller->cpls),
-					     0);
-
-		if (transport->opts.in_capsule_data_size) {
-			poller->bufs_mr = ibv_reg_mr(device->pd, poller->bufs,
-						     poller->max_srq_depth *
-						     transport->opts.in_capsule_data_size,
-						     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-		}
-
-		if (!poller->cmds_mr || !poller->cpls_mr || (transport->opts.in_capsule_data_size &&
-				!poller->bufs_mr)) {
-			SPDK_ERRLOG("Unable to register required memory for RDMA shared receive queue.\n");
-			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
-			pthread_mutex_unlock(&rtransport->lock);
-			return NULL;
-		}
-		SPDK_DEBUGLOG(SPDK_LOG_RDMA, "Command Array: %p Length: %lx LKey: %x\n",
-			      poller->cmds, poller->max_srq_depth * sizeof(*poller->cmds), poller->cmds_mr->lkey);
-		SPDK_DEBUGLOG(SPDK_LOG_RDMA, "Completion Array: %p Length: %lx LKey: %x\n",
-			      poller->cpls, poller->max_srq_depth * sizeof(*poller->cpls), poller->cpls_mr->lkey);
-		if (poller->bufs && poller->bufs_mr) {
-			SPDK_DEBUGLOG(SPDK_LOG_RDMA, "In Capsule Data Array: %p Length: %x LKey: %x\n",
-				      poller->bufs, poller->max_srq_depth *
-				      transport->opts.in_capsule_data_size, poller->bufs_mr->lkey);
-		}
-
-		/* Initialize queues */
-		TAILQ_INIT(&poller->incoming_queue);
-		TAILQ_INIT(&poller->free_queue);
-
-		for (i = 0; i < poller->max_srq_depth; i++) {
-			struct ibv_recv_wr *bad_wr = NULL;
-
-			rdma_recv = &poller->recvs[i];
-			rdma_recv->qpair = NULL;
-
-			/* Set up memory to receive commands */
-			if (poller->bufs) {
-				rdma_recv->buf = (void *)((uintptr_t)poller->bufs + (i *
-							  transport->opts.in_capsule_data_size));
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+		subsystem = spdk_nvmf_subsystem_get_first(g_spdk_nvmf_tgt);
+		while (NULL != subsystem) {
+			if (subsystem->offload) {
+				poller = spdk_nvmf_rdma_create_poller(transport, rgroup, device, subsystem);
+				if (poller == NULL) {
+					spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
+					pthread_mutex_unlock(&rtransport->lock);
+					return NULL;
+				}
+				SPDK_NOTICELOG("Created offload poller for subsystem %s\n", subsystem->subnqn);
 			}
-
-			rdma_recv->sgl[0].addr = (uintptr_t)&poller->cmds[i];
-			rdma_recv->sgl[0].length = sizeof(poller->cmds[i]);
-			rdma_recv->sgl[0].lkey = poller->cmds_mr->lkey;
-			rdma_recv->wr.num_sge = 1;
-
-			if (rdma_recv->buf && poller->bufs_mr) {
-				rdma_recv->sgl[1].addr = (uintptr_t)rdma_recv->buf;
-				rdma_recv->sgl[1].length = transport->opts.in_capsule_data_size;
-				rdma_recv->sgl[1].lkey = poller->bufs_mr->lkey;
-				rdma_recv->wr.num_sge++;
-			}
-
-			rdma_recv->wr.wr_id = (uintptr_t)rdma_recv;
-			rdma_recv->wr.sg_list = rdma_recv->sgl;
-
-			rc = ibv_post_srq_recv(poller->srq, &rdma_recv->wr, &bad_wr);
-			if (rc) {
-				SPDK_ERRLOG("Unable to post capsule for RDMA RECV\n");
-				spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
-				pthread_mutex_unlock(&rtransport->lock);
-				return NULL;
-			}
-		}
-
-		for (i = 0; i < poller->max_srq_depth; i++) {
-			rdma_req = &poller->reqs[i];
-
-			rdma_req->req.qpair = NULL;
-			rdma_req->req.cmd = NULL;
-
-			/* Set up memory to send responses */
-			rdma_req->req.rsp = &poller->cpls[i];
-
-			rdma_req->rsp.sgl[0].addr = (uintptr_t)&poller->cpls[i];
-			rdma_req->rsp.sgl[0].length = sizeof(poller->cpls[i]);
-			rdma_req->rsp.sgl[0].lkey = poller->cpls_mr->lkey;
-
-			rdma_req->rsp.wr.wr_id = (uintptr_t)rdma_req;
-			rdma_req->rsp.wr.next = NULL;
-			rdma_req->rsp.wr.opcode = IBV_WR_SEND;
-			rdma_req->rsp.wr.send_flags = IBV_SEND_SIGNALED;
-			rdma_req->rsp.wr.sg_list = rdma_req->rsp.sgl;
-			rdma_req->rsp.wr.num_sge = SPDK_COUNTOF(rdma_req->rsp.sgl);
-
-			/* Set up memory for data buffers */
-			rdma_req->data.wr.wr_id = (uint64_t)rdma_req;
-			rdma_req->data.wr.next = NULL;
-			rdma_req->data.wr.send_flags = IBV_SEND_SIGNALED;
-			rdma_req->data.wr.sg_list = rdma_req->data.sgl;
-			rdma_req->data.wr.num_sge = SPDK_COUNTOF(rdma_req->data.sgl);
-
-			/* Initialize request state to FREE */
-			rdma_req->state = RDMA_REQUEST_STATE_FREE;
-			TAILQ_INSERT_TAIL(&poller->free_queue, rdma_req, state_link);
+			subsystem = spdk_nvmf_subsystem_get_next(subsystem);
 		}
 #endif
 	}
-
 	pthread_mutex_unlock(&rtransport->lock);
 	return &rgroup->group;
 }
@@ -3169,6 +3208,10 @@ spdk_nvmf_rdma_poll_group_add(struct spdk_nvmf_transport_poll_group *group,
 	struct spdk_nvmf_rdma_qpair		*rqpair;
 	struct spdk_nvmf_rdma_device		*device;
 	struct spdk_nvmf_rdma_poller		*poller;
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	struct spdk_nvmf_subsystem		*subsystem;
+	struct spdk_nvmf_listener		*listener;
+#endif
 	int					rc;
 
 	rtransport = SPDK_CONTAINEROF(qpair->transport, struct spdk_nvmf_rdma_transport, transport);
@@ -3177,12 +3220,45 @@ spdk_nvmf_rdma_poll_group_add(struct spdk_nvmf_transport_poll_group *group,
 
 	device = rqpair->port->device;
 
+#ifndef SPDK_CONFIG_NVMF_OFFLOAD
 	TAILQ_FOREACH(poller, &rgroup->pollers, link) {
 		if (poller->device == device) {
 			break;
 		}
 	}
+#else
+	subsystem = spdk_nvmf_subsystem_get_first(g_spdk_nvmf_tgt);
+	while (NULL != subsystem) {
+		bool found = false;
+		TAILQ_FOREACH(listener, &subsystem->listeners, link) {
+			if (0 == spdk_nvme_transport_id_compare(&rqpair->port->trid, &listener->trid)) {
+				found = true;
+				break;
+			}
+		}
+		if (found) {
+			break;
+		}
+		subsystem = spdk_nvmf_subsystem_get_next(subsystem);
+	}
+	if (NULL == subsystem) {
+		SPDK_ERRLOG("Subsystem not found with port: trtype:%s adrfam:%s traddr:%s trsvcid:%s\n",
+			    spdk_nvme_transport_id_trtype_str(rqpair->port->trid.trtype),
+			    spdk_nvme_transport_id_adrfam_str(rqpair->port->trid.adrfam),
+			    rqpair->port->trid.traddr,
+			    rqpair->port->trid.trsvcid);
+		return -1;
+	}
 
+	TAILQ_FOREACH(poller, &rgroup->pollers, link) {
+		if ((poller->device == device) &&
+		    (((0 == rqpair->qpair.qid) && (NULL == poller->subsystem)) ||
+		     (!subsystem->offload && (NULL == poller->subsystem)) ||
+		     (subsystem->offload && (poller->subsystem == subsystem)))) {
+			break;
+		}
+	}
+#endif
 	if (!poller) {
 		SPDK_ERRLOG("No poller found for device.\n");
 		return -1;
