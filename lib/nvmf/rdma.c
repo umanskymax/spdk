@@ -3808,6 +3808,9 @@ spdk_nvmf_rdma_destroy_offload_ctrlr(struct spdk_nvmf_rdma_offload_ctrlr *offloa
 	}
 
 	if (offload_ctrlr->nvme_io_qpair) {
+		/* With this flag set NVMe subsystem will not try to
+		   process completions on this queue */
+		offload_ctrlr->nvme_io_qpair->no_deletion_notification_needed = 1;
 		rc = spdk_nvme_ctrlr_free_io_qpair(offload_ctrlr->nvme_io_qpair);
 		if (rc) {
 			SPDK_ERRLOG("Failed to free NVMe PCIe queue pair\n");
