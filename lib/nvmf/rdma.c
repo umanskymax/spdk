@@ -3124,6 +3124,9 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 	struct spdk_nvmf_rdma_poll_group	*rgroup;
 	struct spdk_nvmf_rdma_poller		*poller;
 	struct spdk_nvmf_rdma_device		*device;
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	uint32_t				core, i;
+#endif
 
 	rtransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_rdma_transport, transport);
 
@@ -3143,7 +3146,10 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 			return NULL;
 		}
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
-		if (spdk_env_get_current_core() == spdk_env_get_first_core()) {
+		for (core = spdk_env_get_first_core(), i = rtransport->offload_cores_count - 1;
+		     (core != spdk_env_get_current_core()) && (core != UINT32_MAX) && (i > 0);
+		     core = spdk_env_get_next_core(core), --i);
+		if (spdk_env_get_current_core() == core) {
 			if (!spdk_nvmf_rdma_create_offload_pollers(transport, rgroup, device)) {
 				spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 				pthread_mutex_unlock(&rtransport->lock);
