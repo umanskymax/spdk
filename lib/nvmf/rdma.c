@@ -433,6 +433,9 @@ struct spdk_nvmf_rdma_transport {
 	nfds_t			npoll_fds;
 	struct pollfd		*poll_fds;
 
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	uint32_t		offload_cores_count;
+#endif
 	TAILQ_HEAD(, spdk_nvmf_rdma_device)	devices;
 	TAILQ_HEAD(, spdk_nvmf_rdma_port)	ports;
 };
@@ -3985,6 +3988,26 @@ spdk_nvmf_rdma_qpair_enable_offload(struct spdk_nvmf_qpair *qpair,
 }
 #endif
 
+static bool
+spdk_nvmf_rdma_parse_config(struct spdk_nvmf_transport *transport,
+			    struct spdk_conf_section *sp)
+{
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	struct spdk_nvmf_rdma_transport *rtransport;
+	int val;
+
+	rtransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_rdma_transport, transport);
+
+	val = spdk_conf_section_get_intval(sp, "OffloadCoresCount");
+	if (val >= 0) {
+		rtransport->offload_cores_count = spdk_min(spdk_env_get_core_count(),
+							   spdk_max(1, val));
+		SPDK_NOTICELOG("Offload cores count is %u\n", rtransport->offload_cores_count);
+	}
+#endif
+	return true;
+}
+
 const struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma = {
 	.type = SPDK_NVME_TRANSPORT_RDMA,
 	.opts_init = spdk_nvmf_rdma_opts_init,
@@ -4014,6 +4037,7 @@ const struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma = {
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
 	.qpair_enable_offload = spdk_nvmf_rdma_qpair_enable_offload,
 #endif
+	.parse_config = spdk_nvmf_rdma_parse_config,
 };
 
 SPDK_LOG_REGISTER_COMPONENT("rdma", SPDK_LOG_RDMA)
