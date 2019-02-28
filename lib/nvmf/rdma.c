@@ -3672,6 +3672,47 @@ spdk_nvmf_rdma_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
 	return spdk_nvmf_rdma_trid_from_cm_id(rqpair->listen_id, trid, false);
 }
 
+static int
+spdk_nvmf_rdma_qpair_assign_core(struct spdk_nvmf_qpair *qpair,
+				 uint32_t *core)
+{
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+	struct spdk_nvmf_rdma_qpair	*rqpair;
+	struct spdk_nvmf_subsystem	*subsystem;
+	struct spdk_nvmf_listener	*listener;
+
+	if (0 == qpair->qid) {
+		return -1;
+	}
+	rqpair = SPDK_CONTAINEROF(qpair, struct spdk_nvmf_rdma_qpair, qpair);
+
+	subsystem = spdk_nvmf_subsystem_get_first(g_spdk_nvmf_tgt);
+	while (NULL != subsystem) {
+		TAILQ_FOREACH(listener, &subsystem->listeners, link) {
+			if (0 == spdk_nvme_transport_id_compare(&rqpair->port->trid, &listener->trid)) {
+				if (subsystem->offload) {
+					SPDK_NOTICELOG("Assigning offloaded IO queue pair to core %u\n",
+						       spdk_env_get_first_core());
+					*core = spdk_env_get_first_core();
+					return 0;
+				} else {
+					return -1;
+				}
+			}
+		}
+		subsystem = spdk_nvmf_subsystem_get_next(subsystem);
+	}
+	SPDK_WARNLOG("Subsystem not found with port: trtype:%s adrfam:%s traddr:%s trsvcid:%s\n",
+		     spdk_nvme_transport_id_trtype_str(rqpair->port->trid.trtype),
+		     spdk_nvme_transport_id_adrfam_str(rqpair->port->trid.adrfam),
+		     rqpair->port->trid.traddr,
+		     rqpair->port->trid.trsvcid);
+	return -1;
+#else
+	return -1;
+#endif
+}
+
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
 static void
 spdk_nvmf_rdma_destroy_offload_ctrlr(struct spdk_nvmf_rdma_offload_ctrlr *offload_ctrlr)
@@ -3952,6 +3993,7 @@ const struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma = {
 	.qpair_get_peer_trid = spdk_nvmf_rdma_qpair_get_peer_trid,
 	.qpair_get_local_trid = spdk_nvmf_rdma_qpair_get_local_trid,
 	.qpair_get_listen_trid = spdk_nvmf_rdma_qpair_get_listen_trid,
+	.qpair_assign_core = spdk_nvmf_rdma_qpair_assign_core,
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
 	.qpair_enable_offload = spdk_nvmf_rdma_qpair_enable_offload,
 #endif
