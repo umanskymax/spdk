@@ -104,10 +104,23 @@ spdk_nvmf_read_config_file_tgt_conf(struct spdk_conf_section *sp,
 				    struct spdk_nvmf_tgt_conf *conf)
 {
 	int acceptor_poll_rate;
+	char *conn_sched;
 
 	acceptor_poll_rate = spdk_conf_section_get_intval(sp, "AcceptorPollRate");
 	if (acceptor_poll_rate >= 0) {
 		conf->acceptor_poll_rate = acceptor_poll_rate;
+	}
+	conn_sched = spdk_conf_section_get_val(sp, "ConnectionScheduler");
+	if (NULL != conn_sched) {
+		if (0 == strcasecmp(conn_sched, "RoundRobin")) {
+			conf->conn_sched = CONNECT_SCHED_ROUND_ROBIN;
+		} else if (0 == strcasecmp(conn_sched, "HostIp")) {
+			conf->conn_sched = CONNECT_SCHED_HOST_IP;
+		} else if (0 == strcasecmp(conn_sched, "Transport")) {
+			conf->conn_sched = CONNECT_SCHED_TRANSPORT;
+		} else {
+			SPDK_ERRLOG("Unknown connection scheduler %s\n", conn_sched);
+		}
 	}
 }
 

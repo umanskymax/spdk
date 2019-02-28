@@ -155,6 +155,12 @@ struct spdk_nvmf_transport_ops {
 	int (*qpair_get_listen_trid)(struct spdk_nvmf_qpair *qpair,
 				     struct spdk_nvme_transport_id *trid);
 
+	/*
+	 * Schedule newly connected queue pair to CPU core.
+	 */
+	int (*qpair_assign_core)(struct spdk_nvmf_qpair *qpair,
+				 uint32_t *core);
+
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
 	/*
 	 * Enable offload for the queue pair.
@@ -200,6 +206,9 @@ int spdk_nvmf_transport_qpair_get_local_trid(struct spdk_nvmf_qpair *qpair,
 
 int spdk_nvmf_transport_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
 		struct spdk_nvme_transport_id *trid);
+
+int spdk_nvmf_transport_qpair_assign_core(struct spdk_nvmf_qpair *qpair,
+					  uint32_t *core);
 
 bool spdk_nvmf_transport_opts_init(enum spdk_nvme_transport_type type,
 				   struct spdk_nvmf_transport_opts *opts);

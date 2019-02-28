@@ -221,6 +221,16 @@ spdk_nvmf_transport_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
 	return qpair->transport->ops->qpair_get_listen_trid(qpair, trid);
 }
 
+int
+spdk_nvmf_transport_qpair_assign_core(struct spdk_nvmf_qpair *qpair,
+				      uint32_t *core)
+{
+	if (qpair->transport->ops->qpair_assign_core) {
+		return qpair->transport->ops->qpair_assign_core(qpair, core);
+	}
+	return -1;
+}
+
 bool
 spdk_nvmf_transport_opts_init(enum spdk_nvme_transport_type type,
 			      struct spdk_nvmf_transport_opts *opts)

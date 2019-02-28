@@ -175,6 +175,13 @@ nvmf_tgt_get_qpair_core(struct spdk_nvmf_qpair *qpair)
 			TAILQ_INSERT_TAIL(&g_nvmf_tgt_host_trids, new_trid, link);
 		}
 		break;
+	case CONNECT_SCHED_TRANSPORT:
+		if (0 != spdk_nvmf_transport_qpair_assign_core(qpair, &core)) {
+			SPDK_NOTICELOG("Transport have not assigned core,"
+				       " falling back to round robin\n");
+			core = spdk_nvmf_get_core_rr();
+		}
+		break;
 	case CONNECT_SCHED_ROUND_ROBIN:
 	default:
 		core = spdk_nvmf_get_core_rr();
