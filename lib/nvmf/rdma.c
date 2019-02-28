@@ -435,6 +435,7 @@ struct spdk_nvmf_rdma_transport {
 
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
 	uint32_t		offload_cores_count;
+	uint32_t		next_core_index;
 #endif
 	TAILQ_HEAD(, spdk_nvmf_rdma_device)	devices;
 	TAILQ_HEAD(, spdk_nvmf_rdma_port)	ports;
@@ -3698,6 +3699,24 @@ spdk_nvmf_rdma_qpair_get_listen_trid(struct spdk_nvmf_qpair *qpair,
 	return spdk_nvmf_rdma_trid_from_cm_id(rqpair->listen_id, trid, false);
 }
 
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+static uint32_t
+spdk_nvmf_rdma_get_core_rr(struct spdk_nvmf_rdma_transport *rtransport)
+{
+	uint32_t core, i;
+
+	if ((rtransport->next_core_index >= rtransport->offload_cores_count) ||
+	    (rtransport->next_core_index >= spdk_env_get_core_count())) {
+		rtransport->next_core_index = 0;
+	}
+	for (core = spdk_env_get_first_core(), i = rtransport->next_core_index;
+	     (core != UINT32_MAX) && (i > 0);
+	     core = spdk_env_get_next_core(core), --i);
+	rtransport->next_core_index++;
+	return core;
+}
+#endif
+
 static int
 spdk_nvmf_rdma_qpair_assign_core(struct spdk_nvmf_qpair *qpair,
 				 uint32_t *core)
@@ -3706,20 +3725,22 @@ spdk_nvmf_rdma_qpair_assign_core(struct spdk_nvmf_qpair *qpair,
 	struct spdk_nvmf_rdma_qpair	*rqpair;
 	struct spdk_nvmf_subsystem	*subsystem;
 	struct spdk_nvmf_listener	*listener;
+	struct spdk_nvmf_rdma_transport *rtransport;
 
 	if (0 == qpair->qid) {
 		return -1;
 	}
 	rqpair = SPDK_CONTAINEROF(qpair, struct spdk_nvmf_rdma_qpair, qpair);
+	rtransport = SPDK_CONTAINEROF(qpair->transport, struct spdk_nvmf_rdma_transport, transport);
 
 	subsystem = spdk_nvmf_subsystem_get_first(g_spdk_nvmf_tgt);
 	while (NULL != subsystem) {
 		TAILQ_FOREACH(listener, &subsystem->listeners, link) {
 			if (0 == spdk_nvme_transport_id_compare(&rqpair->port->trid, &listener->trid)) {
 				if (subsystem->offload) {
+					*core = spdk_nvmf_rdma_get_core_rr(rtransport);
 					SPDK_NOTICELOG("Assigning offloaded IO queue pair to core %u\n",
-						       spdk_env_get_first_core());
-					*core = spdk_env_get_first_core();
+						       *core);
 					return 0;
 				} else {
 					return -1;
