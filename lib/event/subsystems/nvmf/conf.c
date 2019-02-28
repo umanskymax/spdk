@@ -546,6 +546,13 @@ spdk_nvmf_parse_transport(struct spdk_nvmf_parse_transport_ctx *ctx)
 
 	transport = spdk_nvmf_transport_create(trtype, &opts);
 	if (transport) {
+		if (!spdk_nvmf_transport_parse_config(transport, ctx->sp)) {
+			SPDK_ERRLOG("Failed to parse transport specific configuration\n");
+			spdk_nvmf_transport_destroy(transport);
+			ctx->cb_fn(-1);
+			free(ctx);
+			return;
+		}
 		spdk_nvmf_tgt_add_transport(g_spdk_nvmf_tgt, transport, spdk_nvmf_tgt_add_transport_done, ctx);
 	} else {
 		ctx->cb_fn(-1);

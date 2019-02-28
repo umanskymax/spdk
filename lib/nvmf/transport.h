@@ -39,6 +39,7 @@
 #include "spdk/config.h"
 #include "spdk/nvme.h"
 #include "spdk/nvmf.h"
+#include "spdk/conf.h"
 
 struct spdk_nvmf_transport {
 	struct spdk_nvmf_tgt			*tgt;
@@ -168,6 +169,12 @@ struct spdk_nvmf_transport_ops {
 	int (*qpair_enable_offload)(struct spdk_nvmf_qpair *qpair,
 				    struct spdk_nvmf_subsystem *subsystem);
 #endif
+
+	/**
+	 * Parse transport spcific configuration
+	 */
+	bool (*parse_config)(struct spdk_nvmf_transport *transport,
+			     struct spdk_conf_section *sp);
 };
 
 
@@ -212,6 +219,9 @@ int spdk_nvmf_transport_qpair_assign_core(struct spdk_nvmf_qpair *qpair,
 
 bool spdk_nvmf_transport_opts_init(enum spdk_nvme_transport_type type,
 				   struct spdk_nvmf_transport_opts *opts);
+
+bool spdk_nvmf_transport_parse_config(struct spdk_nvmf_transport *transport,
+				      struct spdk_conf_section *sp);
 
 extern const struct spdk_nvmf_transport_ops spdk_nvmf_transport_rdma;
 

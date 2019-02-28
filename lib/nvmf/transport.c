@@ -247,3 +247,13 @@ spdk_nvmf_transport_opts_init(enum spdk_nvme_transport_type type,
 	ops->opts_init(opts);
 	return true;
 }
+
+bool spdk_nvmf_transport_parse_config(struct spdk_nvmf_transport *transport,
+				      struct spdk_conf_section *sp)
+{
+	if (transport->ops->parse_config) {
+		return transport->ops->parse_config(transport, sp);
+	}
+	return true;
+
+}
