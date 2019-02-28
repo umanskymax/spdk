@@ -3088,6 +3088,32 @@ spdk_nvmf_rdma_create_poller(struct spdk_nvmf_transport *transport,
 	return poller;
 }
 
+#ifdef SPDK_CONFIG_NVMF_OFFLOAD
+static bool
+spdk_nvmf_rdma_create_offload_pollers(struct spdk_nvmf_transport *transport,
+				      struct spdk_nvmf_rdma_poll_group *rgroup,
+				      struct spdk_nvmf_rdma_device *device)
+{
+	struct spdk_nvmf_subsystem		*subsystem;
+	struct spdk_nvmf_rdma_poller		*poller;
+
+	subsystem = spdk_nvmf_subsystem_get_first(g_spdk_nvmf_tgt);
+	while (NULL != subsystem) {
+		if (subsystem->offload) {
+			poller = spdk_nvmf_rdma_create_poller(transport, rgroup, device, subsystem);
+			if (poller == NULL) {
+				return false;
+			}
+			SPDK_NOTICELOG("Created offload poller for subsystem %s on core %u\n",
+				       subsystem->subnqn,
+				       spdk_env_get_current_core());
+		}
+		subsystem = spdk_nvmf_subsystem_get_next(subsystem);
+	}
+	return true;
+}
+#endif
+
 static struct spdk_nvmf_transport_poll_group *
 spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 {
@@ -3095,9 +3121,6 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 	struct spdk_nvmf_rdma_poll_group	*rgroup;
 	struct spdk_nvmf_rdma_poller		*poller;
 	struct spdk_nvmf_rdma_device		*device;
-#ifdef SPDK_CONFIG_NVMF_OFFLOAD
-	struct spdk_nvmf_subsystem              *subsystem;
-#endif
 
 	rtransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_rdma_transport, transport);
 
@@ -3117,18 +3140,12 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 			return NULL;
 		}
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
-		subsystem = spdk_nvmf_subsystem_get_first(g_spdk_nvmf_tgt);
-		while (NULL != subsystem) {
-			if (subsystem->offload) {
-				poller = spdk_nvmf_rdma_create_poller(transport, rgroup, device, subsystem);
-				if (poller == NULL) {
-					spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
-					pthread_mutex_unlock(&rtransport->lock);
-					return NULL;
-				}
-				SPDK_NOTICELOG("Created offload poller for subsystem %s\n", subsystem->subnqn);
+		if (spdk_env_get_current_core() == spdk_env_get_first_core()) {
+			if (!spdk_nvmf_rdma_create_offload_pollers(transport, rgroup, device)) {
+				spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
+				pthread_mutex_unlock(&rtransport->lock);
+				return NULL;
 			}
-			subsystem = spdk_nvmf_subsystem_get_next(subsystem);
 		}
 #endif
 	}
