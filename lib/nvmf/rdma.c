@@ -74,6 +74,9 @@
 #define NVMF_DATA_BUFFER_ALIGNMENT	(1 << SHIFT_4KB)
 #define NVMF_DATA_BUFFER_MASK		(NVMF_DATA_BUFFER_ALIGNMENT - 1)
 
+#define DEFAULT_STAGING_BUFFER_SIZE_MB 512
+#define STAGING_BUFFER_ALIGN (1ULL << 21)
+
 enum spdk_nvmf_rdma_request_state {
 	/* The request is not currently in use */
 	RDMA_REQUEST_STATE_FREE = 0,
@@ -436,6 +439,7 @@ struct spdk_nvmf_rdma_transport {
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
 	uint32_t		offload_cores_count;
 	uint32_t		next_core_index;
+	uint64_t		staging_buffer_size;
 #endif
 	TAILQ_HEAD(, spdk_nvmf_rdma_device)	devices;
 	TAILQ_HEAD(, spdk_nvmf_rdma_port)	ports;
@@ -2853,6 +2857,7 @@ spdk_nvmf_rdma_create_poller(struct spdk_nvmf_transport *transport,
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
 	struct ibv_srq_init_attr_ex		srq_init_attr_ex;
 	struct mlx5dv_srq_init_attr		mlx5_attr = {};
+	struct spdk_nvmf_rdma_transport	*rtransport;
 #endif
 	struct spdk_nvmf_rdma_recv		*rdma_recv;
 	struct spdk_nvmf_rdma_request		*rdma_req;
@@ -2871,6 +2876,8 @@ spdk_nvmf_rdma_create_poller(struct spdk_nvmf_transport *transport,
 	TAILQ_INIT(&poller->qpairs);
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
 	TAILQ_INIT(&poller->offload_ctrlrs);
+
+	rtransport = SPDK_CONTAINEROF(transport, struct spdk_nvmf_rdma_transport, transport);
 #endif
 
 	poller->cq = ibv_create_cq(device->context, NVMF_RDMA_CQ_SIZE, poller, NULL, 0);
@@ -2892,10 +2899,8 @@ spdk_nvmf_rdma_create_poller(struct spdk_nvmf_transport *transport,
 	if (subsystem && subsystem->offload) {
 		/* @todo: it should be checked somewhere that device supports offload */
 		/* @todo: staging buffer length shall be configurable or calculated somehow */
-#define DEFAULT_STAGING_BUFFER_LENGTH 512*1024*1024
 		/* Align staging buffer pages to 2M */
-#define STAGING_BUFFER_ALIGN (1ULL << 21)
-		poller->staging_buf = spdk_dma_zmalloc(DEFAULT_STAGING_BUFFER_LENGTH,
+		poller->staging_buf = spdk_dma_zmalloc(rtransport->staging_buffer_size,
 						       STAGING_BUFFER_ALIGN,
 						       NULL);
 		if (!poller->staging_buf) {
@@ -2906,7 +2911,7 @@ spdk_nvmf_rdma_create_poller(struct spdk_nvmf_transport *transport,
 		/* @todo: check if access rights are correct */
 		poller->staging_buf_mr = ibv_reg_mr(device->pd,
 						    poller->staging_buf,
-						    DEFAULT_STAGING_BUFFER_LENGTH,
+						    rtransport->staging_buffer_size,
 						    IBV_ACCESS_LOCAL_WRITE);
 		if (!poller->staging_buf_mr) {
 			SPDK_ERRLOG("Failed to register staging buffer memory region\n");
@@ -2934,7 +2939,7 @@ spdk_nvmf_rdma_create_poller(struct spdk_nvmf_transport *transport,
 		mlx5_attr.nvmf_attr.nvme_queue_depth = transport->opts.max_queue_depth;
 		mlx5_attr.nvmf_attr.staging_buf.mr = poller->staging_buf_mr;
 		mlx5_attr.nvmf_attr.staging_buf.addr = poller->staging_buf;
-		mlx5_attr.nvmf_attr.staging_buf.len = DEFAULT_STAGING_BUFFER_LENGTH;
+		mlx5_attr.nvmf_attr.staging_buf.len = rtransport->staging_buffer_size;
 		mlx5_attr.comp_mask = MLX5DV_SRQ_INIT_ATTR_MASK_NVMF;
 		poller->srq = mlx5dv_create_srq(device->context, &srq_init_attr_ex, &mlx5_attr);
 	} else {
@@ -4034,6 +4039,13 @@ spdk_nvmf_rdma_parse_config(struct spdk_nvmf_transport *transport,
 							   spdk_max(1, val));
 		SPDK_NOTICELOG("Offload cores count is %u\n", rtransport->offload_cores_count);
 	}
+	val = spdk_conf_section_get_intval(sp, "OffloadStagingBufferMB");
+	if (val >= 0) {
+		rtransport->staging_buffer_size = val * 1024 * 1024;
+	} else {
+		rtransport->staging_buffer_size = DEFAULT_STAGING_BUFFER_SIZE_MB * 1024 * 1024;
+	}
+	SPDK_NOTICELOG("Offload staging buffer size is %lu bytes\n", rtransport->staging_buffer_size);
 #endif
 	return true;
 }
