@@ -50,6 +50,10 @@
 #include "spdk/util.h"
 
 #include "spdk_internal/nvme_tcp.h"
+#ifdef CONFIG_VMA_ZCOPY
+#warning "Use VMA zero copy"
+#include <mellanox/vma_extra.h>
+#endif
 
 #define NVME_TCP_RW_BUFFER_SIZE 131072
 
@@ -99,6 +103,16 @@ struct nvme_tcp_qpair {
 	uint8_t					cpda;
 
 	enum nvme_tcp_qpair_state		state;
+#ifdef CONFIG_VMA_ZCOPY
+#define PACKETS_BUF_SIZE 64
+  char packets_buf[PACKETS_BUF_SIZE];
+  struct vma_packets_t *packets;
+  struct vma_packet_t *cur_packet;
+  size_t cur_packet_idx;
+  size_t cur_iov_idx;
+  size_t cur_offset;
+  struct vma_api_t *vma_api;
+#endif
 };
 
 enum nvme_tcp_req_state {
@@ -1428,6 +1442,145 @@ nvme_tcp_pdu_psh_handle(struct nvme_tcp_qpair *tqpair, uint32_t *reaped)
 
 }
 
+#ifdef CONFIG_VMA_ZCOPY
+static inline struct vma_packet_t *
+next_packet(struct vma_packet_t *packet)
+{
+  return (struct vma_packet_t *)((char *)packet +
+				 sizeof(struct vma_packet_t) +
+				 packet->sz_iov * sizeof(struct iovec));
+}
+
+static int
+nvme_tcp_read_data_packets(struct nvme_tcp_qpair *tqpair,
+			   struct spdk_sock *sock, int bytes,
+			   void *buf, bool copy)
+{
+  size_t len = 0;
+  int ret;
+
+  for (; tqpair->cur_packet_idx < tqpair->packets->n_packet_num;
+       tqpair->cur_packet_idx++, tqpair->cur_packet = next_packet(tqpair->cur_packet)) {
+    struct vma_packet_t *pkt = tqpair->cur_packet;
+
+    for (; tqpair->cur_iov_idx < pkt->sz_iov; tqpair->cur_iov_idx++) {
+      struct iovec *iov = &pkt->iov[tqpair->cur_iov_idx];
+
+      if ((iov->iov_len - tqpair->cur_offset) >= (bytes - len)) {
+	if (copy)
+	  memcpy(buf + len, iov->iov_base + tqpair->cur_offset, bytes - len);
+	tqpair->cur_offset += bytes - len;
+	len += bytes - len;
+	SPDK_DEBUGLOG(SPDK_LOG_NVME, "Read out %lu bytes\n", len);
+	/* SPDK_NOTICELOG("Read out %lu bytes, copy %d\n", len, copy); */
+	return len;
+      } else {
+	if (copy)
+	  memcpy(buf + len, iov->iov_base + tqpair->cur_offset, iov->iov_len - tqpair->cur_offset);
+	len += iov->iov_len - tqpair->cur_offset;
+	tqpair->cur_offset = 0;
+      }
+    }
+    tqpair->cur_iov_idx = 0;
+  }
+
+  ret = tqpair->vma_api->free_packets(spdk_sock_get_fd(sock),
+				      tqpair->packets->pkts, tqpair->packets->n_packet_num);
+  if (ret < 0) {
+    SPDK_WARNLOG("Failed to free VMA zcopy packets: errno %d\n", errno);
+    return ret;
+  }
+  /* SPDK_NOTICELOG("Free %d packets, QP %d, socket %d\n", */
+  /* 		 tqpair->packets->n_packet_num, tqpair->qpair.id, spdk_sock_get_fd(sock)); */
+  tqpair->packets = NULL;
+  SPDK_DEBUGLOG(SPDK_LOG_NVME, "Read out %lu bytes\n", len);
+  /* SPDK_NOTICELOG("Read out %lu bytes, copy %d\n", len, copy); */
+  return len;
+}
+
+static int
+nvme_tcp_read_data_zcopy(struct nvme_tcp_qpair *tqpair,
+			 int bytes, void *buf, bool copy)
+{
+	int ret;
+	int flags = 0;
+	struct spdk_sock *sock = tqpair->sock;
+
+	assert(sock != NULL);
+	if (bytes == 0) {
+		return 0;
+	}
+
+	/* First check already received packets */
+	if (tqpair->packets) {
+	  ret = nvme_tcp_read_data_packets(tqpair, sock, bytes, buf, copy);
+	  if (ret != 0) {
+	    return ret;
+	  }
+	}
+
+	ret = tqpair->vma_api->recvfrom_zcopy(spdk_sock_get_fd(sock),
+					      tqpair->packets_buf, PACKETS_BUF_SIZE,
+					      &flags, NULL, NULL);
+	if (ret > 0) {
+	  if (flags & MSG_VMA_ZCOPY) {
+	    size_t i, j;
+	    size_t len = 0;
+	    struct vma_packet_t *pkt;
+
+	    tqpair->packets = (struct vma_packets_t *)tqpair->packets_buf;
+	    tqpair->cur_packet = tqpair->packets->pkts;
+	    tqpair->cur_packet_idx = 0;
+	    tqpair->cur_iov_idx = 0;
+	    tqpair->cur_offset = 0;
+
+	    SPDK_DEBUGLOG(SPDK_LOG_NVME, "Received %lu packets\n", tqpair->packets->n_packet_num);
+	    for (i = 0, pkt = tqpair->packets->pkts;
+		 i < tqpair->packets->n_packet_num;
+		 ++i, pkt = next_packet(pkt)) {
+	      SPDK_DEBUGLOG(SPDK_LOG_NVME, "Packet has %lu iovs\n", pkt->sz_iov);
+	      /* SPDK_NOTICELOG("Packet %lu has %lu iovs\n", i, pkt->sz_iov); */
+	      for (j = 0; j < pkt->sz_iov; ++j) {
+		len += pkt->iov[j].iov_len;
+	      }
+	    }
+	    SPDK_DEBUGLOG(SPDK_LOG_NVME, "Received zero-copy %lu bytes\n", len);
+	    /* SPDK_NOTICELOG("Received zero-copy %lu bytes in %lu packets, ret %d on QP %d, socket %d\n", */
+	    /* 		   len, tqpair->packets->n_packet_num, ret, tqpair->qpair.id, spdk_sock_get_fd(sock)); */
+	    return nvme_tcp_read_data_packets(tqpair, sock, bytes, buf, copy);
+	  } else {	
+	    SPDK_WARNLOG("Zero-copy was not performed, %d bytes\n", ret);
+	    memcpy(buf, tqpair->packets_buf, ret);
+	    return ret;
+	  }
+	}
+
+	if (ret < 0) {
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {
+			return 0;
+		}
+
+		/* For connect reset issue, do not output error log */
+		if (errno == ECONNRESET) {
+			SPDK_NOTICELOG("spdk_sock_recv() failed, errno %d: %s\n",
+				       errno, spdk_strerror(errno));
+		} else {
+			SPDK_ERRLOG("spdk_sock_recv() failed, errno %d: %s\n",
+				    errno, spdk_strerror(errno));
+		}
+	}
+
+	return NVME_TCP_CONNECTION_FATAL;
+}
+#else
+static inline int
+nvme_tcp_read_data_zcopy(struct nvme_tcp_qpair *tqpair,
+			 int bytes, void *buf, bool copy)
+{
+  return nvme_tcp_read_data(tqpair->sock, bytes, buf);
+}
+#endif
+
 static int
 nvme_tcp_read_pdu(struct nvme_tcp_qpair *tqpair, uint32_t *reaped)
 {
@@ -1450,9 +1603,10 @@ nvme_tcp_read_pdu(struct nvme_tcp_qpair *tqpair, uint32_t *reaped)
 		case NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_CH:
 			pdu = &tqpair->recv_pdu;
 			if (pdu->ch_valid_bytes < sizeof(struct spdk_nvme_tcp_common_pdu_hdr)) {
-				rc = nvme_tcp_read_data(tqpair->sock,
-							sizeof(struct spdk_nvme_tcp_common_pdu_hdr) - pdu->ch_valid_bytes,
-							(uint8_t *)&pdu->hdr.common + pdu->ch_valid_bytes);
+				rc = nvme_tcp_read_data_zcopy(tqpair,
+							      sizeof(struct spdk_nvme_tcp_common_pdu_hdr) - pdu->ch_valid_bytes,
+							      (uint8_t *)&pdu->hdr.common + pdu->ch_valid_bytes,
+							      true);
 				if (rc < 0) {
 					nvme_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_ERROR);
 					break;
@@ -1492,9 +1646,10 @@ nvme_tcp_read_pdu(struct nvme_tcp_qpair *tqpair, uint32_t *reaped)
 			psh_len -= sizeof(struct spdk_nvme_tcp_common_pdu_hdr);
 			/* The following will read psh + hdgest (if possbile) + padding (if posssible) */
 			if (pdu->psh_valid_bytes < psh_len) {
-				rc = nvme_tcp_read_data(tqpair->sock,
-							psh_len - pdu->psh_valid_bytes,
-							(uint8_t *)&pdu->hdr.raw + sizeof(struct spdk_nvme_tcp_common_pdu_hdr) + pdu->psh_valid_bytes);
+				rc = nvme_tcp_read_data_zcopy(tqpair,
+							      psh_len - pdu->psh_valid_bytes,
+							      (uint8_t *)&pdu->hdr.raw + sizeof(struct spdk_nvme_tcp_common_pdu_hdr) + pdu->psh_valid_bytes,
+							      true);
 				if (rc < 0) {
 					nvme_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_ERROR);
 					break;
@@ -1519,14 +1674,16 @@ nvme_tcp_read_pdu(struct nvme_tcp_qpair *tqpair, uint32_t *reaped)
 			data_len = pdu->data_len;
 			/* data len */
 			if (pdu->data_valid_bytes < data_len) {
-				rc = nvme_tcp_read_data(tqpair->sock,
+				rc = nvme_tcp_read_data_zcopy(tqpair,
 							data_len - pdu->data_valid_bytes,
-							(uint8_t *)pdu->data + pdu->data_valid_bytes);
+							(uint8_t *)pdu->data + pdu->data_valid_bytes,
+							(0 != tqpair->qpair.id &&
+							 pdu->hdr.common.pdu_type == SPDK_NVME_TCP_PDU_TYPE_C2H_DATA) ?
+							false : true);
 				if (rc < 0) {
 					nvme_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_ERROR);
 					break;
 				}
-
 				pdu->data_valid_bytes += rc;
 				if (pdu->data_valid_bytes < data_len) {
 					return NVME_TCP_PDU_IN_PROGRESS;
@@ -1536,9 +1693,10 @@ nvme_tcp_read_pdu(struct nvme_tcp_qpair *tqpair, uint32_t *reaped)
 			/* data digest */
 			if ((pdu->hdr.common.pdu_type == SPDK_NVME_TCP_PDU_TYPE_C2H_DATA) &&
 			    tqpair->host_ddgst_enable && (pdu->ddigest_valid_bytes < SPDK_NVME_TCP_DIGEST_LEN)) {
-				rc = nvme_tcp_read_data(tqpair->sock,
-							SPDK_NVME_TCP_DIGEST_LEN - pdu->ddigest_valid_bytes,
-							pdu->data_digest + pdu->ddigest_valid_bytes);
+				rc = nvme_tcp_read_data_zcopy(tqpair,
+							      SPDK_NVME_TCP_DIGEST_LEN - pdu->ddigest_valid_bytes,
+							      pdu->data_digest + pdu->ddigest_valid_bytes,
+							      true);
 				if (rc < 0) {
 					nvme_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_ERROR);
 					break;
@@ -1774,7 +1932,14 @@ nvme_tcp_ctrlr_create_qpair(struct spdk_nvme_ctrlr *ctrlr,
 		SPDK_ERRLOG("failed to get create tqpair\n");
 		return NULL;
 	}
-
+#ifdef CONFIG_VMA_ZCOPY
+	tqpair->vma_api = vma_get_api();
+	if (NULL == tqpair->vma_api) {
+	  SPDK_ERRLOG("Failed to get VMA API\n");
+	  free(tqpair);
+	  return NULL;
+	}
+#endif
 	tqpair->num_entries = qsize;
 	qpair = &tqpair->qpair;
 

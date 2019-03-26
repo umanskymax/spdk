@@ -241,6 +241,8 @@ int spdk_sock_group_poll_count(struct spdk_sock_group *group, int max_events);
  */
 int spdk_sock_group_close(struct spdk_sock_group **group);
 
+int spdk_sock_get_fd(struct spdk_sock *sock);
+
 #ifdef __cplusplus
 }
 #endif

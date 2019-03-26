@@ -580,6 +580,13 @@ spdk_posix_sock_group_impl_close(struct spdk_sock_group_impl *_group)
 	return close(group->fd);
 }
 
+static int
+spdk_posix_sock_get_fd(struct spdk_sock *_sock)
+{
+	struct spdk_posix_sock *sock = __posix_sock(_sock);
+	return sock->fd;
+}
+
 static struct spdk_net_impl g_posix_net_impl = {
 	.name		= "posix",
 	.getaddr	= spdk_posix_sock_getaddr,
@@ -599,6 +606,7 @@ static struct spdk_net_impl g_posix_net_impl = {
 	.group_impl_remove_sock = spdk_posix_sock_group_impl_remove_sock,
 	.group_impl_poll	= spdk_posix_sock_group_impl_poll,
 	.group_impl_close	= spdk_posix_sock_group_impl_close,
+	.get_fd		= spdk_posix_sock_get_fd,
 };
 
 SPDK_NET_IMPL_REGISTER(posix, &g_posix_net_impl);

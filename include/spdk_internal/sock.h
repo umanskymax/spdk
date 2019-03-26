@@ -90,6 +90,7 @@ struct spdk_net_impl {
 	int (*group_impl_poll)(struct spdk_sock_group_impl *group, int max_events,
 			       struct spdk_sock **socks);
 	int (*group_impl_close)(struct spdk_sock_group_impl *group);
+	int (*get_fd)(struct spdk_sock *sock);
 
 	STAILQ_ENTRY(spdk_net_impl) link;
 };

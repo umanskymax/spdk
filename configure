@@ -197,6 +197,11 @@ for i in "$@"; do
 		--without-rdma)
 			CONFIG[RDMA]=n
 			;;
+		--with-vma=*)
+			check_dir "$i"
+			CONFIG[VMA]=y
+			CONFIG[VMA_DIR]=$(readlink -f ${i#*=})
+			;;
 		--with-shared)
 			CONFIG[SHARED]=y
 			;;

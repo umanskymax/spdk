@@ -58,4 +58,7 @@ endif
 endif
 endif
 
+ifeq ($(CONFIG_VMA),y)
+CFLAGS += -DCONFIG_VMA_ZCOPY -I$(CONFIG_VMA_DIR)
+endif
 include $(SPDK_ROOT_DIR)/mk/spdk.lib.mk

@@ -362,6 +362,12 @@ spdk_sock_group_close(struct spdk_sock_group **group)
 	return 0;
 }
 
+int
+spdk_sock_get_fd(struct spdk_sock *sock)
+{
+	return sock->net_impl->get_fd(sock);
+}
+
 void
 spdk_net_impl_register(struct spdk_net_impl *impl)
 {
