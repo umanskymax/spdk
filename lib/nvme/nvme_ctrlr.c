@@ -1181,10 +1181,30 @@ nvme_ctrlr_identify_id_desc_namespaces(struct spdk_nvme_ctrlr *ctrlr)
 static void
 nvme_ctrlr_set_num_queues_done(void *arg, const struct spdk_nvme_cpl *cpl)
 {
+	uint32_t cq_allocated, sq_allocated, min_allocated;
 	struct spdk_nvme_ctrlr *ctrlr = (struct spdk_nvme_ctrlr *)arg;
 
 	if (spdk_nvme_cpl_is_error(cpl)) {
 		SPDK_ERRLOG("Set Features - Number of Queues failed!\n");
+		/* Zero it out for now and try to update with Get Features command */
+		ctrlr->opts.num_io_queues = 0;
+	} else {
+		/*
+		 * Data in cdw0 is 0-based.
+		 * Lower 16-bits indicate number of submission queues allocated.
+		 * Upper 16-bits indicate number of completion queues allocated.
+		 */
+		sq_allocated = (cpl->cdw0 & 0xFFFF) + 1;
+		cq_allocated = (cpl->cdw0 >> 16) + 1;
+
+		/*
+		 * For 1:1 queue mapping, set number of allocated queues to be minimum of
+		 * submission and completion queues.
+		 */
+		min_allocated = spdk_min(sq_allocated, cq_allocated);
+
+		/* Set number of queues to be minimum of requested and actually allocated. */
+		ctrlr->opts.num_io_queues = spdk_min(min_allocated, ctrlr->opts.num_io_queues);
 	}
 	nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_GET_NUM_QUEUES,
 			     ctrlr->opts.admin_timeout_ms);
@@ -1224,8 +1244,10 @@ nvme_ctrlr_get_num_queues_done(void *arg, const struct spdk_nvme_cpl *cpl)
 	struct spdk_nvme_ctrlr *ctrlr = (struct spdk_nvme_ctrlr *)arg;
 
 	if (spdk_nvme_cpl_is_error(cpl)) {
-		SPDK_ERRLOG("Get Features - Number of Queues failed!\n");
-		ctrlr->opts.num_io_queues = 0;
+		SPDK_WARNLOG("Get Features - Number of Queues failed!\n");
+		/* Ignore this error since we have likely got the
+		 * number in Set Features completion. If not, it will
+		 * be zero anyway. */
 	} else {
 		/*
 		 * Data in cdw0 is 0-based.
