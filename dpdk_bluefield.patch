@@ -1,0 +1,12 @@
+diff --git a/config/common_armv8a_linuxapp b/config/common_armv8a_linuxapp
+index 111c005..1c9c0b3 100644
+--- a/config/common_armv8a_linuxapp
++++ b/config/common_armv8a_linuxapp
+@@ -3,6 +3,7 @@
+ #
+ 
+ #include "common_linuxapp"
++#include "common_spdk"
+ 
+ CONFIG_RTE_MACHINE="armv8a"
+ 
