@@ -860,7 +860,7 @@ out:
 
 static int
 multipath_add_path_bdev(struct vbdev_multipath *mp_node,
-			struct spdk_bdev *bdev, struct spdk_bdev_desc **dsp, bool vbdev_exists)
+			struct spdk_bdev *bdev, struct spdk_bdev_desc **dsp)
 {
 	int rc;
 
@@ -883,21 +883,6 @@ multipath_add_path_bdev(struct vbdev_multipath *mp_node,
 	SPDK_DEBUGLOG(SPDK_LOG_VBDEV_MULTIPATH, "vbdev %s: bdev %s claimed.\n",
 		      spdk_bdev_get_name(&mp_node->mp_bdev), spdk_bdev_get_name(bdev));
 
-	/* Otherwise base bdev will be added during vbdev registration */
-	if (vbdev_exists) {
-#if 0
-		rc = spdk_vbdev_add_base_bdev(&mp_node->mp_bdev, bdev);
-		if (rc) {
-			SPDK_ERRLOG("vbdev %s: could not add bdev %s.\n",
-				    spdk_bdev_get_name(&mp_node->mp_bdev), spdk_bdev_get_name(bdev));
-			goto out;
-		}
-#endif
-		SPDK_DEBUGLOG(SPDK_LOG_VBDEV_MULTIPATH,
-			      "Registered bdev %s with multipath vbdev %s\n",
-			      spdk_bdev_get_name(bdev), spdk_bdev_get_name(&mp_node->mp_bdev));
-	}
-
 	mp_node->base_desc_status[dsp - mp_node->base_desc] = MP_DESC_LIVE;
 	SPDK_DEBUGLOG(SPDK_LOG_VBDEV_MULTIPATH, "Added bdev %s to mp vbdev %s\n",
 		      spdk_bdev_get_name(bdev), spdk_bdev_get_name(&mp_node->mp_bdev));
@@ -917,15 +902,11 @@ multipath_register_vbdev(const char *vbdev_name)
 	struct vbdev_multipath_def *def =  multipath_lookup_vbdev_def(vbdev_name);
 	struct vbdev_multipath *mp_node = multipath_lookup_vbdev(vbdev_name);
 	bool vbdev_registered = (mp_node != NULL);
-	struct spdk_bdev *bdevs[MULTIPATH_MAX_PATHS] = { NULL, };
-	size_t total_bdevs = 0, active_bdevs = 0;
 	int rc = 0;
 
 	multipath_for_each_name(bdev_name, def->bdev_names) {
 		struct spdk_bdev *bdev = spdk_bdev_get_by_name(*bdev_name);
 
-		bdevs[total_bdevs] = bdev;
-		total_bdevs ++;
 		if (NULL == bdev) {
 			continue;
 		}
@@ -959,7 +940,6 @@ multipath_register_vbdev(const char *vbdev_name)
 
 			TAILQ_INSERT_TAIL(&g_mp_nodes, mp_node, link);
 		}
-		active_bdevs ++;
 
 		if (mp_node->base_desc[bdev_name - def->bdev_names]) {
 			SPDK_DEBUGLOG(SPDK_LOG_VBDEV_MULTIPATH,
@@ -969,7 +949,7 @@ multipath_register_vbdev(const char *vbdev_name)
 		}
 
 		struct spdk_bdev_desc **desc = &mp_node->base_desc[bdev_name - def->bdev_names];
-		rc = multipath_add_path_bdev(mp_node, bdev, desc, vbdev_registered);
+		rc = multipath_add_path_bdev(mp_node, bdev, desc);
 		if (rc) {
 			SPDK_ERRLOG("vbdev %s: could not add bdev %s.\n",
 				    vbdev_name, *bdev_name);
@@ -986,7 +966,7 @@ multipath_register_vbdev(const char *vbdev_name)
 		SPDK_DEBUGLOG(SPDK_LOG_VBDEV_MULTIPATH,
 			      "io_device for %s created at: 0x%p\n", vbdev_name, mp_node);
 
-		rc = spdk_vbdev_register(&mp_node->mp_bdev, bdevs, active_bdevs);
+		rc = spdk_bdev_register(&mp_node->mp_bdev);
 		if (rc) {
 			SPDK_ERRLOG("could not register multipath vbdev %s.\n", vbdev_name);
 			goto unreg_iodev;
@@ -1067,7 +1047,7 @@ static int
 multipath_path_up(struct vbdev_multipath *mp_node,
 		  struct spdk_bdev *bdev, struct spdk_bdev_desc **desc)
 {
-	int rc = multipath_add_path_bdev(mp_node, bdev, desc, true);
+	int rc = multipath_add_path_bdev(mp_node, bdev, desc);
 	if (rc) {
 		goto out;
 	}
