@@ -2068,10 +2068,20 @@ spdk_nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 
 			device->context = mlx5dv_open_device(dev_list[i], &mlx5dv_attrs);
 			if (device->context == NULL) {
-				rc = -errno;
-				SPDK_ERRLOG("mlx5dv_open_device() failed: %s (%d)\n", spdk_strerror(errno), errno);
-				free(device);
-				break;
+				/* Devx support is not always correctly detected.
+				 * Fallback to ibv_open_device.
+				 */
+				SPDK_WARNLOG("mlx5dv_open_device() failed for device %s: %s (%d)\n",
+					     dev_list[i]->name, spdk_strerror(errno), errno);
+				device->is_mlx5dv_device = false;
+				device->context = ibv_open_device(dev_list[i]);
+				if (device->context == NULL) {
+					rc = -errno;
+					SPDK_ERRLOG("ibv_open_device() failed: %s (%d)\n",
+						    spdk_strerror(errno), errno);
+					free(device);
+					break;
+				}
 			}
 		}
 #endif
