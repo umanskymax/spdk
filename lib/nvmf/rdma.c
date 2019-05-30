@@ -4051,9 +4051,9 @@ spdk_nvmf_rdma_parse_config(struct spdk_nvmf_transport *transport,
 	}
 	val = spdk_conf_section_get_intval(sp, "OffloadStagingBufferMB");
 	if (val >= 0) {
-		rtransport->staging_buffer_size = val * 1024 * 1024;
+		rtransport->staging_buffer_size = val * 1024 * 1024ULL;
 	} else {
-		rtransport->staging_buffer_size = DEFAULT_STAGING_BUFFER_SIZE_MB * 1024 * 1024;
+		rtransport->staging_buffer_size = DEFAULT_STAGING_BUFFER_SIZE_MB * 1024 * 1024ULL;
 	}
 	SPDK_NOTICELOG("Offload staging buffer size is %lu bytes\n", rtransport->staging_buffer_size);
 #endif
