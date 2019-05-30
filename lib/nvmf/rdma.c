@@ -3162,14 +3162,16 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 			return NULL;
 		}
 #ifdef SPDK_CONFIG_NVMF_OFFLOAD
-		for (core = spdk_env_get_first_core(), i = rtransport->offload_cores_count - 1;
-		     (core != spdk_env_get_current_core()) && (core != UINT32_MAX) && (i > 0);
-		     core = spdk_env_get_next_core(core), --i);
-		if (spdk_env_get_current_core() == core) {
-			if (!spdk_nvmf_rdma_create_offload_pollers(transport, rgroup, device)) {
-				spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
-				pthread_mutex_unlock(&rtransport->lock);
-				return NULL;
+		if (device->is_offload_supported) {
+			for (core = spdk_env_get_first_core(), i = rtransport->offload_cores_count - 1;
+			     (core != spdk_env_get_current_core()) && (core != UINT32_MAX) && (i > 0);
+			     core = spdk_env_get_next_core(core), --i);
+			if (spdk_env_get_current_core() == core) {
+				if (!spdk_nvmf_rdma_create_offload_pollers(transport, rgroup, device)) {
+					spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
+					pthread_mutex_unlock(&rtransport->lock);
+					return NULL;
+				}
 			}
 		}
 #endif
