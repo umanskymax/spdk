@@ -51,6 +51,7 @@
 #include "spdk/string.h"
 #include "spdk/endian.h"
 #include "spdk/likely.h"
+#include "spdk/ibv.h"
 
 #include "nvme_internal.h"
 
@@ -101,6 +102,8 @@ struct nvme_rdma_qpair {
 	uint32_t				max_send_sge;
 
 	uint32_t				max_recv_sge;
+
+	uint32_t				max_inline_size;
 
 	uint16_t				num_entries;
 
@@ -252,6 +255,7 @@ static int
 nvme_rdma_qpair_init(struct nvme_rdma_qpair *rqpair)
 {
 	int			rc;
+	uint32_t	max_inline_size;
 	struct ibv_qp_init_attr	attr;
 	struct ibv_device_attr	dev_attr;
 	struct nvme_rdma_ctrlr	*rctrlr;
@@ -275,6 +279,9 @@ nvme_rdma_qpair_init(struct nvme_rdma_qpair *rqpair)
 		rctrlr->pd = NULL;
 	}
 
+	max_inline_size = spdk_ibv_get_device_max_inline_size(rqpair->cm_id->verbs, rqpair->cm_id->pd);
+	max_inline_size = spdk_min(max_inline_size, SPDK_IBV_PREFERRED_INLINE_SIZE);
+
 	memset(&attr, 0, sizeof(struct ibv_qp_init_attr));
 	attr.qp_type		= IBV_QPT_RC;
 	attr.send_cq		= rqpair->cq;
@@ -283,6 +290,7 @@ nvme_rdma_qpair_init(struct nvme_rdma_qpair *rqpair)
 	attr.cap.max_recv_wr	= rqpair->num_entries; /* RECV operations */
 	attr.cap.max_send_sge	= spdk_min(NVME_RDMA_DEFAULT_TX_SGE, dev_attr.max_sge);
 	attr.cap.max_recv_sge	= spdk_min(NVME_RDMA_DEFAULT_RX_SGE, dev_attr.max_sge);
+	attr.cap.max_inline_data = max_inline_size;
 
 	rc = rdma_create_qp(rqpair->cm_id, rctrlr->pd, &attr);
 
@@ -294,6 +302,8 @@ nvme_rdma_qpair_init(struct nvme_rdma_qpair *rqpair)
 	/* ibv_create_qp will change the values in attr.cap. Make sure we store the proper value. */
 	rqpair->max_send_sge = spdk_min(NVME_RDMA_DEFAULT_TX_SGE, attr.cap.max_send_sge);
 	rqpair->max_recv_sge = spdk_min(NVME_RDMA_DEFAULT_RX_SGE, attr.cap.max_recv_sge);
+
+	rqpair->max_inline_size = attr.cap.max_inline_data;
 
 	rctrlr->pd = rqpair->cm_id->qp->pd;
 
@@ -906,7 +916,7 @@ nvme_rdma_qpair_connect(struct nvme_rdma_qpair *rqpair)
  * Build SGL describing empty payload.
  */
 static int
-nvme_rdma_build_null_request(struct spdk_nvme_rdma_req *rdma_req)
+nvme_rdma_build_null_request(struct nvme_rdma_qpair* rqpair, struct spdk_nvme_rdma_req *rdma_req)
 {
 	struct nvme_request *req = rdma_req->req;
 
@@ -926,6 +936,12 @@ nvme_rdma_build_null_request(struct spdk_nvme_rdma_req *rdma_req)
 	req->cmd.dptr.sgl1.keyed.length = 0;
 	req->cmd.dptr.sgl1.keyed.key = 0;
 	req->cmd.dptr.sgl1.address = 0;
+
+	if(rdma_req->send_sgl[0].length <= rqpair->max_inline_size) {
+		rdma_req->send_wr.send_flags |= IBV_SEND_INLINE;
+	} else {
+		rdma_req->send_wr.send_flags &= ~IBV_SEND_INLINE;
+	}
 
 	return 0;
 }
@@ -988,6 +1004,8 @@ nvme_rdma_build_contig_inline_request(struct nvme_rdma_qpair *rqpair,
 	 * not get called for controllers with other values. */
 	req->cmd.dptr.sgl1.address = (uint64_t)0;
 
+	rdma_req->send_wr.send_flags &= ~IBV_SEND_INLINE;
+
 	return 0;
 }
 
@@ -1040,6 +1058,12 @@ nvme_rdma_build_contig_request(struct nvme_rdma_qpair *rqpair,
 	req->cmd.dptr.sgl1.keyed.subtype = SPDK_NVME_SGL_SUBTYPE_ADDRESS;
 	req->cmd.dptr.sgl1.keyed.length = req->payload_size;
 	req->cmd.dptr.sgl1.address = (uint64_t)payload;
+
+	if (rdma_req->send_sgl[0].length <= rqpair->max_inline_size) {
+		rdma_req->send_wr.send_flags |= IBV_SEND_INLINE;
+	} else {
+		rdma_req->send_wr.send_flags &= ~IBV_SEND_INLINE;
+	}
 
 	return 0;
 }
@@ -1148,6 +1172,12 @@ nvme_rdma_build_sgl_request(struct nvme_rdma_qpair *rqpair,
 		req->cmd.dptr.sgl1.address = (uint64_t)0;
 	}
 
+	if (rdma_req->send_sgl[0].length <= rqpair->max_inline_size) {
+		rdma_req->send_wr.send_flags |= IBV_SEND_INLINE;
+	} else {
+		rdma_req->send_wr.send_flags &= ~IBV_SEND_INLINE;
+	}
+
 	return 0;
 }
 
@@ -1221,6 +1251,8 @@ nvme_rdma_build_sgl_inline_request(struct nvme_rdma_qpair *rqpair,
 	 * not get called for controllers with other values. */
 	req->cmd.dptr.sgl1.address = (uint64_t)0;
 
+	rdma_req->send_wr.send_flags &= ~IBV_SEND_INLINE;
+
 	return 0;
 }
 
@@ -1241,7 +1273,7 @@ nvme_rdma_req_init(struct nvme_rdma_qpair *rqpair, struct nvme_request *req,
 	req->cmd.cid = rdma_req->id;
 
 	if (req->payload_size == 0) {
-		rc = nvme_rdma_build_null_request(rdma_req);
+		rc = nvme_rdma_build_null_request(rqpair, rdma_req);
 	} else if (nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_CONTIG) {
 		/*
 		 * Check if icdoff is non zero, to avoid interop conflicts with

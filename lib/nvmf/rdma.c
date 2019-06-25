@@ -48,6 +48,7 @@
 #include "spdk/string.h"
 #include "spdk/trace.h"
 #include "spdk/util.h"
+#include "spdk/ibv.h"
 
 #include "spdk_internal/log.h"
 
@@ -283,6 +284,7 @@ struct spdk_nvmf_rdma_resource_opts {
 	struct ibv_pd			*pd;
 	uint32_t			max_queue_depth;
 	uint32_t			in_capsule_data_size;
+	uint32_t			max_inline_size;
 	bool				shared;
 };
 
@@ -452,6 +454,7 @@ struct spdk_nvmf_rdma_device {
 	struct ibv_pd				*pd;
 
 	int					num_srq;
+	uint32_t			max_inline_size;
 
 	TAILQ_ENTRY(spdk_nvmf_rdma_device)	link;
 };
@@ -844,6 +847,9 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 		rdma_req->rsp.wr.next = NULL;
 		rdma_req->rsp.wr.opcode = IBV_WR_SEND;
 		rdma_req->rsp.wr.send_flags = IBV_SEND_SIGNALED;
+		if (rdma_req->rsp.sgl[0].length <= opts->max_inline_size) {
+			rdma_req->rsp.wr.send_flags |= IBV_SEND_INLINE;
+		}
 		rdma_req->rsp.wr.sg_list = rdma_req->rsp.sgl;
 		rdma_req->rsp.wr.num_sge = SPDK_COUNTOF(rdma_req->rsp.sgl);
 
@@ -988,6 +994,8 @@ spdk_nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 	ibv_init_attr.cap.max_send_sge	= spdk_min(device->attr.max_sge, NVMF_DEFAULT_TX_SGE);
 	ibv_init_attr.cap.max_recv_sge	= spdk_min(device->attr.max_sge, NVMF_DEFAULT_RX_SGE);
 
+	ibv_init_attr.cap.max_inline_data = device->max_inline_size;
+
 	if (rqpair->srq == NULL && nvmf_rdma_resize_cq(rqpair, device) < 0) {
 		SPDK_ERRLOG("Failed to resize the completion queue. Cannot initialize qpair.\n");
 		goto error;
@@ -1019,6 +1027,7 @@ spdk_nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 		opts.shared = false;
 		opts.max_queue_depth = rqpair->max_queue_depth;
 		opts.in_capsule_data_size = transport->opts.in_capsule_data_size;
+		opts.max_inline_size = device->max_inline_size;
 
 		rqpair->resources = nvmf_rdma_resources_create(&opts);
 
@@ -2284,18 +2293,15 @@ spdk_nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 		pd = NULL;
 		if (g_nvmf_hooks.get_ibv_pd) {
 			pd = g_nvmf_hooks.get_ibv_pd(NULL, device->context);
-		}
-
-		if (!g_nvmf_hooks.get_ibv_pd) {
-			device->pd = ibv_alloc_pd(device->context);
-			if (!device->pd) {
+		} else {
+			pd = ibv_alloc_pd(device->context);
+			if (!pd) {
 				SPDK_ERRLOG("Unable to allocate protection domain.\n");
 				spdk_nvmf_rdma_destroy(&rtransport->transport);
 				return NULL;
 			}
-		} else {
-			device->pd = pd;
 		}
+		device->pd = pd;
 
 		assert(device->map == NULL);
 
@@ -2305,6 +2311,9 @@ spdk_nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 			spdk_nvmf_rdma_destroy(&rtransport->transport);
 			return NULL;
 		}
+
+		device->max_inline_size = spdk_ibv_get_device_max_inline_size(device->context, device->pd);
+		device->max_inline_size = spdk_min(device->max_inline_size, SPDK_IBV_PREFERRED_INLINE_SIZE);
 
 		assert(device->map != NULL);
 		assert(device->pd != NULL);
@@ -3016,6 +3025,7 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 			opts.shared = true;
 			opts.max_queue_depth = poller->max_srq_depth;
 			opts.in_capsule_data_size = transport->opts.in_capsule_data_size;
+			opts.max_inline_size = device->max_inline_size;
 
 			poller->resources = nvmf_rdma_resources_create(&opts);
 			if (!poller->resources) {
