@@ -487,6 +487,9 @@ struct spdk_nvmf_rdma_transport {
 	TAILQ_HEAD(, spdk_nvmf_rdma_port)	ports;
 };
 
+static inline void
+spdk_nvmf_rdma_start_disconnect(struct spdk_nvmf_rdma_qpair *rqpair);
+
 static inline int
 spdk_nvmf_rdma_check_ibv_state(enum ibv_qp_state state)
 {
@@ -1095,26 +1098,6 @@ nvmf_rdma_qpair_queue_send_wrs(struct spdk_nvmf_rdma_qpair *rqpair, struct ibv_s
 	}
 }
 
-static int
-request_transfer_in(struct spdk_nvmf_request *req)
-{
-	struct spdk_nvmf_rdma_request	*rdma_req;
-	struct spdk_nvmf_qpair		*qpair;
-	struct spdk_nvmf_rdma_qpair	*rqpair;
-
-	qpair = req->qpair;
-	rdma_req = SPDK_CONTAINEROF(req, struct spdk_nvmf_rdma_request, req);
-	rqpair = SPDK_CONTAINEROF(qpair, struct spdk_nvmf_rdma_qpair, qpair);
-
-	assert(req->xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER);
-	assert(rdma_req != NULL);
-
-	nvmf_rdma_qpair_queue_send_wrs(rqpair, &rdma_req->data.wr);
-	rqpair->current_read_depth += rdma_req->num_outstanding_data_wr;
-	rqpair->current_send_depth += rdma_req->num_outstanding_data_wr;
-	return 0;
-}
-
 struct _dif_iov {
 	/* Current iovec in the iteration or creation */
 	struct iovec *iov;
@@ -1169,6 +1152,7 @@ _dif_sgl_append_split(struct _dif_sgl *dst, struct _dif_iov *src, uint32_t data_
 	while (data_len != 0) {
 		buf =  src->iov->iov_base + src->iov_offset;
 		buf_len = src->iov->iov_len - src->iov_offset;
+
 		buf_len = spdk_min(buf_len, data_len);
 
 		/* append dst */
@@ -1207,8 +1191,6 @@ spdk_rdma_dif_set_md_interleave_iovs_to_sgl(struct ibv_sge *sgls, int num_sgl,
 		struct spdk_nvmf_rdma_device *device)
 {
 	uint32_t data_block_size, data_unalign, buf_len, buf_offset, len;
-	int i;
-	uint32_t actual_buf_len = 0;
 	struct _dif_sgl sgl_out = {
 		.sgl = sgls,
 		.sglcnt = num_sgl
@@ -1228,12 +1210,9 @@ spdk_rdma_dif_set_md_interleave_iovs_to_sgl(struct ibv_sge *sgls, int num_sgl,
 	buf_len = spdk_dif_get_length_with_md(data_unalign + data_offset + data_len, ctx);
 	buf_len -= data_unalign;
 
-	for (i = 0; i < iov_in.iovcnt; ++i) {
-		actual_buf_len += iov_in.iov[i].iov_len;
-	}
-
-	if (actual_buf_len < buf_len) {
-		SPDK_ERRLOG("Buffer overflow will occur.\n");
+	if (ctx->block_size * num_sgl < buf_len) {
+		SPDK_ERRLOG("Buffer overflow will occur. Requested length %d, max available len %u\n",
+			    buf_len, ctx->block_size * num_sgl);
 		return -ERANGE;
 	}
 
@@ -1261,6 +1240,51 @@ spdk_rdma_dif_set_md_interleave_iovs_to_sgl(struct ibv_sge *sgls, int num_sgl,
 	return num_sgl - sgl_out.sglcnt;
 }
 
+static int
+request_transfer_in(struct spdk_nvmf_request *req)
+{
+	struct spdk_nvmf_rdma_request	*rdma_req;
+	struct spdk_nvmf_qpair		*qpair;
+	struct spdk_nvmf_rdma_qpair	*rqpair;
+
+	qpair = req->qpair;
+	rdma_req = SPDK_CONTAINEROF(req, struct spdk_nvmf_rdma_request, req);
+	rqpair = SPDK_CONTAINEROF(qpair, struct spdk_nvmf_rdma_qpair, qpair);
+
+	assert(req->xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER);
+	assert(rdma_req != NULL);
+
+	if (spdk_unlikely(rdma_req->dif_insert_or_strip)) {
+		uint32_t mapped_length = 0;
+
+		int blocks_result = spdk_rdma_dif_set_md_interleave_iovs_to_sgl(rdma_req->data.wr.sg_list,
+				    SPDK_NVMF_MAX_SGL_ENTRIES,
+				    req->iov, req->iovcnt, 0, rdma_req->req.length, &mapped_length, &rdma_req->dif_ctx,
+				    rqpair->port->device);
+
+		if (blocks_result > SPDK_NVMF_MAX_SGL_ENTRIES) {
+			SPDK_ERRLOG("Unimplemented case, number of IO block (%d) must not exceed %d\n", blocks_result,
+				    SPDK_NVMF_MAX_SGL_ENTRIES);
+			spdk_nvmf_rdma_start_disconnect(rqpair);
+			return -1;
+		}
+
+		SPDK_ERRLOG("split into %d parts, len %u, block size %d\n", blocks_result, rdma_req->req.length,
+			    rdma_req->dif_ctx.block_size);
+		for (uint32_t i = 0; i < blocks_result; ++i) {
+			SPDK_ERRLOG("slg[%d] base %0xhhx len %u\n", i, rdma_req->data.wr.sg_list[i].addr,
+				    rdma_req->data.wr.sg_list[i].length);
+		}
+
+
+		rdma_req->data.wr.num_sge = blocks_result;
+	}
+
+	nvmf_rdma_qpair_queue_send_wrs(rqpair, &rdma_req->data.wr);
+	rqpair->current_read_depth += rdma_req->num_outstanding_data_wr;
+	rqpair->current_send_depth += rdma_req->num_outstanding_data_wr;
+	return 0;
+}
 
 static int
 request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
@@ -1308,12 +1332,12 @@ request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 		num_outstanding_data_wr = rdma_req->num_outstanding_data_wr;
 	}
 
-	if (rdma_req->dif_insert_or_strip) {
+	if (rdma_req->dif_insert_or_strip && req->xfer == SPDK_NVME_DATA_CONTROLLER_TO_HOST) {
 
-		int blocks_count = rdma_req->elba_length / (rdma_req->dif_ctx.block_size -
-				   rdma_req->dif_ctx.md_size);
+		uint32_t mapped_length = 0;
 
 		struct spdk_dif_error error_blk;
+
 		int rc = spdk_dif_verify_stream(req->iov, req->iovcnt, 0, rdma_req->req.length, &rdma_req->dif_ctx,
 						&error_blk);
 		if (rc) {
@@ -1323,19 +1347,31 @@ request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 			return -1;
 		}
 
-		uint32_t mapped_length = 0;
-
 		//alternative 1 - direct mapping from iovs to sgl. More code, better perfromance
 		int blocks_result = spdk_rdma_dif_set_md_interleave_iovs_to_sgl(rdma_req->data.wr.sg_list,
-				    blocks_count,
+				    SPDK_NVMF_MAX_SGL_ENTRIES,
 				    req->iov, req->iovcnt, 0, rdma_req->req.length, &mapped_length, &rdma_req->dif_ctx,
 				    rqpair->port->device);
 
-		if (blocks_result < 1) {
-			SPDK_ERRLOG("Cant split iovs by blocks, error %d\n", blocks_result);
+		if (blocks_result < 0) {
+			SPDK_ERRLOG("Failed to split iov to sgl, error %d\n", blocks_result);
+			spdk_nvmf_rdma_start_disconnect(rqpair);
+			return -1;
+
 		}
-		if (blocks_result != blocks_count) {
-			SPDK_ERRLOG("blocks count mismatch, expected %d, received %d\n", blocks_count, blocks_result);
+
+		if (blocks_result > SPDK_NVMF_MAX_SGL_ENTRIES) {
+			SPDK_ERRLOG("Unimplemented case, number of IO block (%d) must not exceed %d\n", blocks_result,
+				    SPDK_NVMF_MAX_SGL_ENTRIES);
+			spdk_nvmf_rdma_start_disconnect(rqpair);
+			return -1;
+		}
+
+		SPDK_ERRLOG("split into %d parts, len %u, block size %d\n", blocks_result, rdma_req->req.length,
+			    rdma_req->dif_ctx.block_size);
+		for (uint32_t i = 0; i < blocks_result; ++i) {
+			SPDK_ERRLOG("slg[%d] base %0xhhx len %u\n", i, rdma_req->data.wr.sg_list[i].addr,
+				    rdma_req->data.wr.sg_list[i].length);
 		}
 
 		//alternative 2 - use intermediate temp iovs. Less code, worse perfromance
@@ -1368,6 +1404,8 @@ request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 						      (uint64_t)rdma_req->temp_iovs[i].iov_base, &translation_len);
 			}
 		} */
+
+		rdma_req->data.wr.num_sge = blocks_result;
 	}
 
 	nvmf_rdma_qpair_queue_send_wrs(rqpair, first);
@@ -1806,6 +1844,10 @@ spdk_nvmf_rdma_request_fill_iovs(struct spdk_nvmf_rdma_transport *rtransport,
 				    length);
 	if (rc != 0) {
 		goto err_exit;
+	}
+
+	if (rdma_req->req.iovcnt > rqpair->max_send_sge) {
+		SPDK_ERRLOG("iovcnt %u, length %u\n", rdma_req->req.iovcnt, length);
 	}
 
 	assert(rdma_req->req.iovcnt <= rqpair->max_send_sge);
@@ -2256,6 +2298,31 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
 
 			if (spdk_unlikely(rdma_req->dif_insert_or_strip)) {
+
+				if (rdma_req->req.xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER) {
+					int rc;
+					struct spdk_dif_error error_blk;
+
+					rc = spdk_dif_generate_stream(rdma_req->req.iov, rdma_req->req.iovcnt,
+								      0, rdma_req->req.length, &rdma_req->dif_ctx);
+
+					if (rc != 0) {
+						SPDK_ERRLOG("DIF generate failed\n");
+						spdk_nvmf_rdma_start_disconnect(rqpair);
+						break;
+					}
+
+					rc = spdk_dif_verify_stream(rdma_req->req.iov, rdma_req->req.iovcnt, 0, rdma_req->req.length,
+								    &rdma_req->dif_ctx,
+								    &error_blk);
+
+					if (rc) {
+						SPDK_ERRLOG("DIF error detected. type=%d, offset=%" PRIu32 "\n", error_blk.err_type,
+							    error_blk.err_offset);
+						spdk_nvmf_rdma_start_disconnect(rqpair);
+						return -1;
+					}
+				}
 				assert(rdma_req->elba_length >= rdma_req->req.length);
 				rdma_req->orig_length = rdma_req->req.length;
 				rdma_req->req.length = rdma_req->elba_length;
@@ -2369,7 +2436,7 @@ spdk_nvmf_rdma_opts_init(struct spdk_nvmf_transport_opts *opts)
 	opts->max_queue_depth =		SPDK_NVMF_RDMA_DEFAULT_MAX_QUEUE_DEPTH;
 	opts->max_qpairs_per_ctrlr =	SPDK_NVMF_RDMA_DEFAULT_MAX_QPAIRS_PER_CTRLR;
 	opts->in_capsule_data_size =	SPDK_NVMF_RDMA_DEFAULT_IN_CAPSULE_DATA_SIZE;
-	opts->max_io_size =		SPDK_NVMF_RDMA_DEFAULT_MAX_IO_SIZE;
+	opts->max_io_size =			SPDK_NVMF_RDMA_DEFAULT_MAX_IO_SIZE;
 	opts->io_unit_size =		SPDK_NVMF_RDMA_MIN_IO_BUFFER_SIZE;
 	opts->max_aq_depth =		SPDK_NVMF_RDMA_DEFAULT_AQ_DEPTH;
 	opts->num_shared_buffers =	SPDK_NVMF_RDMA_DEFAULT_NUM_SHARED_BUFFERS;
@@ -2576,6 +2643,8 @@ spdk_nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 	rdma_free_devices(contexts);
 
 	if (opts->io_unit_size * max_device_sge < opts->max_io_size) {
+		SPDK_ERRLOG("io_unit_size (%u) * max_device_sge(%u) < < opts->max_io_size (%u)\n",
+			    opts->io_unit_size, max_device_sge, opts->max_io_size);
 		/* divide and round up. */
 		opts->io_unit_size = (opts->max_io_size + max_device_sge - 1) / max_device_sge;
 
