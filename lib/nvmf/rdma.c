@@ -269,9 +269,12 @@ struct spdk_nvmf_rdma_request {
 
 	struct spdk_dif_ctx			dif_ctx;
 	bool					dif_insert_or_strip;
+	bool					separate_md;
 	uint32_t				elba_length;
 	uint32_t				orig_length;
+
 	struct iovec			temp_iovs[SPDK_NVMF_MAX_SGL_ENTRIES];
+	void 					*md_temp_buffer;
 
 	STAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
 };
@@ -335,6 +338,8 @@ struct spdk_nvmf_rdma_resources {
 
 	/* Queue to track free requests */
 	STAILQ_HEAD(, spdk_nvmf_rdma_request)	free_queue;
+
+	struct spdk_nvmf_rdma_resource_opts *opts;
 };
 
 struct spdk_nvmf_rdma_qpair {
@@ -714,6 +719,14 @@ nvmf_rdma_resources_destroy(struct spdk_nvmf_rdma_resources *resources)
 	spdk_dma_free(resources->cmds);
 	spdk_dma_free(resources->cpls);
 	spdk_dma_free(resources->bufs);
+
+	if (resources->opts) {
+		uint32_t i;
+		for (i = 0; i < resources->opts->max_queue_depth; ++i) {
+			spdk_dma_free(resources->reqs[i].md_temp_buffer);
+		}
+	}
+
 	free(resources->reqs);
 	free(resources->recvs);
 	free(resources);
@@ -737,6 +750,7 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 		return NULL;
 	}
 
+	resources->opts = opts;
 	resources->reqs = calloc(opts->max_queue_depth, sizeof(*resources->reqs));
 	resources->recvs = calloc(opts->max_queue_depth, sizeof(*resources->recvs));
 	resources->cmds = spdk_dma_zmalloc(opts->max_queue_depth * sizeof(*resources->cmds),
@@ -863,6 +877,9 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 		rdma_req->data.wr.send_flags = IBV_SEND_SIGNALED;
 		rdma_req->data.wr.sg_list = rdma_req->data.sgl;
 		rdma_req->data.wr.num_sge = SPDK_COUNTOF(rdma_req->data.sgl);
+
+		rdma_req->md_temp_buffer = spdk_dma_zmalloc(sizeof(struct spdk_dif) * SPDK_NVMF_MAX_SGL_ENTRIES,
+					   0x1000, NULL);
 
 		/* Initialize request state to FREE */
 		rdma_req->state = RDMA_REQUEST_STATE_FREE;
@@ -1254,7 +1271,7 @@ request_transfer_in(struct spdk_nvmf_request *req)
 	assert(req->xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER);
 	assert(rdma_req != NULL);
 
-	if (spdk_unlikely(rdma_req->dif_insert_or_strip)) {
+	if (spdk_unlikely(rdma_req->dif_insert_or_strip) && !rdma_req->separate_md) {
 		uint32_t mapped_length = 0;
 
 		int blocks_result = spdk_rdma_dif_set_md_interleave_iovs_to_sgl(rdma_req->data.wr.sg_list,
@@ -2083,14 +2100,37 @@ spdk_nvmf_rdma_request_parse_sgl(struct spdk_nvmf_rdma_transport *rtransport,
 		rdma_req->req.length = length;
 
 		if (spdk_unlikely(rdma_req->dif_insert_or_strip)) {
+
+			int data_block_size = rdma_req->dif_ctx.block_size - rdma_req->dif_ctx.md_size;
+			int num_blocks = length / data_block_size;
+			assert(length % data_block_size == 0);
+			int c, iov_c = 0;
+
+			// SPDK_ERRLOG("in-capsule data, %d buffers\n", num_blocks);
+			for (c = 0; c < num_blocks; c++) {
+				rdma_req->req.iov[iov_c].iov_base = rdma_req->req.data + (data_block_size * c);
+				rdma_req->req.iov[iov_c].iov_len = data_block_size;
+				// SPDK_ERRLOG("iov[%d] base %p len %u\n", iov_c, rdma_req->req.iov[iov_c].iov_base, rdma_req->req.iov[iov_c].iov_len);
+				++iov_c;
+
+				rdma_req->req.iov[iov_c].iov_base = ((char *)rdma_req->md_temp_buffer) + c * sizeof(
+						struct spdk_dif);
+				rdma_req->req.iov[iov_c].iov_len = sizeof(struct spdk_dif);
+				// SPDK_ERRLOG("iov[%d] base %p len %u\n", iov_c, rdma_req->req.iov[iov_c].iov_base, rdma_req->req.iov[iov_c].iov_len);
+				++iov_c;
+			}
+
+			rdma_req->req.iovcnt = num_blocks * 2;
+
 			rdma_req->orig_length = length;
 			length = spdk_dif_get_length_with_md(length, &rdma_req->dif_ctx);
 			rdma_req->elba_length = length;
+			rdma_req->separate_md = true;
+		} else {
+			rdma_req->req.iov[0].iov_base = rdma_req->req.data;
+			rdma_req->req.iov[0].iov_len = length;
+			rdma_req->req.iovcnt = 1;
 		}
-
-		rdma_req->req.iov[0].iov_base = rdma_req->req.data;
-		rdma_req->req.iov[0].iov_len = length;
-		rdma_req->req.iovcnt = 1;
 
 		return 0;
 	} else if (sgl->generic.type == SPDK_NVME_SGL_TYPE_LAST_SEGMENT &&
@@ -2141,6 +2181,7 @@ nvmf_rdma_request_free(struct spdk_nvmf_rdma_request *rdma_req,
 	rdma_req->rsp.wr.next = NULL;
 	rdma_req->data.wr.next = NULL;
 	rdma_req->dif_insert_or_strip = false;
+	rdma_req->separate_md = false;
 	rdma_req->elba_length = 0;
 	rdma_req->orig_length = 0;
 	memset(&rdma_req->dif_ctx, 0, sizeof(rdma_req->dif_ctx));
@@ -2302,6 +2343,8 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 				if (rdma_req->req.xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER) {
 					int rc;
 					struct spdk_dif_error error_blk;
+
+					// SPDK_ERRLOG("generating DIF, iovcnt %u, length %u\n", rdma_req->req.iovcnt, rdma_req->req.length);
 
 					rc = spdk_dif_generate_stream(rdma_req->req.iov, rdma_req->req.iovcnt,
 								      0, rdma_req->req.length, &rdma_req->dif_ctx);
@@ -2820,7 +2863,7 @@ spdk_nvmf_rdma_listen(struct spdk_nvmf_transport *transport,
 	freeaddrinfo(res);
 
 	if (rc < 0) {
-		SPDK_ERRLOG("rdma_bind_addr() failed\n");
+		SPDK_ERRLOG("rdma_bind_addr() failed, %d\n", errno);
 		rdma_destroy_id(port->id);
 		free(port);
 		pthread_mutex_unlock(&rtransport->lock);
