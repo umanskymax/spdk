@@ -207,6 +207,8 @@ struct spdk_nvmf_request {
 	union nvmf_c2h_msg		*rsp;
 	struct iovec			iov[SPDK_NVMF_MAX_SGL_ENTRIES * 2];
 	uint32_t			iovcnt;
+
+	uint32_t			iovcnt_original;
 	struct spdk_bdev_io_wait_entry	bdev_io_wait;
 
 	TAILQ_ENTRY(spdk_nvmf_request)	link;
