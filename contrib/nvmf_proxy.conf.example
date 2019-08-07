@@ -7,8 +7,17 @@
   # number of queues in emulation configuration (JSON file) plus 2
   MaxQueuesPerSession 34
 
-#[Transport]
-#  Type TCP
+[Transport]
+  Type TCP
+
+#[Malloc]
+#  NumberOfLuns 2
+#  LunSizeInMB 512
+
+#[Null]
+## Dev <name> <size_in_MiB> <block_size>
+#  Dev Nullb0 8388608 512
+#  Dev Nullb1 8388608 512
 
 [Nvme]
   RetryCount 4

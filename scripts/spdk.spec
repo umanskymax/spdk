@@ -31,7 +31,7 @@ Source4:	spdk-ocf-%{version}.tar.gz
 %define install_docdir %{buildroot}/%{_docdir}/%{name}
 
 # Distros that don't support python3 will use python2
-%if "%{dist}" == ".el7" || "%{dist}" == ".el7.centos"
+%if "%{dist}" == ".el7" || "%{dist}" == ".el7.centos" || "%{dist}" == ".el7.centos.a"
 %define use_python2 1
 %else
 %define use_python2 0
@@ -177,8 +177,8 @@ done
 %else
   mkdir -p %{buildroot}/%{_libdir}/python2.7/site-packages/rpc/
   install -p -m 644 scripts/rpc/* %{buildroot}/%{_libdir}/python2.7/site-packages/rpc/
-  install -p -m 755 scripts/rpc.py %{install_bindir}/spdk_rpc.py
-  sed -i -e 's!/usr/bin/env python3$!/usr/bin/env python2!' %{install_bindir}/spdk_rpc.py
+  install -p -m 755 scripts/rpc_py2.py %{install_bindir}/spdk_rpc.py
+  # sed -i -e 's!/usr/bin/env python3$!/usr/bin/env python2!' %{install_bindir}/spdk_rpc.py
 %endif
 # mkdir -p %{buildroot}/%{_sysconfdir}/avahi/services/
 # install -p -m 644 contrib/avahi-spdk.service %{buildroot}/%{_sysconfdir}/avahi/services/spdk.service
@@ -206,6 +206,9 @@ case "$1" in
 esac
 
 %changelog
+* Wed Aug  7 2019 Yuriy Shestakov <yuriis@mellanox.com>
+- ported to v19.07 release
+
 * Mon Jul 15 2019 Yuriy Shestakov <yuriis@mellanox.com>
 - ported to v19.04.1 release
 

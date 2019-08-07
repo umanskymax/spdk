@@ -13,7 +13,7 @@ DEFAULT_NVMF_TGT_CONF = '/etc/spdk/nvmf_tgt.conf'
 pci_ids = dict()
 iotdma_ids = []
 username = None
-has_iommu = os.path.exists('/sys/kernel/iommu_groups')
+has_iommu = os.path.exists('/sys/kernel/iommu_groups/0')
 stub_driver = 'vfio-pci' if has_iommu and os.path.exists('/sys/bus/pci/drivers/vfio-pci') else 'uio_pci_generic'
 
 
@@ -204,6 +204,7 @@ def do_config(args):
         if m:
             pciaddr = m.group(1)
             unbind_nvme_dev(pciaddr)
+            linux_bind_driver(pciaddr, stub_driver)
     for bdf in iotdma_ids:
         linux_bind_driver(bdf, stub_driver)
     time.sleep(1)
@@ -236,7 +237,7 @@ def load_pci_ids():
     global pci_ids
     #ff:1f.2 0880: 8086:2f8a (rev 02)
     stdout = subprocess.check_output(['/usr/sbin/lspci', '-D', '-n'])
-    rx = re.compile('^(\S+)\s(\w+):\s(\w+):(\w+)\s')
+    rx = re.compile('^(\S+)\s(\w+):\s(\w+):(\w+)\s?')
     for line in stdout.splitlines():
        m = rx.search(line)
        if not m:
