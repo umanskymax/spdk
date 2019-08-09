@@ -275,6 +275,7 @@ struct spdk_nvmf_rdma_request {
 	uint64_t				receive_tsc;
 
 	STAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
+	struct ibv_mr* umr;
 };
 
 enum spdk_nvmf_rdma_qpair_disconnect_flags {
@@ -336,6 +337,8 @@ struct spdk_nvmf_rdma_resources {
 
 	/* Queue to track free requests */
 	STAILQ_HEAD(, spdk_nvmf_rdma_request)	free_queue;
+
+	uint32_t max_queue_depth;
 };
 
 struct spdk_nvmf_rdma_qpair {
@@ -716,6 +719,7 @@ nvmf_rdma_dump_qpair_contents(struct spdk_nvmf_rdma_qpair *rqpair)
 static void
 nvmf_rdma_resources_destroy(struct spdk_nvmf_rdma_resources *resources)
 {
+	uint32_t i;
 	if (resources->cmds_mr) {
 		ibv_dereg_mr(resources->cmds_mr);
 	}
@@ -731,6 +735,9 @@ nvmf_rdma_resources_destroy(struct spdk_nvmf_rdma_resources *resources)
 	spdk_free(resources->cmds);
 	spdk_free(resources->cpls);
 	spdk_free(resources->bufs);
+	for(i = 0; i < resources->max_queue_depth; ++i) {
+		ibv_dereg_mr(resources->reqs[i].umr);
+	}
 	free(resources->reqs);
 	free(resources->recvs);
 	free(resources);
@@ -754,6 +761,7 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 		return NULL;
 	}
 
+	resources->max_queue_depth = opts->max_queue_depth;
 	resources->reqs = calloc(opts->max_queue_depth, sizeof(*resources->reqs));
 	resources->recvs = calloc(opts->max_queue_depth, sizeof(*resources->recvs));
 	resources->cmds = spdk_zmalloc(opts->max_queue_depth * sizeof(*resources->cmds),
@@ -880,6 +888,27 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 		rdma_req->data.wr.send_flags = IBV_SEND_SIGNALED;
 		rdma_req->data.wr.sg_list = rdma_req->data.sgl;
 		rdma_req->data.wr.num_sge = SPDK_COUNTOF(rdma_req->data.sgl);
+
+#ifdef IBV_UMR
+		{
+			struct ibv_exp_create_mr_in umr_in = {
+				.pd	= opts->pd,
+				.attr	= {
+					.max_klm_list_size	= SPDK_NVMF_MAX_SGL_ENTRIES,
+					.create_flags		= IBV_EXP_MR_INDIRECT_KLMS,
+					.exp_access_flags	= IBV_ACCESS_LOCAL_WRITE |
+								IBV_ACCESS_REMOTE_READ |
+								IBV_ACCESS_REMOTE_WRITE,
+					}
+			};
+
+			rdma_req->umr = ibv_exp_create_mr(&umr_in);
+			if (!rdma_req->umr) {
+				SPDK_ERRLOG("failed to reg UMR, errno %d: %s\n", errno, spdk_strerror(errno));
+				goto cleanup;
+			}
+		}
+#endif
 
 		/* Initialize request state to FREE */
 		rdma_req->state = RDMA_REQUEST_STATE_FREE;
@@ -1751,7 +1780,7 @@ spdk_nvmf_rdma_request_fill_iovs(struct spdk_nvmf_rdma_transport *rtransport,
 	rdma_req->req.iovcnt = 0;
 
 	rc = nvmf_rdma_fill_buffers(rtransport, rgroup, device, rdma_req, &rdma_req->data.wr,
-				    rdma_req->req.length);
+                                   rdma_req->req.length);
 	if (rc != 0) {
 		goto err_exit;
 	}
