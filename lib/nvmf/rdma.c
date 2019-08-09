@@ -248,6 +248,13 @@ struct spdk_nvmf_rdma_recv {
 	STAILQ_ENTRY(spdk_nvmf_rdma_recv)	link;
 };
 
+#ifdef IBV_UMR
+struct spdk_nvmf_umr_desc {
+	struct ibv_exp_mem_region mem_list[SPDK_NVMF_MAX_SGL_ENTRIES];
+	struct ibv_exp_send_wr reg_wr;
+};
+#endif
+
 struct spdk_nvmf_rdma_request_data {
 	struct spdk_nvmf_rdma_wr	rdma_wr;
 	struct ibv_send_wr		wr;
@@ -275,7 +282,11 @@ struct spdk_nvmf_rdma_request {
 	uint64_t				receive_tsc;
 
 	STAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
+
+#ifdef IBV_UMR
 	struct ibv_mr* umr;
+	struct spdk_nvmf_umr_desc umr_desc;
+#endif
 };
 
 enum spdk_nvmf_rdma_qpair_disconnect_flags {
@@ -1074,7 +1085,7 @@ spdk_nvmf_rdma_qpair_create(struct spdk_nvmf_rdma_qpair	*rqpair)
 	int ret;
 	struct spdk_nvmf_rdma_device *device = rqpair->port->device;
 	struct ibv_exp_device_attr dattr = {
-		.comp_maks = IBV_EXP_DEVICE_ATTR_UMR
+		.comp_mask = IBV_EXP_DEVICE_ATTR_UMR
 	};
 	struct ibv_exp_qp_init_attr  init_attr = {
 		.pd = device->pd,
@@ -1709,6 +1720,92 @@ nvmf_request_alloc_wrs(struct spdk_nvmf_rdma_transport *rtransport,
 	return 0;
 }
 
+#ifdef IBV_UMR
+static int
+nvmf_rdma_fill_buffers_umr(struct spdk_nvmf_rdma_transport *rtransport,
+		       struct spdk_nvmf_rdma_poll_group *rgroup,
+		       struct spdk_nvmf_rdma_device *device,
+		       struct spdk_nvmf_rdma_request *rdma_req,
+		       struct ibv_send_wr *wr,
+		       uint32_t length,
+			   uint32_t buf_num)
+{
+	uint64_t	translation_len;
+	uint32_t	remaining_length = length;
+	uint32_t	iovcnt;
+	uint32_t	i = 0;
+	struct ibv_exp_send_wr *bad_wr;
+	struct ibv_mr* mr;
+	int rc;
+
+	while (remaining_length) {
+		iovcnt = rdma_req->req.iovcnt;
+		rdma_req->req.iov[iovcnt].iov_base = (void *)((uintptr_t)(rdma_req->buffers[iovcnt] +
+						     NVMF_DATA_BUFFER_MASK) &
+						     ~NVMF_DATA_BUFFER_MASK);
+		rdma_req->req.iov[iovcnt].iov_len  = spdk_min(remaining_length,
+						     rtransport->transport.opts.io_unit_size);
+		rdma_req->req.iovcnt++;
+		translation_len = rdma_req->req.iov[iovcnt].iov_len;
+
+		if (!g_nvmf_hooks.get_rkey) {
+			mr = ((struct ibv_mr *)spdk_mem_map_translate(device->map,
+					       (uint64_t)rdma_req->req.iov[iovcnt].iov_base, &translation_len));
+		} else {
+			assert(0);
+		}
+
+		rdma_req->umr_desc.mem_list[i].mr = mr;
+		rdma_req->umr_desc.mem_list[i].base_addr = (uintptr_t)(rdma_req->req.iov[iovcnt].iov_base);
+		rdma_req->umr_desc.mem_list[i].length = rdma_req->req.iov[iovcnt].iov_len;
+
+#if 0
+		SPDK_NOTICELOG("umr[%d]: mr %p add 0x%lx len %zu\n", i,
+						rdma_req->umr_desc.mem_list[i].mr,
+						rdma_req->umr_desc.mem_list[i].base_addr,
+						rdma_req->umr_desc.mem_list[i].length);
+#endif
+		remaining_length -= rdma_req->req.iov[iovcnt].iov_len;
+
+		if (translation_len < rdma_req->req.iov[iovcnt].iov_len) {
+			SPDK_ERRLOG("Data buffer split over multiple RDMA Memory Regions\n");
+			return -EINVAL;
+		}
+		i++;
+	}
+
+	/* fill and register UMR */
+	memset(&rdma_req->umr_desc.reg_wr, 0, sizeof(rdma_req->umr_desc.reg_wr));
+	rdma_req->umr_desc.reg_wr.ext_op.umr.umr_type = IBV_EXP_UMR_MR_LIST;
+	rdma_req->umr_desc.reg_wr.ext_op.umr.mem_list.mem_reg_list =  rdma_req->umr_desc.mem_list;
+	rdma_req->umr_desc.reg_wr.ext_op.umr.exp_access = IBV_EXP_ACCESS_LOCAL_WRITE;
+	rdma_req->umr_desc.reg_wr.ext_op.umr.modified_mr = rdma_req->umr;
+	rdma_req->umr_desc.reg_wr.ext_op.umr.base_addr = (uintptr_t)(rdma_req->req.iov[0].iov_base);
+	rdma_req->umr_desc.reg_wr.ext_op.umr.num_mrs = i;
+	rdma_req->umr_desc.reg_wr.exp_send_flags |= IBV_EXP_SEND_SIGNALED;
+	rdma_req->umr_desc.reg_wr.exp_opcode = IBV_EXP_WR_UMR_FILL;
+	rdma_req->umr_desc.reg_wr.exp_send_flags = IBV_EXP_SEND_INLINE;
+
+	rc = ibv_exp_post_send(rdma_req->recv->qpair->qp, &rdma_req->umr_desc.reg_wr, &bad_wr);
+	if (rc) {
+		SPDK_ERRLOG("ibv_exp_post_send failed, errno %d: %s\n", errno, spdk_strerror(errno));
+		return rc;
+	}
+
+	rdma_req->umr->length = length;
+	rdma_req->umr->addr = (void *)(unsigned long)rdma_req->umr_desc.reg_wr.ext_op.umr.base_addr;
+
+
+	/* Fill WR with UMR data*/
+	wr->sg_list[0].addr = (uintptr_t)rdma_req->umr->addr;
+	wr->sg_list[0].length = rdma_req->umr->length;
+	wr->sg_list[0].lkey = rdma_req->umr->lkey;
+	wr->num_sge = 1;
+
+	return 0;
+}
+#endif
+
 static int
 nvmf_rdma_fill_buffers(struct spdk_nvmf_rdma_transport *rtransport,
 		       struct spdk_nvmf_rdma_poll_group *rgroup,
@@ -1779,8 +1876,20 @@ spdk_nvmf_rdma_request_fill_iovs(struct spdk_nvmf_rdma_transport *rtransport,
 
 	rdma_req->req.iovcnt = 0;
 
-	rc = nvmf_rdma_fill_buffers(rtransport, rgroup, device, rdma_req, &rdma_req->data.wr,
-                                   rdma_req->req.length);
+
+#ifdef IBV_UMR
+	if(num_buffers > 1) {
+		//try to use UMR to decrease SGL the number entries. TODO find a treshold to apply UMR
+		rc = nvmf_rdma_fill_buffers_umr(rtransport, rgroup, device, rdma_req, &rdma_req->data.wr,
+						rdma_req->req.length, num_buffers);
+	} else {
+#endif
+		rc = nvmf_rdma_fill_buffers(rtransport, rgroup, device, rdma_req, &rdma_req->data.wr,
+						rdma_req->req.length);
+#ifdef IBV_UMR
+	}
+#endif
+
 	if (rc != 0) {
 		goto err_exit;
 	}
