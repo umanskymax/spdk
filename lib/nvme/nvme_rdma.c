@@ -56,7 +56,7 @@
 
 #define IBV_UMR
 #ifdef IBV_UMR
-	#include <infiniband/verbs_exp.h>
+#include <infiniband/verbs_exp.h>
 #endif
 
 #define NVME_RDMA_TIME_OUT_IN_MS 2000
@@ -140,6 +140,17 @@ struct nvme_rdma_qpair {
 	struct rdma_event_channel		*cm_channel;
 };
 
+#ifdef IBV_UMR
+struct spdk_nvmf_umr_desc {
+	struct ibv_exp_mem_region mem_list[NVME_RDMA_MAX_SGL_DESCRIPTORS];
+	struct ibv_exp_send_wr reg_wr;
+};
+
+static void
+nvme_rdma_request_invalidate_umr(struct spdk_nvme_rdma_req *rdma_req,
+								struct nvme_rdma_qpair* rqpair);
+#endif
+
 struct spdk_nvme_rdma_req {
 	int					id;
 
@@ -152,6 +163,11 @@ struct spdk_nvme_rdma_req {
 	TAILQ_ENTRY(spdk_nvme_rdma_req)		link;
 
 	bool					request_ready_to_put;
+
+#ifdef IBV_UMR
+	struct ibv_mr *umr;
+	struct spdk_nvmf_umr_desc umr_desc;
+#endif
 };
 
 static const char *rdma_cm_event_str[] = {
@@ -210,6 +226,11 @@ static void
 nvme_rdma_req_put(struct nvme_rdma_qpair *rqpair, struct spdk_nvme_rdma_req *rdma_req)
 {
 	rdma_req->request_ready_to_put = false;
+#ifdef IBV_UMR
+	if (rdma_req->umr) {
+		nvme_rdma_request_invalidate_umr(rdma_req, rqpair);
+	}
+#endif
 	TAILQ_REMOVE(&rqpair->outstanding_reqs, rdma_req, link);
 	TAILQ_INSERT_HEAD(&rqpair->free_reqs, rdma_req, link);
 }
@@ -259,58 +280,6 @@ nvme_rdma_get_event(struct rdma_event_channel *channel,
 
 #ifdef IBV_UMR
 
-static int 
-spdk_nvmf_rdma_qpair_activate(struct nvme_rdma_qpair* rqpair) 
-{
-	struct ibv_qp_attr qp_attr = {
-		.qp_state = IBV_QPS_INIT
-	};
-	int qp_attr_mask, ret;
-
-	/* INIT */
-	ret = rdma_init_qp_attr(rqpair->cm_id, &qp_attr, &qp_attr_mask);
-	if (ret) {
-		SPDK_ERRLOG("Error %d on rdma_init_qp_attr\n", ret);
-		return ret;
-	}
-
- 	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
-	if (ret) {
-		SPDK_ERRLOG("Error %d on ibv_modify_qp\n", ret);
-		return ret;
-	}
-
-	/* RTR */
-	qp_attr.qp_state = IBV_QPS_RTR;
-	ret = rdma_init_qp_attr(rqpair->cm_id, &qp_attr, &qp_attr_mask);
-	if (ret) {
-		SPDK_ERRLOG("Error %d on rdma_init_qp_attr\n", ret);
-		return ret;
-	}
-
- 	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
-	if (ret) {
-		SPDK_ERRLOG("Error %d on ibv_modify_qp\n", ret);
-		return ret;
-	}
-
-	/* RTS */
-	qp_attr.qp_state = IBV_QPS_RTS;
-	ret = rdma_init_qp_attr(rqpair->cm_id, &qp_attr, &qp_attr_mask);
-	if (ret) {
-		SPDK_ERRLOG("Error %d on rdma_init_qp_attr\n", ret);
-		return ret;
-	}
-
- 	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
-	if (ret) {
-		SPDK_ERRLOG("Error %d on ibv_modify_qp\n", ret);
-		return ret;
-	}
-
-	return 0;
-}
-
 static int
 nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 {
@@ -323,8 +292,8 @@ nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 		.qp_context = rqpair,
 		.qp_type = IBV_QPT_RC,
 		.comp_mask = IBV_EXP_QP_INIT_ATTR_PD |
-		             IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS |
-					 IBV_EXP_QP_INIT_ATTR_MAX_INL_KLMS,
+		IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS |
+		IBV_EXP_QP_INIT_ATTR_MAX_INL_KLMS,
 		.exp_create_flags = IBV_EXP_QP_CREATE_UMR,
 		.cap = {
 			.max_send_wr  = rqpair->num_entries,
@@ -351,7 +320,7 @@ nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 	init_attr.pd = rctrlr->pd;
 
 	ret = ibv_exp_query_device(rqpair->cm_id->verbs, &dattr);
-	if(ret) {
+	if (ret) {
 		SPDK_ERRLOG("ibv_exp_query_device failed: errno %d: %s\n", errno, spdk_strerror(errno));
 		return -1;
 	}
@@ -367,8 +336,8 @@ nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 	}
 
 	SPDK_NOTICELOG("Create exp QP %p num %u\n",
-				rqpair->qp,
-				rqpair->qp->qp_num);
+		       rqpair->qp,
+		       rqpair->qp->qp_num);
 
 	/* ibv_create_qp will change the values in attr.cap. Make sure we store the proper value. */
 	rqpair->max_send_sge = spdk_min(NVME_RDMA_DEFAULT_TX_SGE, init_attr.cap.max_send_sge);
@@ -376,8 +345,6 @@ nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 
 	rqpair->cm_id->context = &rqpair->qpair;
 
-
-	//!!!!
 	rqpair->cm_id->qp = rqpair->qp;
 
 	return 0;
@@ -435,8 +402,6 @@ nvme_rdma_qpair_init(struct nvme_rdma_qpair *rqpair)
 	rctrlr->pd = rqpair->cm_id->qp->pd;
 
 	rqpair->cm_id->context = &rqpair->qpair;
-
-	// rqpair->qp = rqpair->cm_id->qp;
 
 	return 0;
 }
@@ -555,10 +520,17 @@ fail:
 static void
 nvme_rdma_unregister_reqs(struct nvme_rdma_qpair *rqpair)
 {
+	uint32_t i;
 	if (rqpair->cmd_mr && rdma_dereg_mr(rqpair->cmd_mr)) {
 		SPDK_ERRLOG("Unable to de-register cmd_mr\n");
 	}
 	rqpair->cmd_mr = NULL;
+
+	for (i = 0; i < rqpair->num_entries; ++i) {
+		if (rqpair->rdma_reqs[i].umr) {
+			ibv_dereg_mr(rqpair->rdma_reqs[i].umr);
+		}
+	}
 }
 
 static void
@@ -632,6 +604,30 @@ nvme_rdma_register_reqs(struct nvme_rdma_qpair *rqpair)
 		rdma_req->send_wr.send_flags = IBV_SEND_SIGNALED;
 		rdma_req->send_wr.sg_list = rdma_req->send_sgl;
 		rdma_req->send_wr.imm_data = 0;
+
+#ifdef IBV_UMR
+		{
+			struct nvme_rdma_ctrlr *rctrlr = nvme_rdma_ctrlr(rqpair->qpair.ctrlr);
+			assert(rctrlr->pd);
+
+			struct ibv_exp_create_mr_in umr_in = {
+				.pd	= rctrlr->pd,
+				.attr	= {
+					.max_klm_list_size	= NVME_RDMA_MAX_SGL_DESCRIPTORS,
+					.create_flags		= IBV_EXP_MR_INDIRECT_KLMS,
+					.exp_access_flags	= IBV_ACCESS_LOCAL_WRITE |
+					IBV_ACCESS_REMOTE_READ |
+					IBV_ACCESS_REMOTE_WRITE,
+				}
+			};
+
+			rdma_req->umr = ibv_exp_create_mr(&umr_in);
+			if (!rdma_req->umr) {
+				SPDK_ERRLOG("failed to reg UMR, errno %d: %s\n", errno, spdk_strerror(errno));
+				goto fail;
+			}
+		}
+#endif
 
 		TAILQ_INSERT_TAIL(&rqpair->free_reqs, rdma_req, link);
 	}
@@ -758,7 +754,6 @@ nvme_rdma_connect(struct nvme_rdma_qpair *rqpair)
 		return ret;
 	}
 
-	// event = nvme_rdma_get_event(rqpair->cm_channel, RDMA_CM_EVENT_CONNECT_RESPONSE);
 	event = nvme_rdma_get_event(rqpair->cm_channel, RDMA_CM_EVENT_ESTABLISHED);
 	if (event == NULL) {
 		SPDK_ERRLOG("RDMA connect error\n");
@@ -779,13 +774,6 @@ nvme_rdma_connect(struct nvme_rdma_qpair *rqpair)
 
 	rdma_ack_cm_event(event);
 
-// #ifdef IBV_UMR
-// 	int rc = spdk_nvmf_rdma_qpair_activate(rqpair);
-// 	if (rc) {
-// 		SPDK_ERRLOG("failed to activate QP %p num %u\n", rqpair, rqpair->qp->qp_num);
-// 		return -1;
-// 	}
-// #endif
 
 	return 0;
 }
@@ -1007,18 +995,19 @@ nvme_rdma_qpair_connect(struct nvme_rdma_qpair *rqpair)
 		SPDK_ERRLOG("nvme_rdma_resolve_addr() failed\n");
 		return -1;
 	}
-
-	// rc = nvme_rdma_qpair_init(rqpair);
-	// if (rc < 0) {
-	// 	SPDK_ERRLOG("nvme_rdma_qpair_init() failed\n");
-	// 	return -1;
-	// }
-
+#ifdef IBV_UMR
 	rc = nvme_rdma_qpair_init_exp(rqpair);
 	if (rc < 0) {
 		SPDK_ERRLOG("nvme_rdma_qpair_init_exp() failed\n");
 		return -1;
 	}
+#else 
+	rc = nvme_rdma_qpair_init(rqpair);
+	if (rc < 0) {
+		SPDK_ERRLOG("nvme_rdma_qpair_init() failed\n");
+		return -1;
+	}
+#endif
 
 	rc = nvme_rdma_connect(rqpair);
 	if (rc != 0) {
@@ -1199,6 +1188,129 @@ nvme_rdma_build_contig_request(struct nvme_rdma_qpair *rqpair,
 	return 0;
 }
 
+#ifdef IBV_UMR
+
+static void
+nvme_rdma_request_invalidate_umr(struct spdk_nvme_rdma_req *rdma_req,
+								struct nvme_rdma_qpair* rqpair)
+{
+	struct ibv_exp_send_wr wr, *bad_wr;
+	int rc;
+
+	if (!rdma_req->umr) {
+		return;
+	}
+
+	if (rdma_req->umr->addr) {
+		memset(&wr, 0, sizeof(wr));
+		wr.exp_opcode = IBV_EXP_WR_UMR_INVALIDATE;
+		wr.ext_op.umr.modified_mr = rdma_req->umr;
+		rc = ibv_exp_post_send(rqpair->qp, &wr, &bad_wr);
+		if (rc) {
+			SPDK_ERRLOG("failed to invalidate UMR");
+		}
+	}
+}
+
+/*
+ * Build SGL describing scattered payload buffer.
+ */
+static int
+nvme_rdma_build_sgl_request(struct nvme_rdma_qpair *rqpair,
+			    struct spdk_nvme_rdma_req *rdma_req)
+{
+	struct nvme_request *req = rdma_req->req;
+	struct spdk_nvmf_cmd *cmd = &rqpair->cmds[rdma_req->id];
+	struct ibv_mr *mr = NULL;
+	struct ibv_exp_send_wr *bad_wr;
+	void *virt_addr;
+	uint64_t remaining_size, mr_length;
+	uint32_t sge_length;
+	int rc, max_num_sgl, num_sgl_desc; 
+
+	assert(req->payload_size != 0);
+	assert(nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL);
+	assert(req->payload.reset_sgl_fn != NULL);
+	assert(req->payload.next_sge_fn != NULL);
+	req->payload.reset_sgl_fn(req->payload.contig_or_cb_arg, req->payload_offset);
+
+	max_num_sgl = req->qpair->ctrlr->max_sges;
+
+	remaining_size = req->payload_size;
+	num_sgl_desc = 0;
+	do {
+		rc = req->payload.next_sge_fn(req->payload.contig_or_cb_arg, &virt_addr, &sge_length);
+		if (rc) {
+			return -1;
+		}
+
+		sge_length = spdk_min(remaining_size, sge_length);
+		mr_length = sge_length;
+
+		if (!g_nvme_hooks.get_rkey) {
+			mr = (struct ibv_mr *)spdk_mem_map_translate(rqpair->mr_map->map,
+					(uint64_t)virt_addr,
+					&mr_length);
+			if (mr == NULL) {
+				return -1;
+			}
+		} else {
+			assert(0);
+		}
+
+		if (mr_length < sge_length) {
+			SPDK_ERRLOG("Data buffer split over multiple RDMA Memory Regions\n");
+			return -1;
+		}
+
+		rdma_req->umr_desc.mem_list[num_sgl_desc].mr = mr;
+		rdma_req->umr_desc.mem_list[num_sgl_desc].base_addr = (uintptr_t)virt_addr;
+		rdma_req->umr_desc.mem_list[num_sgl_desc].length = sge_length;
+
+		remaining_size -= sge_length;
+		num_sgl_desc++;
+	} while (remaining_size > 0 && num_sgl_desc < max_num_sgl);
+
+	/* Should be impossible if we did our sgl checks properly up the stack, but do a sanity check here. */
+	if (remaining_size > 0) {
+		return -1;
+	}
+
+	memset(&rdma_req->umr_desc.reg_wr, 0, sizeof(rdma_req->umr_desc.reg_wr));
+	rdma_req->umr_desc.reg_wr.ext_op.umr.umr_type = IBV_EXP_UMR_MR_LIST;
+	rdma_req->umr_desc.reg_wr.ext_op.umr.mem_list.mem_reg_list =  rdma_req->umr_desc.mem_list;
+	rdma_req->umr_desc.reg_wr.ext_op.umr.exp_access = IBV_EXP_ACCESS_LOCAL_WRITE |
+			IBV_EXP_ACCESS_REMOTE_WRITE | IBV_EXP_ACCESS_REMOTE_READ;
+	rdma_req->umr_desc.reg_wr.ext_op.umr.modified_mr = rdma_req->umr;
+	rdma_req->umr_desc.reg_wr.ext_op.umr.base_addr = rdma_req->umr_desc.mem_list[0].base_addr;
+	rdma_req->umr_desc.reg_wr.ext_op.umr.num_mrs = num_sgl_desc;
+	rdma_req->umr_desc.reg_wr.exp_send_flags |= IBV_EXP_SEND_SIGNALED;
+	rdma_req->umr_desc.reg_wr.exp_opcode = IBV_EXP_WR_UMR_FILL;
+	rdma_req->umr_desc.reg_wr.exp_send_flags = IBV_EXP_SEND_INLINE;
+
+	rc = ibv_exp_post_send(rqpair->qp, &rdma_req->umr_desc.reg_wr, &bad_wr);
+	if (rc) {
+		SPDK_ERRLOG("ibv_exp_post_send failed, errno %d: %s\n", errno, spdk_strerror(errno));
+		return rc;
+	}
+
+	rdma_req->umr->length = req->payload_size;
+	rdma_req->umr->addr = (void *)(unsigned long)rdma_req->umr_desc.reg_wr.ext_op.umr.base_addr;
+
+	rdma_req->send_sgl[0].length = sizeof(struct spdk_nvme_cmd);
+	/* The RDMA SGL needs one element describing the NVMe command. */
+	rdma_req->send_wr.num_sge = 1;
+
+	req->cmd.psdt = SPDK_NVME_PSDT_SGL_MPTR_CONTIG;
+	req->cmd.dptr.sgl1.keyed.type = SPDK_NVME_SGL_TYPE_KEYED_DATA_BLOCK;
+	req->cmd.dptr.sgl1.keyed.subtype = SPDK_NVME_SGL_SUBTYPE_ADDRESS;
+	req->cmd.dptr.sgl1.keyed.key = rdma_req->umr->rkey;
+	req->cmd.dptr.sgl1.keyed.length = rdma_req->umr->length;
+	req->cmd.dptr.sgl1.address = (uintptr_t)rdma_req->umr->addr;
+
+	return 0;
+}
+#else
 /*
  * Build SGL describing scattered payload buffer.
  */
@@ -1305,6 +1417,8 @@ nvme_rdma_build_sgl_request(struct nvme_rdma_qpair *rqpair,
 
 	return 0;
 }
+
+#endif
 
 /*
  * Build inline SGL describing sgl payload buffer.
@@ -1494,9 +1608,6 @@ nvme_rdma_qpair_disconnect(struct spdk_nvme_qpair *qpair)
 		if (rqpair->cm_id->qp) {
 			rdma_destroy_qp(rqpair->cm_id);
 		}
-		// else {
-		// 	ibv_destroy_qp(rqpair->qp);
-		// }
 		rdma_destroy_id(rqpair->cm_id);
 	}
 

@@ -39,7 +39,7 @@
 
 #define IBV_UMR
 #ifdef IBV_UMR
-	#include <infiniband/verbs_exp.h>
+#include <infiniband/verbs_exp.h>
 #endif
 
 #include "nvmf_internal.h"
@@ -284,7 +284,7 @@ struct spdk_nvmf_rdma_request {
 	STAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
 
 #ifdef IBV_UMR
-	struct ibv_mr* umr;
+	struct ibv_mr *umr;
 	struct spdk_nvmf_umr_desc umr_desc;
 #endif
 };
@@ -429,7 +429,7 @@ struct spdk_nvmf_rdma_qpair {
 	/* Lets us know that we have received the last_wqe event. */
 	bool					last_wqe_reached;
 
-	struct ibv_qp* qp;
+	struct ibv_qp *qp;
 };
 
 struct spdk_nvmf_rdma_poller_stat {
@@ -746,7 +746,7 @@ nvmf_rdma_resources_destroy(struct spdk_nvmf_rdma_resources *resources)
 	spdk_free(resources->cmds);
 	spdk_free(resources->cpls);
 	spdk_free(resources->bufs);
-	for(i = 0; i < resources->max_queue_depth; ++i) {
+	for (i = 0; i < resources->max_queue_depth; ++i) {
 		ibv_dereg_mr(resources->reqs[i].umr);
 	}
 	free(resources->reqs);
@@ -908,9 +908,9 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 					.max_klm_list_size	= SPDK_NVMF_MAX_SGL_ENTRIES,
 					.create_flags		= IBV_EXP_MR_INDIRECT_KLMS,
 					.exp_access_flags	= IBV_ACCESS_LOCAL_WRITE |
-								IBV_ACCESS_REMOTE_READ |
-								IBV_ACCESS_REMOTE_WRITE,
-					}
+					IBV_ACCESS_REMOTE_READ |
+					IBV_ACCESS_REMOTE_WRITE,
+				}
 			};
 
 			rdma_req->umr = ibv_exp_create_mr(&umr_in);
@@ -1026,8 +1026,8 @@ nvmf_rdma_resize_cq(struct spdk_nvmf_rdma_qpair *rqpair, struct spdk_nvmf_rdma_d
 
 #ifdef IBV_UMR
 
-static int 
-spdk_nvmf_rdma_qpair_activate(struct spdk_nvmf_rdma_qpair* rqpair) 
+static int
+spdk_nvmf_rdma_qpair_activate(struct spdk_nvmf_rdma_qpair *rqpair)
 {
 	struct ibv_qp_attr qp_attr = {
 		.qp_state = IBV_QPS_INIT
@@ -1041,7 +1041,7 @@ spdk_nvmf_rdma_qpair_activate(struct spdk_nvmf_rdma_qpair* rqpair)
 		return ret;
 	}
 
- 	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
+	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
 	if (ret) {
 		SPDK_ERRLOG("Error %d on ibv_modify_qp\n", ret);
 		return ret;
@@ -1055,7 +1055,7 @@ spdk_nvmf_rdma_qpair_activate(struct spdk_nvmf_rdma_qpair* rqpair)
 		return ret;
 	}
 
- 	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
+	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
 	if (ret) {
 		SPDK_ERRLOG("Error %d on ibv_modify_qp\n", ret);
 		return ret;
@@ -1069,7 +1069,7 @@ spdk_nvmf_rdma_qpair_activate(struct spdk_nvmf_rdma_qpair* rqpair)
 		return ret;
 	}
 
- 	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
+	ret = ibv_modify_qp(rqpair->qp, &qp_attr, qp_attr_mask);
 	if (ret) {
 		SPDK_ERRLOG("Error %d on ibv_modify_qp\n", ret);
 		return ret;
@@ -1077,7 +1077,6 @@ spdk_nvmf_rdma_qpair_activate(struct spdk_nvmf_rdma_qpair* rqpair)
 
 	return 0;
 }
-
 
 static int
 spdk_nvmf_rdma_qpair_create(struct spdk_nvmf_rdma_qpair	*rqpair)
@@ -1095,8 +1094,8 @@ spdk_nvmf_rdma_qpair_create(struct spdk_nvmf_rdma_qpair	*rqpair)
 		.recv_cq = rqpair->poller->cq,
 		.srq = rqpair->srq,
 		.comp_mask = IBV_EXP_QP_INIT_ATTR_PD |
-		             IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS |
-					 IBV_EXP_QP_INIT_ATTR_MAX_INL_KLMS,
+		IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS |
+		IBV_EXP_QP_INIT_ATTR_MAX_INL_KLMS,
 		.exp_create_flags = IBV_EXP_QP_CREATE_UMR,
 		.cap = {
 			.max_send_wr  = rqpair->max_queue_depth * 2 + 1,
@@ -1104,11 +1103,10 @@ spdk_nvmf_rdma_qpair_create(struct spdk_nvmf_rdma_qpair	*rqpair)
 			.max_send_sge = spdk_min(device->attr.max_sge, NVMF_DEFAULT_TX_SGE),
 			.max_recv_sge = spdk_min(device->attr.max_sge, NVMF_DEFAULT_RX_SGE),
 		},
-		//.max_inl_recv = ,
 	};
 
 	ret = ibv_exp_query_device(device->context, &dattr);
-	if(ret) {
+	if (ret) {
 		SPDK_ERRLOG("ibv_exp_query_device failed: errno %d: %s\n", errno, spdk_strerror(errno));
 		return -1;
 	}
@@ -1127,8 +1125,8 @@ spdk_nvmf_rdma_qpair_create(struct spdk_nvmf_rdma_qpair	*rqpair)
 	}
 
 	SPDK_NOTICELOG("Create exp QP %p num %u\n",
-				rqpair->qp,
-				rqpair->qp->qp_num);
+		       rqpair->qp,
+		       rqpair->qp->qp_num);
 
 	rqpair->max_send_depth = spdk_min((uint32_t)(rqpair->max_queue_depth * 2 + 1),
 					  init_attr.cap.max_send_wr);
@@ -1172,8 +1170,8 @@ spdk_nvmf_rdma_qpair_create(struct spdk_nvmf_rdma_qpair	*rqpair)
 	rqpair->qp = rqpair->cm_id->qp;
 
 	SPDK_NOTICELOG("Create rdma_cm QP %p num %u\n",
-			rqpair->qd,
-			rqpair->qp->qp_num);
+		       rqpair->qd,
+		       rqpair->qp->qp_num);
 
 	rqpair->max_send_depth = spdk_min((uint32_t)(rqpair->max_queue_depth * 2 + 1),
 					  init_attr.cap.max_send_wr);
@@ -1723,11 +1721,11 @@ nvmf_request_alloc_wrs(struct spdk_nvmf_rdma_transport *rtransport,
 #ifdef IBV_UMR
 static int
 nvmf_rdma_fill_buffers_umr(struct spdk_nvmf_rdma_transport *rtransport,
-		       struct spdk_nvmf_rdma_poll_group *rgroup,
-		       struct spdk_nvmf_rdma_device *device,
-		       struct spdk_nvmf_rdma_request *rdma_req,
-		       struct ibv_send_wr *wr,
-		       uint32_t length,
+			   struct spdk_nvmf_rdma_poll_group *rgroup,
+			   struct spdk_nvmf_rdma_device *device,
+			   struct spdk_nvmf_rdma_request *rdma_req,
+			   struct ibv_send_wr *wr,
+			   uint32_t length,
 			   uint32_t buf_num)
 {
 	uint64_t	translation_len;
@@ -1735,7 +1733,7 @@ nvmf_rdma_fill_buffers_umr(struct spdk_nvmf_rdma_transport *rtransport,
 	uint32_t	iovcnt;
 	uint32_t	i = 0;
 	struct ibv_exp_send_wr *bad_wr;
-	struct ibv_mr* mr;
+	struct ibv_mr *mr;
 	int rc;
 
 	while (remaining_length) {
@@ -1750,7 +1748,7 @@ nvmf_rdma_fill_buffers_umr(struct spdk_nvmf_rdma_transport *rtransport,
 
 		if (!g_nvmf_hooks.get_rkey) {
 			mr = ((struct ibv_mr *)spdk_mem_map_translate(device->map,
-					       (uint64_t)rdma_req->req.iov[iovcnt].iov_base, &translation_len));
+					(uint64_t)rdma_req->req.iov[iovcnt].iov_base, &translation_len));
 		} else {
 			assert(0);
 		}
@@ -1761,9 +1759,9 @@ nvmf_rdma_fill_buffers_umr(struct spdk_nvmf_rdma_transport *rtransport,
 
 #if 0
 		SPDK_NOTICELOG("umr[%d]: mr %p add 0x%lx len %zu\n", i,
-						rdma_req->umr_desc.mem_list[i].mr,
-						rdma_req->umr_desc.mem_list[i].base_addr,
-						rdma_req->umr_desc.mem_list[i].length);
+			       rdma_req->umr_desc.mem_list[i].mr,
+			       rdma_req->umr_desc.mem_list[i].base_addr,
+			       rdma_req->umr_desc.mem_list[i].length);
 #endif
 		remaining_length -= rdma_req->req.iov[iovcnt].iov_len;
 
@@ -1876,19 +1874,18 @@ spdk_nvmf_rdma_request_fill_iovs(struct spdk_nvmf_rdma_transport *rtransport,
 
 	rdma_req->req.iovcnt = 0;
 
-
-#ifdef IBV_UMR
-	if(num_buffers > 1) {
-		//try to use UMR to decrease SGL the number entries. TODO find a treshold to apply UMR
-		rc = nvmf_rdma_fill_buffers_umr(rtransport, rgroup, device, rdma_req, &rdma_req->data.wr,
-						rdma_req->req.length, num_buffers);
-	} else {
-#endif
-		rc = nvmf_rdma_fill_buffers(rtransport, rgroup, device, rdma_req, &rdma_req->data.wr,
-						rdma_req->req.length);
-#ifdef IBV_UMR
-	}
-#endif
+// #ifdef IBV_UMR
+// 	if(num_buffers > 1) {
+// 		//try to use UMR to decrease SGL the number entries. TODO find a treshold to apply UMR
+// 		rc = nvmf_rdma_fill_buffers_umr(rtransport, rgroup, device, rdma_req, &rdma_req->data.wr,
+// 						rdma_req->req.length, num_buffers);
+// 	} else {
+// #endif
+	rc = nvmf_rdma_fill_buffers(rtransport, rgroup, device, rdma_req, &rdma_req->data.wr,
+				    rdma_req->req.length);
+// #ifdef IBV_UMR
+// 	}
+// #endif
 
 	if (rc != 0) {
 		goto err_exit;
@@ -1938,6 +1935,8 @@ nvmf_rdma_request_fill_iovs_multi_sgl(struct spdk_nvmf_rdma_transport *rtranspor
 	assert(num_sgl_descriptors <= SPDK_NVMF_MAX_SGL_ENTRIES);
 	desc = (struct spdk_nvme_sgl_descriptor *)rdma_req->recv->buf + inline_segment->address;
 
+	// SPDK_NOTICELOG("multisgl, len %u desc %u\n", inline_segment->unkeyed.length, num_sgl_descriptors);
+	
 	for (i = 0; i < num_sgl_descriptors; i++) {
 		num_buffers += SPDK_CEIL_DIV(desc->keyed.length, rtransport->transport.opts.io_unit_size);
 		desc++;
@@ -2066,6 +2065,8 @@ spdk_nvmf_rdma_request_parse_sgl(struct spdk_nvmf_rdma_transport *rtransport,
 			rdma_req->data.wr.send_flags |= IBV_SEND_SIGNALED;
 		}
 
+ 		// SPDK_NOTICELOG("contig, num_sge %d len %u\n", rdma_req->data.wr.num_sge, rdma_req->req.length);
+
 		/* set the number of outstanding data WRs for this request. */
 		rdma_req->num_outstanding_data_wr = 1;
 
@@ -2096,6 +2097,8 @@ spdk_nvmf_rdma_request_parse_sgl(struct spdk_nvmf_rdma_transport *rtransport,
 			return -1;
 		}
 
+		// SPDK_NOTICELOG("inline, len %u \n", sgl->unkeyed.length);
+
 		rdma_req->num_outstanding_data_wr = 0;
 		rdma_req->req.data = rdma_req->recv->buf + offset;
 		rdma_req->data_from_pool = false;
@@ -2108,7 +2111,10 @@ spdk_nvmf_rdma_request_parse_sgl(struct spdk_nvmf_rdma_transport *rtransport,
 		return 0;
 	} else if (sgl->generic.type == SPDK_NVME_SGL_TYPE_LAST_SEGMENT &&
 		   sgl->unkeyed.subtype == SPDK_NVME_SGL_SUBTYPE_OFFSET) {
-
+#ifdef IBV_UMR
+		SPDK_ERRLOG("Should never happen since the initiator uses UMR\n");
+		assert(0);
+#endif
 		rc = nvmf_rdma_request_fill_iovs_multi_sgl(rtransport, device, rdma_req);
 		if (rc == -ENOMEM) {
 			SPDK_DEBUGLOG(SPDK_LOG_RDMA, "No available large data buffers. Queueing request %p\n", rdma_req);
@@ -2133,6 +2139,36 @@ spdk_nvmf_rdma_request_parse_sgl(struct spdk_nvmf_rdma_transport *rtransport,
 	return -1;
 }
 
+#ifdef IBV_UMR
+static void
+nvmf_rdma_request_invalidate_umr(struct spdk_nvmf_rdma_request *rdma_req)
+{
+	struct spdk_nvmf_qpair		*qpair;
+	struct spdk_nvmf_rdma_qpair	*rqpair;
+	struct ibv_exp_send_wr wr, *bad_wr;
+	int rc;
+
+	qpair = rdma_req->req.qpair;
+	rqpair = SPDK_CONTAINEROF(qpair, struct spdk_nvmf_rdma_qpair, qpair);
+
+	assert(rqpair->qp);
+
+	if (!rdma_req->umr) {
+		return;
+	}
+
+	if (rdma_req->umr->addr) {
+		memset(&wr, 0, sizeof(wr));
+		wr.exp_opcode = IBV_EXP_WR_UMR_INVALIDATE;
+		wr.ext_op.umr.modified_mr = rdma_req->umr;
+		rc = ibv_exp_post_send(rqpair->qp, &wr, &bad_wr);
+		if (rc) {
+			SPDK_ERRLOG("failed to invalidate UMR");
+		}
+	}
+}
+#endif
+
 static void
 nvmf_rdma_request_free(struct spdk_nvmf_rdma_request *rdma_req,
 		       struct spdk_nvmf_rdma_transport	*rtransport)
@@ -2154,6 +2190,12 @@ nvmf_rdma_request_free(struct spdk_nvmf_rdma_request *rdma_req,
 	rdma_req->rsp.wr.next = NULL;
 	rdma_req->data.wr.next = NULL;
 	rqpair->qd--;
+
+#ifdef IBV_UMR
+	if (rdma_req->umr) {
+		nvmf_rdma_request_invalidate_umr(rdma_req);
+	}
+#endif
 
 	STAILQ_INSERT_HEAD(&rqpair->resources->free_queue, rdma_req, state_link);
 	rdma_req->state = RDMA_REQUEST_STATE_FREE;
