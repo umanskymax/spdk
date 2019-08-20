@@ -147,7 +147,8 @@ install -p -m 755 contrib/setup_nvmf_tgt.py %{install_sbindir}
 install -p -m 755 contrib/setup_vhost.py %{install_sbindir}
 install -p -m 755 contrib/vhost_add_config.sh %{install_sbindir}
 install -p -m 755 contrib/setup_hugepages.sh %{install_sbindir}
-mkdir -p %{buildroot}%{_sysconfdir}/systemd/system
+systemd_dir=${RPM_BUILD_ROOT}%{_prefix}/lib/systemd/system
+mkdir -p ${systemd_dir}
 mkdir -p %{buildroot}%{_sysconfdir}/default
 mkdir -p %{buildroot}%{_sysconfdir}/spdk
 mkdir -p %{install_datadir}
@@ -158,7 +159,7 @@ install -p -m 755 contrib/arp_fixup.sh %{install_sbindir}
 
 for fn in nvmf_tgt vhost nvmf_proxy ; do
   if [ -e contrib/$fn.service ] ; then
-    install -p -m 644 contrib/$fn.service %{buildroot}%{_sysconfdir}/systemd/system
+    install -p -m 644 contrib/$fn.service ${systemd_dir}
   fi
   if [ -e contrib/$fn-default ] ; then
     install -p -m 644 contrib/$fn-default %{buildroot}%{_sysconfdir}/default/$fn
@@ -186,7 +187,7 @@ done
 %files
 %{_sbindir}/*
 %{_bindir}/*
-%{_sysconfdir}/systemd/system/*.service
+%{_prefix}/lib/systemd/system/*.service
 %{_libdir}/*
 %{_datadir}/*
 %config(noreplace) %{_sysconfdir}/default/*
