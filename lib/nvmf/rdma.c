@@ -455,6 +455,12 @@ struct spdk_nvmf_rdma_poll_group {
 	TAILQ_HEAD(, spdk_nvmf_rdma_poller)	pollers;
 
 	struct spdk_nvmf_rdma_poll_group_stat	stat;
+	TAILQ_ENTRY(spdk_nvmf_rdma_poll_group)	link;
+};
+
+struct spdk_nvmf_rdma_conn_sched {
+	struct spdk_nvmf_rdma_poll_group *admin_pg;
+	struct spdk_nvmf_rdma_poll_group *io_pg;
 };
 
 /* Assuming rdma_cm uses just one protection domain per ibv_context. */
@@ -481,6 +487,8 @@ struct spdk_nvmf_rdma_port {
 struct spdk_nvmf_rdma_transport {
 	struct spdk_nvmf_transport	transport;
 
+	struct spdk_nvmf_rdma_conn_sched conn_sched;
+
 	struct rdma_event_channel	*event_channel;
 
 	struct spdk_mempool		*data_wr_pool;
@@ -493,6 +501,7 @@ struct spdk_nvmf_rdma_transport {
 
 	TAILQ_HEAD(, spdk_nvmf_rdma_device)	devices;
 	TAILQ_HEAD(, spdk_nvmf_rdma_port)	ports;
+	TAILQ_HEAD(, spdk_nvmf_rdma_poll_group)	poll_groups;
 };
 
 static inline int
@@ -2093,6 +2102,7 @@ spdk_nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 
 	TAILQ_INIT(&rtransport->devices);
 	TAILQ_INIT(&rtransport->ports);
+	TAILQ_INIT(&rtransport->poll_groups);
 
 	rtransport->transport.ops = &spdk_nvmf_transport_rdma;
 
@@ -2338,6 +2348,11 @@ spdk_nvmf_rdma_destroy(struct spdk_nvmf_transport *transport)
 	}
 
 	spdk_mempool_free(rtransport->data_wr_pool);
+
+	if (!TAILQ_EMPTY(&rtransport->poll_groups)) {
+		SPDK_NOTICELOG("Destroying RDMA transport with existing poll groups\n");
+	}
+
 	pthread_mutex_destroy(&rtransport->lock);
 	free(rtransport);
 
@@ -2941,8 +2956,8 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 		poller = calloc(1, sizeof(*poller));
 		if (!poller) {
 			SPDK_ERRLOG("Unable to allocate memory for new RDMA poller\n");
-			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 			pthread_mutex_unlock(&rtransport->lock);
+			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 			return NULL;
 		}
 
@@ -2964,8 +2979,8 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 			poller->srq = ibv_create_srq(device->pd, &srq_init_attr);
 			if (!poller->srq) {
 				SPDK_ERRLOG("Unable to create shared receive queue, errno %d\n", errno);
-				spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 				pthread_mutex_unlock(&rtransport->lock);
+				spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 				return NULL;
 			}
 
@@ -2979,8 +2994,8 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 			poller->resources = nvmf_rdma_resources_create(&opts);
 			if (!poller->resources) {
 				SPDK_ERRLOG("Unable to allocate resources for shared receive queue.\n");
-				spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 				pthread_mutex_unlock(&rtransport->lock);
+				spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 				return NULL;
 			}
 		}
@@ -3000,11 +3015,17 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 		poller->cq = ibv_create_cq(device->context, num_cqe, poller, NULL, 0);
 		if (!poller->cq) {
 			SPDK_ERRLOG("Unable to create completion queue\n");
-			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 			pthread_mutex_unlock(&rtransport->lock);
+			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 			return NULL;
 		}
 		poller->num_cqe = num_cqe;
+	}
+
+	TAILQ_INSERT_TAIL(&rtransport->poll_groups, rgroup, link);
+	if (rtransport->conn_sched.admin_pg == NULL) {
+		rtransport->conn_sched.admin_pg = rgroup;
+		rtransport->conn_sched.io_pg = rgroup;
 	}
 
 	pthread_mutex_unlock(&rtransport->lock);
@@ -3014,11 +3035,13 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 static void
 spdk_nvmf_rdma_poll_group_destroy(struct spdk_nvmf_transport_poll_group *group)
 {
-	struct spdk_nvmf_rdma_poll_group	*rgroup;
+	struct spdk_nvmf_rdma_poll_group	*rgroup, *next_rgroup;
 	struct spdk_nvmf_rdma_poller		*poller, *tmp;
 	struct spdk_nvmf_rdma_qpair		*qpair, *tmp_qpair;
+	struct spdk_nvmf_rdma_transport		*rtransport;
 
 	rgroup = SPDK_CONTAINEROF(group, struct spdk_nvmf_rdma_poll_group, group);
+	rtransport = SPDK_CONTAINEROF(rgroup->group.transport, struct spdk_nvmf_rdma_transport, transport);
 
 	if (!rgroup) {
 		return;
@@ -3043,6 +3066,20 @@ spdk_nvmf_rdma_poll_group_destroy(struct spdk_nvmf_transport_poll_group *group)
 
 		free(poller);
 	}
+
+	pthread_mutex_lock(&rtransport->lock);
+	next_rgroup = TAILQ_NEXT(rgroup, link);
+	TAILQ_REMOVE(&rtransport->poll_groups, rgroup, link);
+	if (next_rgroup == NULL) {
+		next_rgroup = TAILQ_FIRST(&rtransport->poll_groups);
+	}
+	if (rtransport->conn_sched.admin_pg == rgroup) {
+		rtransport->conn_sched.admin_pg = next_rgroup;
+	}
+	if (rtransport->conn_sched.io_pg == rgroup) {
+		rtransport->conn_sched.io_pg = next_rgroup;
+	}
+	pthread_mutex_unlock(&rtransport->lock);
 
 	free(rgroup);
 }
