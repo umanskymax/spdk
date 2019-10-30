@@ -38,6 +38,7 @@
 #include "spdk/stdinc.h"
 
 #include <infiniband/verbs.h>
+#include <infiniband/verbs_exp.h>
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
 
@@ -115,6 +116,8 @@ struct nvme_rdma_qpair {
 	struct spdk_nvme_qpair			qpair;
 
 	struct rdma_cm_id			*cm_id;
+
+	struct ibv_qp                           *qp;
 
 	struct ibv_cq				*cq;
 
@@ -474,6 +477,76 @@ nvme_rdma_qpair_init(struct nvme_rdma_qpair *rqpair)
 	rctrlr->pd = rqpair->cm_id->qp->pd;
 
 	rqpair->cm_id->context = &rqpair->qpair;
+
+	return 0;
+}
+
+static int
+nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
+{
+	int ret;
+	struct nvme_rdma_ctrlr  *rctrlr;
+	struct ibv_exp_device_attr dattr = {
+		.comp_mask = IBV_EXP_DEVICE_ATTR_UMR
+	};
+	struct ibv_exp_qp_init_attr  init_attr = {
+			.qp_context = rqpair,
+			.qp_type = IBV_QPT_RC,
+			.comp_mask = IBV_EXP_QP_INIT_ATTR_PD |
+						IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS |
+						IBV_EXP_QP_INIT_ATTR_MAX_INL_KLMS,
+			.exp_create_flags = IBV_EXP_QP_CREATE_UMR,
+			.cap = {
+				.max_send_wr  = rqpair->num_entries * 3, //send, reg_mr, inv_mr
+				.max_recv_wr  = rqpair->num_entries,
+			},
+	};
+
+	rqpair->cq = ibv_create_cq(rqpair->cm_id->verbs, rqpair->num_entries * 2, rqpair, NULL, 0);
+	if (!rqpair->cq) {
+			SPDK_ERRLOG("Unable to create completion queue: errno %d: %s\n", errno, spdk_strerror(errno));
+			return -1;
+	}
+
+	init_attr.send_cq = rqpair->cq;
+	init_attr.recv_cq = rqpair->cq;
+
+	rctrlr = nvme_rdma_ctrlr(rqpair->qpair.ctrlr);
+	if (g_nvme_hooks.get_ibv_pd) {
+		rctrlr->pd = g_nvme_hooks.get_ibv_pd(&rctrlr->ctrlr.trid, rqpair->cm_id->verbs);
+	} else {
+		rctrlr->pd = rqpair->cm_id->pd;
+	}
+
+	init_attr.pd = rctrlr->pd;
+
+	ret = ibv_exp_query_device(rqpair->cm_id->verbs, &dattr);
+	if (ret) {
+		SPDK_ERRLOG("ibv_exp_query_device failed: errno %d: %s\n", errno, spdk_strerror(errno));
+		return -1;
+	}
+
+	init_attr.max_inl_send_klms	= dattr.umr_caps.max_send_wqe_inline_klms;
+	init_attr.cap.max_send_sge	= spdk_min(NVME_RDMA_DEFAULT_TX_SGE, dattr.max_sge);
+	init_attr.cap.max_recv_sge	= spdk_min(NVME_RDMA_DEFAULT_RX_SGE, dattr.max_sge);
+
+	if (dattr.exp_device_cap_flags & IBV_EXP_DEVICE_SIGNATURE_HANDOVER) {
+		init_attr.exp_create_flags |= IBV_EXP_QP_CREATE_SIGNATURE_EN | IBV_EXP_QP_CREATE_SIGNATURE_PIPELINE;
+		init_attr.comp_mask |= IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS;
+	}
+
+	rqpair->qp = ibv_exp_create_qp(rqpair->cm_id->verbs, &init_attr);
+	if (!rqpair->qp) {
+		SPDK_ERRLOG("ibv_exp_create_qp failed: errno %d: %s\n", errno, spdk_strerror(errno));
+		return -1;
+	}
+
+	/* ibv_create_qp will change the values in attr.cap. Make sure we store the proper value. */
+	rqpair->max_send_sge = spdk_min(NVME_RDMA_DEFAULT_TX_SGE, init_attr.cap.max_send_sge);
+	rqpair->max_recv_sge = spdk_min(NVME_RDMA_DEFAULT_RX_SGE, init_attr.cap.max_recv_sge);
+
+	rqpair->cm_id->context = &rqpair->qpair;
+	rqpair->cm_id->qp = rqpair->qp;
 
 	return 0;
 }
@@ -1014,7 +1087,7 @@ nvme_rdma_qpair_connect(struct nvme_rdma_qpair *rqpair)
 		return -1;
 	}
 
-	rc = nvme_rdma_qpair_init(rqpair);
+	rc = nvme_rdma_qpair_init_exp(rqpair);
 	if (rc < 0) {
 		SPDK_ERRLOG("nvme_rdma_qpair_init() failed\n");
 		return -1;
