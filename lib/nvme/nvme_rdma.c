@@ -147,10 +147,15 @@ struct nvme_rdma_qpair {
 	/* Memory region describing all cmds for this qpair */
 	struct ibv_mr				*cmd_mr;
 
+	/* Array of signature MRs indexed by rdma_req->id */
+	struct ibv_mr				**sig_mrs;
+
 	struct spdk_nvme_rdma_mr_map		*mr_map;
 
 	TAILQ_HEAD(, spdk_nvme_rdma_req)	free_reqs;
 	TAILQ_HEAD(, spdk_nvme_rdma_req)	outstanding_reqs;
+
+	struct ibv_exp_device_attr exp_attr;
 
 	/* Placed at the end of the struct since it is not used frequently */
 	struct rdma_cm_event			*evt;
@@ -486,9 +491,6 @@ nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 {
 	int ret;
 	struct nvme_rdma_ctrlr  *rctrlr;
-	struct ibv_exp_device_attr dattr = {
-		.comp_mask = IBV_EXP_DEVICE_ATTR_UMR
-	};
 	struct ibv_exp_qp_init_attr  init_attr = {
 			.qp_context = rqpair,
 			.qp_type = IBV_QPT_RC,
@@ -501,6 +503,8 @@ nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 				.max_recv_wr  = rqpair->num_entries,
 			},
 	};
+
+	rqpair->exp_attr.comp_mask = IBV_EXP_DEVICE_ATTR_UMR;
 
 	rqpair->cq = ibv_create_cq(rqpair->cm_id->verbs, rqpair->num_entries * 2, rqpair, NULL, 0);
 	if (!rqpair->cq) {
@@ -520,17 +524,18 @@ nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 
 	init_attr.pd = rctrlr->pd;
 
-	ret = ibv_exp_query_device(rqpair->cm_id->verbs, &dattr);
+	ret = ibv_exp_query_device(rqpair->cm_id->verbs, &rqpair->exp_attr);
 	if (ret) {
 		SPDK_ERRLOG("ibv_exp_query_device failed: errno %d: %s\n", errno, spdk_strerror(errno));
 		return -1;
 	}
 
-	init_attr.max_inl_send_klms	= dattr.umr_caps.max_send_wqe_inline_klms;
-	init_attr.cap.max_send_sge	= spdk_min(NVME_RDMA_DEFAULT_TX_SGE, dattr.max_sge);
-	init_attr.cap.max_recv_sge	= spdk_min(NVME_RDMA_DEFAULT_RX_SGE, dattr.max_sge);
+	init_attr.max_inl_send_klms	= rqpair->exp_attr.umr_caps.max_send_wqe_inline_klms;
+	init_attr.cap.max_send_sge	= spdk_min(NVME_RDMA_DEFAULT_TX_SGE, rqpair->exp_attr.max_sge);
+	init_attr.cap.max_recv_sge	= spdk_min(NVME_RDMA_DEFAULT_RX_SGE, rqpair->exp_attr.max_sge);
 
-	if (dattr.exp_device_cap_flags & IBV_EXP_DEVICE_SIGNATURE_HANDOVER) {
+	if (rqpair->exp_attr.exp_device_cap_flags & IBV_EXP_DEVICE_SIGNATURE_HANDOVER) {
+		SPDK_NOTICELOG("Device %s supports sig handover\n", ibv_get_device_name(rqpair->cm_id->verbs->device));
 		init_attr.exp_create_flags |= IBV_EXP_QP_CREATE_SIGNATURE_EN | IBV_EXP_QP_CREATE_SIGNATURE_PIPELINE;
 		init_attr.comp_mask |= IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS;
 	}
@@ -660,6 +665,61 @@ nvme_rdma_register_rsps(struct nvme_rdma_qpair *rqpair)
 fail:
 	nvme_rdma_unregister_rsps(rqpair);
 	return -ENOMEM;
+}
+
+static void
+nvme_rdma_unregister_sig_mrs(struct nvme_rdma_qpair *rqpair)
+{
+	uint16_t i;
+
+	if (!(rqpair->exp_attr.exp_device_cap_flags & IBV_EXP_DEVICE_SIGNATURE_HANDOVER)) {
+		return;
+	}
+
+	for (i = 0; i < rqpair->num_entries; i++) {
+		if (rqpair->sig_mrs[i]) {
+			ibv_dereg_mr(rqpair->sig_mrs[i]);
+			rqpair->sig_mrs[i] = NULL;
+		}
+	}
+	
+	free(rqpair->sig_mrs);
+}
+
+static int
+nvme_rdma_register_sig_mrs(struct nvme_rdma_qpair *rqpair)
+{
+	uint16_t i;
+
+	if (!(rqpair->exp_attr.exp_device_cap_flags & IBV_EXP_DEVICE_SIGNATURE_HANDOVER)) {
+		return 0;
+	}
+
+	rqpair->sig_mrs = calloc(rqpair->num_entries, sizeof(struct ibv_mr*));
+	if (!rqpair->sig_mrs) {
+		return -ENOMEM;
+	}
+
+	for (i = 0; i < rqpair->num_entries; i++) {
+
+		struct ibv_exp_create_mr_in sig_mr_in = {
+			.pd = rqpair->cm_id->pd,
+			.attr.max_klm_list_size = rqpair->exp_attr.umr_caps.max_send_wqe_inline_klms,
+			.attr.exp_access_flags = IBV_ACCESS_LOCAL_WRITE,
+		};
+
+		rqpair->sig_mrs[i] = ibv_exp_create_mr(&sig_mr_in);
+		if (!rqpair->sig_mrs[i]) {
+			SPDK_ERRLOG("Failed to create Signature offload MR, error %d\n", errno);
+			goto fail;
+		}
+	}
+
+	return 0;
+
+fail:
+	nvme_rdma_unregister_sig_mrs(rqpair);
+	return -1;
 }
 
 static void
@@ -1121,6 +1181,12 @@ nvme_rdma_qpair_connect(struct nvme_rdma_qpair *rqpair)
 		return -1;
 	}
 
+	rc = nvme_rdma_register_sig_mrs(rqpair);
+	if (rc < 0) {
+		SPDK_ERRLOG("Unable to register sig mrs for RDMA\n");
+		return -1;
+	}
+
 	rqpair->qpair.transport_qp_is_failed = false;
 	rc = nvme_fabric_qpair_connect(&rqpair->qpair, rqpair->num_entries);
 	if (rc < 0) {
@@ -1565,6 +1631,7 @@ nvme_rdma_qpair_disconnect(struct spdk_nvme_qpair *qpair)
 	nvme_rdma_unregister_mem(rqpair);
 	nvme_rdma_unregister_reqs(rqpair);
 	nvme_rdma_unregister_rsps(rqpair);
+	nvme_rdma_unregister_sig_mrs(rqpair);
 
 	if (rqpair->evt) {
 		rdma_ack_cm_event(rqpair->evt);
