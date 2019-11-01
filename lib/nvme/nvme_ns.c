@@ -62,6 +62,7 @@ nvme_ns_set_identify_data(struct spdk_nvme_ns *ns)
 		ns->flags |= SPDK_NVME_NS_EXTENDED_LBA_SUPPORTED;
 		ns->extended_lba_size += ns->md_size;
 	}
+	SPDK_NOTICELOG("elba %u, md_size %u\n", ns->extended_lba_size, ns->md_size);
 
 	ns->sectors_per_max_io = spdk_nvme_ns_get_max_io_xfer_size(ns) / ns->extended_lba_size;
 
@@ -214,6 +215,10 @@ spdk_nvme_ns_get_sector_size(struct spdk_nvme_ns *ns)
 uint32_t
 spdk_nvme_ns_get_extended_sector_size(struct spdk_nvme_ns *ns)
 {
+	if (ns->ctrlr->opts.dif_mode == NVME_DIF_MODE_INSERT_OR_STRIP &&
+	    (ns->flags & SPDK_NVME_NS_EXTENDED_LBA_SUPPORTED)) {
+		return ns->extended_lba_size - ns->md_size;
+	}
 	return ns->extended_lba_size;
 }
 
@@ -232,23 +237,38 @@ spdk_nvme_ns_get_size(struct spdk_nvme_ns *ns)
 uint32_t
 spdk_nvme_ns_get_flags(struct spdk_nvme_ns *ns)
 {
+	if (ns->ctrlr->opts.dif_mode == NVME_DIF_MODE_INSERT_OR_STRIP) {
+		return ns->flags & ~SPDK_NVME_NS_DPS_PI_SUPPORTED;
+	}
 	return ns->flags;
 }
 
 enum spdk_nvme_pi_type
 spdk_nvme_ns_get_pi_type(struct spdk_nvme_ns *ns) {
+
+	if (ns->ctrlr->opts.dif_mode == NVME_DIF_MODE_INSERT_OR_STRIP)
+	{
+		return SPDK_NVME_FMT_NVM_PROTECTION_DISABLE;
+	}
 	return ns->pi_type;
 }
 
 bool
 spdk_nvme_ns_supports_extended_lba(struct spdk_nvme_ns *ns)
 {
+	if (ns->ctrlr->opts.dif_mode == NVME_DIF_MODE_INSERT_OR_STRIP) {
+		return false;
+	}
+
 	return (ns->flags & SPDK_NVME_NS_EXTENDED_LBA_SUPPORTED) ? true : false;
 }
 
 uint32_t
 spdk_nvme_ns_get_md_size(struct spdk_nvme_ns *ns)
 {
+	if (ns->ctrlr->opts.dif_mode == NVME_DIF_MODE_INSERT_OR_STRIP) {
+		return 0;
+	}
 	return ns->md_size;
 }
 

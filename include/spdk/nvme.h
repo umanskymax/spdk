@@ -53,6 +53,11 @@ extern "C" {
  */
 struct spdk_nvme_ctrlr;
 
+enum nvme_dif_mode {
+	NVME_DIF_MODE_NONE,
+	NVME_DIF_MODE_INSERT_OR_STRIP
+};
+
 /**
  * NVMe controller initialization options.
  *
@@ -215,6 +220,9 @@ struct spdk_nvme_ctrlr_opts {
 	 * Defaults to 'false' (errors are logged).
 	 */
 	bool disable_error_logging;
+
+	enum nvme_dif_mode dif_mode;
+	uint32_t prchk_flag;
 };
 
 /**

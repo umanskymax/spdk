@@ -52,6 +52,7 @@
 #include "spdk/string.h"
 #include "spdk/endian.h"
 #include "spdk/likely.h"
+#include "spdk/dif.h"
 
 #include "nvme_internal.h"
 
@@ -161,6 +162,13 @@ struct nvme_rdma_qpair {
 	struct rdma_cm_event			*evt;
 };
 
+struct spdk_nvmf_dif_info {
+	struct spdk_dif_ctx			dif_ctx;
+	bool					dif_insert_or_strip;
+	uint32_t				elba_length;
+	uint32_t				orig_length;
+};
+
 struct spdk_nvme_rdma_req {
 	int					id;
 
@@ -169,6 +177,9 @@ struct spdk_nvme_rdma_req {
 	struct nvme_request			*req;
 
 	struct ibv_sge				send_sgl[NVME_RDMA_DEFAULT_TX_SGE];
+
+	struct spdk_nvmf_dif_info		dif;
+	enum nvme_dif_mode dif_mode;
 
 	TAILQ_ENTRY(spdk_nvme_rdma_req)		link;
 
@@ -687,7 +698,7 @@ nvme_rdma_unregister_sig_mrs(struct nvme_rdma_qpair *rqpair)
 }
 
 static int
-nvme_rdma_register_sig_mrs(struct nvme_rdma_qpair *rqpair)
+nvme_rdma_create_sig_mrs(struct nvme_rdma_qpair *rqpair)
 {
 	uint16_t i;
 
@@ -1147,10 +1158,20 @@ nvme_rdma_qpair_connect(struct nvme_rdma_qpair *rqpair)
 		return -1;
 	}
 
-	rc = nvme_rdma_qpair_init_exp(rqpair);
-	if (rc < 0) {
-		SPDK_ERRLOG("nvme_rdma_qpair_init() failed\n");
-		return -1;
+	if (ctrlr->opts.dif_mode == NVME_DIF_MODE_NONE) {
+		SPDK_NOTICELOG("Create regular qpair\n");
+		rc = nvme_rdma_qpair_init(rqpair);
+		if (rc < 0) {
+			SPDK_ERRLOG("nvme_rdma_qpair_init() failed\n");
+			return -1;
+		}
+	} else if (ctrlr->opts.dif_mode == NVME_DIF_MODE_INSERT_OR_STRIP) {
+		SPDK_NOTICELOG("Create experimental qpair\n");
+		rc = nvme_rdma_qpair_init_exp(rqpair);
+		if (rc < 0) {
+			SPDK_ERRLOG("nvme_rdma_qpair_init_exp() failed\n");
+			return -1;
+		}
 	}
 
 	rc = nvme_rdma_connect(rqpair);
@@ -1181,10 +1202,13 @@ nvme_rdma_qpair_connect(struct nvme_rdma_qpair *rqpair)
 		return -1;
 	}
 
-	rc = nvme_rdma_register_sig_mrs(rqpair);
-	if (rc < 0) {
-		SPDK_ERRLOG("Unable to register sig mrs for RDMA\n");
-		return -1;
+	if (ctrlr->opts.dif_mode != NVME_DIF_MODE_NONE) {
+		SPDK_NOTICELOG("Creating sig_mrs\n");
+		rc = nvme_rdma_create_sig_mrs(rqpair);
+		if (rc < 0) {
+			SPDK_ERRLOG("Unable to register sig mrs for RDMA\n");
+			return -1;
+		}
 	}
 
 	rqpair->qpair.transport_qp_is_failed = false;
@@ -1526,6 +1550,86 @@ nvme_rdma_icdsz_bytes(struct spdk_nvme_ctrlr *ctrlr)
 	return (ctrlr->cdata.nvmf_specific.ioccsz * 16 - sizeof(struct spdk_nvme_cmd));
 }
 
+static enum nvme_dif_mode
+nvme_rdma_ctrlr_get_dif_ctx(struct spdk_nvme_ns *ns, struct spdk_nvme_cmd *cmd,
+                           struct spdk_dif_ctx *dif_ctx)
+{
+	uint32_t init_ref_tag;
+	uint32_t dif_ctx_check_flags = 0;
+	struct spdk_nvme_ctrlr *ctrlr = ns->ctrlr;
+	uint32_t ctrlr_dif_check_flags = ns->ctrlr->opts.prchk_flag;
+	int rc;
+
+	if (ns->md_size == 0) {
+		return NVME_DIF_MODE_NONE;
+	}
+
+	/* Initial Reference Tag is the lower 32 bits of the start LBA. */
+	init_ref_tag = (uint32_t)from_le64(&cmd->cdw10);
+
+	if ((ctrlr_dif_check_flags & SPDK_NVME_IO_FLAGS_PRCHK_REFTAG) != 0) {
+		dif_ctx_check_flags |= SPDK_DIF_FLAGS_REFTAG_CHECK;
+	}
+
+	if ((ctrlr_dif_check_flags & SPDK_NVME_IO_FLAGS_PRCHK_GUARD) != 0) {
+		dif_ctx_check_flags |= SPDK_DIF_FLAGS_GUARD_CHECK;
+	}
+
+	rc = spdk_dif_ctx_init(dif_ctx,
+							ns->extended_lba_size,
+							ns->md_size,
+							ctrlr->nsdata[ns->id - 1].flbas.extended,
+							ctrlr->nsdata[ns->id - 1].dps.md_start,
+							(enum spdk_dif_type)ns->pi_type,
+							dif_ctx_check_flags,
+							init_ref_tag, 0, 0, 0, 0);
+	return rc == 0 ? ns->ctrlr->opts.dif_mode : NVME_DIF_MODE_NONE;
+}
+
+static enum nvme_dif_mode
+nvme_rdma_get_dif_ctx(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_qpair* qpair, struct spdk_nvme_cmd *cmd,
+                     struct spdk_dif_ctx *dif_ctx)
+{
+	struct spdk_nvme_ns *ns;
+
+	if (spdk_unlikely(ctrlr == NULL || cmd == NULL)) {
+		return NVME_DIF_MODE_NONE;
+	}
+
+	if (spdk_unlikely(ctrlr->opts.dif_mode == NVME_DIF_MODE_NONE)) {
+		return NVME_DIF_MODE_NONE;
+	}
+
+	if (spdk_unlikely(cmd->opc == SPDK_NVME_OPC_FABRIC)) {
+		return NVME_DIF_MODE_NONE;
+	}
+
+	if (spdk_unlikely(qpair->id == 0)) {
+		return NVME_DIF_MODE_NONE;
+	}
+
+	if (spdk_unlikely(qpair->state != NVME_QPAIR_ENABLING && 
+		qpair->state != NVME_QPAIR_ENABLED)) {
+		return NVME_DIF_MODE_NONE;
+	}
+
+	ns = &ctrlr->ns[cmd->nsid - 1];
+	if (spdk_unlikely(ns == NULL)) {
+		return NVME_DIF_MODE_NONE;
+	}
+
+	switch (cmd->opc) {
+	case SPDK_NVME_OPC_READ:
+	case SPDK_NVME_OPC_WRITE:
+	case SPDK_NVME_OPC_COMPARE:
+		return nvme_rdma_ctrlr_get_dif_ctx(ns, cmd, dif_ctx);
+	default:
+		break;
+	}
+
+	return NVME_DIF_MODE_NONE;
+}
+
 static int
 nvme_rdma_req_init(struct nvme_rdma_qpair *rqpair, struct nvme_request *req,
 		   struct spdk_nvme_rdma_req *rdma_req)
@@ -1535,6 +1639,10 @@ nvme_rdma_req_init(struct nvme_rdma_qpair *rqpair, struct nvme_request *req,
 
 	rdma_req->req = req;
 	req->cmd.cid = rdma_req->id;
+
+	if (spdk_unlikely(ctrlr->opts.dif_mode != NVME_DIF_MODE_NONE && req->payload_size > 0)) {
+		rdma_req->dif_mode = nvme_rdma_get_dif_ctx(ctrlr, &rqpair->qpair, &req->cmd, &rdma_req->dif.dif_ctx);
+	}
 
 	if (req->payload_size == 0) {
 		rc = nvme_rdma_build_null_request(rdma_req);

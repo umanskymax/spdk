@@ -222,6 +222,7 @@ static bool g_data_digest;
 static bool g_no_shn_notification = false;
 /* Default to 10 seconds for the keep alive value. This value is arbitrary. */
 static uint32_t g_keep_alive_timeout_in_ms = 10000;
+static enum nvme_dif_mode g_nvme_dif_mode = NVME_DIF_MODE_NONE;
 
 static const char *g_core_mask;
 
@@ -1588,7 +1589,7 @@ parse_args(int argc, char **argv)
 	g_core_mask = NULL;
 	g_max_completions = 0;
 
-	while ((op = getopt(argc, argv, "c:e:i:lm:n:o:q:r:k:s:t:w:DGHILM:NT:U:V")) != -1) {
+	while ((op = getopt(argc, argv, "c:d:e:i:lm:n:o:q:r:k:s:t:w:DGHILM:NT:U:V")) != -1) {
 		switch (op) {
 		case 'i':
 		case 'm':
@@ -1600,6 +1601,7 @@ parse_args(int argc, char **argv)
 		case 't':
 		case 'M':
 		case 'U':
+		case 'd':
 			val = spdk_strtol(optarg, 10);
 			if (val < 0) {
 				fprintf(stderr, "Converting a string to integer failed\n");
@@ -1636,6 +1638,9 @@ parse_args(int argc, char **argv)
 				break;
 			case 'U':
 				g_nr_unused_io_queues = val;
+				break;
+			case 'd':
+				g_nvme_dif_mode = val;
 				break;
 			}
 			break;
@@ -1874,6 +1879,8 @@ probe_cb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
 	opts->data_digest = g_data_digest;
 	opts->keep_alive_timeout_ms = g_keep_alive_timeout_in_ms;
 
+	opts->dif_mode = g_nvme_dif_mode;
+	opts->prchk_flag = g_metacfg_prchk_flags;
 	return true;
 }
 
