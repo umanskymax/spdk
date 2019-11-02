@@ -130,6 +130,8 @@ struct nvme_rdma_qpair {
 
 	uint16_t				num_entries;
 
+	bool					sig_handover_supported;
+
 	/* Parallel arrays of response buffers + response SGLs of size num_entries */
 	struct ibv_sge				*rsp_sgls;
 	struct spdk_nvme_cpl			*rsps;
@@ -178,8 +180,14 @@ struct spdk_nvme_rdma_req {
 
 	struct ibv_sge				send_sgl[NVME_RDMA_DEFAULT_TX_SGE];
 
+
+	struct ibv_sge				sig_sgl;
 	struct spdk_nvmf_dif_info		dif;
 	enum nvme_dif_mode dif_mode;
+	struct ibv_exp_sig_attrs	sig_attrs;
+	struct ibv_exp_send_wr		reg_wr;
+	struct ibv_exp_send_wr		inv_wr;
+
 
 	TAILQ_ENTRY(spdk_nvme_rdma_req)		link;
 
@@ -506,18 +514,17 @@ nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 			.qp_context = rqpair,
 			.qp_type = IBV_QPT_RC,
 			.comp_mask = IBV_EXP_QP_INIT_ATTR_PD |
-						IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS |
-						IBV_EXP_QP_INIT_ATTR_MAX_INL_KLMS,
-			.exp_create_flags = IBV_EXP_QP_CREATE_UMR,
+						IBV_EXP_QP_INIT_ATTR_CREATE_FLAGS,
 			.cap = {
 				.max_send_wr  = rqpair->num_entries * 3, //send, reg_mr, inv_mr
 				.max_recv_wr  = rqpair->num_entries,
 			},
 	};
 
-	rqpair->exp_attr.comp_mask = IBV_EXP_DEVICE_ATTR_UMR;
+	rqpair->exp_attr.comp_mask = IBV_EXP_DEVICE_ATTR_UMR | IBV_EXP_DEVICE_ATTR_EXP_CAP_FLAGS;
+	rqpair->exp_attr.comp_mask_2 = IBV_EXP_DEVICE_ATTR_SIG_CAPS;
 
-	rqpair->cq = ibv_create_cq(rqpair->cm_id->verbs, rqpair->num_entries * 2, rqpair, NULL, 0);
+	rqpair->cq = ibv_create_cq(rqpair->cm_id->verbs, rqpair->num_entries * 3, rqpair, NULL, 0);
 	if (!rqpair->cq) {
 			SPDK_ERRLOG("Unable to create completion queue: errno %d: %s\n", errno, spdk_strerror(errno));
 			return -1;
@@ -541,7 +548,6 @@ nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 		return -1;
 	}
 
-	init_attr.max_inl_send_klms	= rqpair->exp_attr.umr_caps.max_send_wqe_inline_klms;
 	init_attr.cap.max_send_sge	= spdk_min(NVME_RDMA_DEFAULT_TX_SGE, rqpair->exp_attr.max_sge);
 	init_attr.cap.max_recv_sge	= spdk_min(NVME_RDMA_DEFAULT_RX_SGE, rqpair->exp_attr.max_sge);
 
@@ -563,6 +569,10 @@ nvme_rdma_qpair_init_exp(struct nvme_rdma_qpair *rqpair)
 
 	rqpair->cm_id->context = &rqpair->qpair;
 	rqpair->cm_id->qp = rqpair->qp;
+
+	if (rqpair->exp_attr.exp_device_cap_flags & IBV_EXP_DEVICE_SIGNATURE_HANDOVER) {
+		rqpair->sig_handover_supported = true;
+	}
 
 	return 0;
 }
@@ -702,7 +712,9 @@ nvme_rdma_create_sig_mrs(struct nvme_rdma_qpair *rqpair)
 {
 	uint16_t i;
 
-	if (!(rqpair->exp_attr.exp_device_cap_flags & IBV_EXP_DEVICE_SIGNATURE_HANDOVER)) {
+	if (!(rqpair->sig_handover_supported)) {
+		SPDK_NOTICELOG("sig handover disabled, flags %lx, bit %lx\n", rqpair->exp_attr.exp_device_cap_flags,
+			IBV_EXP_DEVICE_SIGNATURE_HANDOVER);
 		return 0;
 	}
 
@@ -715,7 +727,8 @@ nvme_rdma_create_sig_mrs(struct nvme_rdma_qpair *rqpair)
 
 		struct ibv_exp_create_mr_in sig_mr_in = {
 			.pd = rqpair->cm_id->pd,
-			.attr.max_klm_list_size = rqpair->exp_attr.umr_caps.max_send_wqe_inline_klms,
+			.attr.max_klm_list_size = 1, //rqpair->exp_attr.umr_caps.max_send_wqe_inline_klms,
+			.attr.create_flags = IBV_EXP_MR_SIGNATURE_EN,
 			.attr.exp_access_flags = IBV_ACCESS_LOCAL_WRITE,
 		};
 
@@ -810,6 +823,7 @@ static int
 nvme_rdma_register_reqs(struct nvme_rdma_qpair *rqpair)
 {
 	int i;
+	struct spdk_nvme_rdma_req *rdma_req;
 
 	rqpair->cmd_mr = rdma_reg_msgs(rqpair->cm_id, rqpair->cmds,
 				       rqpair->num_entries * sizeof(*rqpair->cmds));
@@ -819,7 +833,34 @@ nvme_rdma_register_reqs(struct nvme_rdma_qpair *rqpair)
 	}
 
 	for (i = 0; i < rqpair->num_entries; i++) {
-		rqpair->rdma_reqs[i].send_sgl[0].lkey = rqpair->cmd_mr->lkey;
+		rdma_req = &rqpair->rdma_reqs[i];
+		rdma_req->send_sgl[0].lkey = rqpair->cmd_mr->lkey;
+
+		if (rqpair->sig_handover_supported) {
+			struct ibv_exp_sig_attrs* sig_attrs = &rdma_req->sig_attrs;
+			struct ibv_exp_send_wr* reg_wr = &rdma_req->reg_wr;
+			struct ibv_exp_send_wr* inv_wr = &rdma_req->inv_wr;
+
+			sig_attrs->check_mask = 0xff;
+			/* no signature in memory*/
+			sig_attrs->mem.sig_type = IBV_EXP_SIG_TYPE_NONE;
+
+			/* T10 DIF signature in wire, default values */
+			sig_attrs->wire.sig_type = IBV_EXP_SIG_TYPE_T10_DIF;
+			sig_attrs->wire.sig.dif.bg_type = IBV_EXP_T10DIF_CRC;
+			sig_attrs->wire.sig.dif.bg = 0;
+			sig_attrs->wire.sig.dif.ref_remap = 1;
+			sig_attrs->wire.sig.dif.app_escape = 1;
+			sig_attrs->wire.sig.dif.ref_escape = 1;
+
+			reg_wr->exp_opcode = IBV_EXP_WR_REG_SIG_MR;
+			reg_wr->ext_op.sig_handover.sig_attrs = sig_attrs;
+			reg_wr->ext_op.sig_handover.sig_mr = rqpair->sig_mrs[rdma_req->id];
+			reg_wr->ext_op.sig_handover.access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ;
+			reg_wr->sg_list = &rdma_req->sig_sgl;
+
+			inv_wr->exp_opcode = IBV_EXP_WR_LOCAL_INV;
+		}
 	}
 
 	return 0;
@@ -827,6 +868,26 @@ nvme_rdma_register_reqs(struct nvme_rdma_qpair *rqpair)
 fail:
 	nvme_rdma_unregister_reqs(rqpair);
 	return -ENOMEM;
+}
+
+static int
+nvme_rdma_inv_sig_mr(struct spdk_nvme_rdma_req *rdma_req)
+{
+	struct nvme_rdma_qpair *rqpair = nvme_rdma_qpair(rdma_req->req->qpair);
+	struct ibv_exp_send_wr* inv_wr = &rdma_req->inv_wr;
+	struct ibv_exp_send_wr *bad_wr;
+	int rc;
+
+	inv_wr->ex.invalidate_rkey = rqpair->sig_mrs[rdma_req->id]->rkey;
+
+	SPDK_NOTICELOG("Invalidating sig mr rkey %u\n", inv_wr->ex.invalidate_rkey);
+	rc = ibv_exp_post_send(rqpair->qp, inv_wr, &bad_wr);
+	if (rc) {
+		SPDK_ERRLOG("Failed to post LOCAL_INV work request, errno %d\n", rc);
+		return rc;
+	}
+
+	return 0;
 }
 
 static int
@@ -845,6 +906,9 @@ nvme_rdma_recv(struct nvme_rdma_qpair *rqpair, uint64_t rsp_idx)
 
 	if (rdma_req->request_ready_to_put) {
 		nvme_rdma_req_put(rqpair, rdma_req);
+		if (spdk_unlikely(rdma_req->dif_mode != NVME_DIF_MODE_NONE)) {
+			nvme_rdma_inv_sig_mr(rdma_req);
+		}
 	} else {
 		rdma_req->request_ready_to_put = true;
 	}
@@ -1158,7 +1222,8 @@ nvme_rdma_qpair_connect(struct nvme_rdma_qpair *rqpair)
 		return -1;
 	}
 
-	if (ctrlr->opts.dif_mode == NVME_DIF_MODE_NONE) {
+	if (ctrlr->opts.dif_mode == NVME_DIF_MODE_NONE || 
+		rqpair->qpair.id == 0) {
 		SPDK_NOTICELOG("Create regular qpair\n");
 		rc = nvme_rdma_qpair_init(rqpair);
 		if (rc < 0) {
@@ -1178,6 +1243,15 @@ nvme_rdma_qpair_connect(struct nvme_rdma_qpair *rqpair)
 	if (rc != 0) {
 		SPDK_ERRLOG("Unable to connect the rqpair\n");
 		return -1;
+	}
+
+	if (rqpair->sig_handover_supported) {
+		SPDK_NOTICELOG("Creating sig_mrs\n");
+		rc = nvme_rdma_create_sig_mrs(rqpair);
+		if (rc < 0) {
+			SPDK_ERRLOG("Unable to register sig mrs for RDMA\n");
+			return -1;
+		}
 	}
 
 	rc = nvme_rdma_register_reqs(rqpair);
@@ -1200,15 +1274,6 @@ nvme_rdma_qpair_connect(struct nvme_rdma_qpair *rqpair)
 	if (rc < 0) {
 		SPDK_ERRLOG("Unable to register memory for RDMA\n");
 		return -1;
-	}
-
-	if (ctrlr->opts.dif_mode != NVME_DIF_MODE_NONE) {
-		SPDK_NOTICELOG("Creating sig_mrs\n");
-		rc = nvme_rdma_create_sig_mrs(rqpair);
-		if (rc < 0) {
-			SPDK_ERRLOG("Unable to register sig mrs for RDMA\n");
-			return -1;
-		}
 	}
 
 	rqpair->qpair.transport_qp_is_failed = false;
@@ -1334,7 +1399,8 @@ nvme_rdma_build_contig_request(struct nvme_rdma_qpair *rqpair,
 		if (mr == NULL) {
 			return -1;
 		}
-		req->cmd.dptr.sgl1.keyed.key = mr->rkey;
+		req->cmd.dptr.sgl1.keyed.key 	= mr->rkey;
+		rdma_req->sig_sgl.lkey			= mr->lkey;
 	} else {
 		req->cmd.dptr.sgl1.keyed.key = spdk_mem_map_translate(rqpair->mr_map->map,
 					       (uint64_t)payload,
@@ -1360,6 +1426,9 @@ nvme_rdma_build_contig_request(struct nvme_rdma_qpair *rqpair,
 	req->cmd.dptr.sgl1.keyed.subtype = SPDK_NVME_SGL_SUBTYPE_ADDRESS;
 	req->cmd.dptr.sgl1.keyed.length = req->payload_size;
 	req->cmd.dptr.sgl1.address = (uint64_t)payload;
+
+	rdma_req->sig_sgl.addr		= rdma_req->req->cmd.dptr.sgl1.address;
+	rdma_req->sig_sgl.length	= rdma_req->req->cmd.dptr.sgl1.keyed.length;
 
 	return 0;
 }
@@ -1558,6 +1627,7 @@ nvme_rdma_ctrlr_get_dif_ctx(struct spdk_nvme_ns *ns, struct spdk_nvme_cmd *cmd,
 	uint32_t dif_ctx_check_flags = 0;
 	struct spdk_nvme_ctrlr *ctrlr = ns->ctrlr;
 	uint32_t ctrlr_dif_check_flags = ns->ctrlr->opts.prchk_flag;
+	uint16_t apptag, apptag_mask;
 	int rc;
 
 	if (ns->md_size == 0) {
@@ -1566,6 +1636,10 @@ nvme_rdma_ctrlr_get_dif_ctx(struct spdk_nvme_ns *ns, struct spdk_nvme_cmd *cmd,
 
 	/* Initial Reference Tag is the lower 32 bits of the start LBA. */
 	init_ref_tag = (uint32_t)from_le64(&cmd->cdw10);
+
+	/* apptag is the highest 16 bytes of cdw15 */
+	apptag = cmd->cdw15 >> 16;
+	apptag_mask = cmd->cdw15 & 0xff;
 
 	if ((ctrlr_dif_check_flags & SPDK_NVME_IO_FLAGS_PRCHK_REFTAG) != 0) {
 		dif_ctx_check_flags |= SPDK_DIF_FLAGS_REFTAG_CHECK;
@@ -1582,7 +1656,7 @@ nvme_rdma_ctrlr_get_dif_ctx(struct spdk_nvme_ns *ns, struct spdk_nvme_cmd *cmd,
 							ctrlr->nsdata[ns->id - 1].dps.md_start,
 							(enum spdk_dif_type)ns->pi_type,
 							dif_ctx_check_flags,
-							init_ref_tag, 0, 0, 0, 0);
+							init_ref_tag, apptag_mask, apptag, 0, 0);
 	return rc == 0 ? ns->ctrlr->opts.dif_mode : NVME_DIF_MODE_NONE;
 }
 
@@ -1631,6 +1705,52 @@ nvme_rdma_get_dif_ctx(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_qpair* qpa
 }
 
 static int
+nvme_rdma_reg_sig_mr(struct spdk_nvme_rdma_req *rdma_req)
+{
+	struct nvme_rdma_qpair *rqpair = nvme_rdma_qpair(rdma_req->req->qpair);
+	struct ibv_exp_sig_attrs* sig_attrs = &rdma_req->sig_attrs; 
+	struct ibv_exp_send_wr* reg_wr = &rdma_req->reg_wr;
+	struct ibv_exp_send_wr *bad_wr;
+	int rc;
+
+	sig_attrs->wire.sig.dif.pi_interval = rdma_req->dif.dif_ctx.guard_interval;
+	sig_attrs->wire.sig.dif.ref_tag = rdma_req->dif.dif_ctx.init_ref_tag;
+	sig_attrs->wire.sig.dif.app_tag = rdma_req->dif.dif_ctx.app_tag;
+	sig_attrs->wire.sig.dif.apptag_check_mask = rdma_req->dif.dif_ctx.apptag_mask;
+
+	assert(rdma_req->send_wr.num_sge == 1);
+
+	reg_wr->num_sge = rdma_req->send_wr.num_sge;
+
+	SPDK_NOTICELOG("Registering sig_mr\n");
+	rc = ibv_exp_post_send(rqpair->qp, reg_wr, &bad_wr);
+	if (rc) {
+		SPDK_ERRLOG("Failed to post REG_SIG_MR work request, errno %d\n", rc);
+		assert(0);
+		return rc;
+	}
+
+	rdma_req->dif.dif_insert_or_strip = true;
+
+	return 0;
+}
+
+static int
+nvme_rdma_offload_signature(struct spdk_nvme_rdma_req *rdma_req)
+{
+	int rc;
+	struct nvme_rdma_qpair *rqpair = nvme_rdma_qpair(rdma_req->req->qpair);
+
+	rc = nvme_rdma_reg_sig_mr(rdma_req);
+	if (rc) {
+		SPDK_ERRLOG("Failed to register signature MR\n");
+		return rc;
+	}
+
+	return 0;
+}
+
+static int
 nvme_rdma_req_init(struct nvme_rdma_qpair *rqpair, struct nvme_request *req,
 		   struct spdk_nvme_rdma_req *rdma_req)
 {
@@ -1674,6 +1794,11 @@ nvme_rdma_req_init(struct nvme_rdma_qpair *rqpair, struct nvme_request *req,
 
 	if (rc) {
 		return rc;
+	}
+
+	if (spdk_unlikely(rqpair->sig_handover_supported &&
+		rdma_req->send_wr.num_sge == 1)) {
+		nvme_rdma_offload_signature(rdma_req);
 	}
 
 	memcpy(&rqpair->cmds[rdma_req->id], &req->cmd, sizeof(req->cmd));
