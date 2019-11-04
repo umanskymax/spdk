@@ -164,31 +164,28 @@ struct nvme_rdma_qpair {
 	struct rdma_cm_event			*evt;
 };
 
-struct spdk_nvmf_dif_info {
+struct nvme_rdma_dif_offload {
+	struct ibv_sge				sig_sgl;
 	struct spdk_dif_ctx			dif_ctx;
-	bool					dif_insert_or_strip;
-	uint32_t				elba_length;
-	uint32_t				orig_length;
+	enum nvme_dif_mode			dif_mode;
+	struct ibv_exp_sig_attrs	sig_attrs;
+	struct ibv_exp_send_wr		reg_wr;
+	struct ibv_exp_send_wr		inv_wr;
+	struct ibv_exp_send_wr* 	first;
+	struct ibv_mr				*sig_mr;
+	bool 						sig_mr_registered;
 };
 
 struct spdk_nvme_rdma_req {
 	int					id;
 
-	struct ibv_send_wr			send_wr;
+	struct ibv_exp_send_wr			send_wr;
 
 	struct nvme_request			*req;
 
 	struct ibv_sge				send_sgl[NVME_RDMA_DEFAULT_TX_SGE];
 
-
-	struct ibv_sge				sig_sgl;
-	struct spdk_nvmf_dif_info		dif;
-	enum nvme_dif_mode dif_mode;
-	struct ibv_exp_sig_attrs	sig_attrs;
-	struct ibv_exp_send_wr		reg_wr;
-	struct ibv_exp_send_wr		inv_wr;
-	bool sig_mr_registered;
-
+	struct nvme_rdma_dif_offload	dif;
 
 	TAILQ_ENTRY(spdk_nvme_rdma_req)		link;
 
@@ -746,6 +743,49 @@ fail:
 	return -1;
 }
 
+static inline void
+nvme_rdma_fill_dif_with_defaults(struct nvme_rdma_qpair *rqpair,
+		struct spdk_nvme_rdma_req *rdma_req) {
+	struct ibv_exp_sig_attrs* sig_attrs = &rdma_req->dif.sig_attrs;
+	struct ibv_exp_send_wr* reg_wr = &rdma_req->dif.reg_wr;
+	struct ibv_exp_send_wr* inv_wr = &rdma_req->dif.inv_wr;
+
+	rdma_req->dif.sig_mr = rqpair->sig_mrs[rdma_req->id];
+
+	//todo: prchk?
+	sig_attrs->check_mask = 0xff;
+
+	/* no signature in memory*/
+	sig_attrs->mem.sig_type = IBV_EXP_SIG_TYPE_NONE;
+
+	/* T10 DIF signature in wire, default values */
+	sig_attrs->wire.sig_type = IBV_EXP_SIG_TYPE_T10_DIF;
+	sig_attrs->wire.sig.dif.bg_type = IBV_EXP_T10DIF_CRC;
+	sig_attrs->wire.sig.dif.bg = 0;
+	sig_attrs->wire.sig.dif.ref_remap = 1;
+	sig_attrs->wire.sig.dif.app_escape = 1;
+	sig_attrs->wire.sig.dif.ref_escape = 1;
+
+	reg_wr->exp_opcode = IBV_EXP_WR_REG_SIG_MR;
+	reg_wr->ext_op.sig_handover.sig_attrs = sig_attrs;
+	reg_wr->ext_op.sig_handover.sig_mr = rdma_req->dif.sig_mr;
+	reg_wr->ext_op.sig_handover.access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_LOCAL_WRITE;
+	reg_wr->sg_list = &rdma_req->dif.sig_sgl;
+	reg_wr->num_sge = 1;
+	reg_wr->next = &rdma_req->send_wr;
+
+	inv_wr->exp_opcode = IBV_EXP_WR_LOCAL_INV;
+	inv_wr->next = reg_wr;
+}
+
+static inline void
+nvme_rdma_update_sig_sge(struct spdk_nvme_rdma_req *rdma_req, uint64_t addr, uint32_t length, uint32_t lkey)
+{
+	rdma_req->dif.sig_sgl.addr = addr;
+	rdma_req->dif.sig_sgl.length = length;
+	rdma_req->dif.sig_sgl.lkey = lkey;
+}
+
 static void
 nvme_rdma_unregister_reqs(struct nvme_rdma_qpair *rqpair)
 {
@@ -805,10 +845,9 @@ nvme_rdma_alloc_reqs(struct nvme_rdma_qpair *rqpair)
 		rdma_req->send_sgl[0].addr = (uint64_t)cmd;
 		rdma_req->send_wr.wr_id = (uint64_t)rdma_req;
 		rdma_req->send_wr.next = NULL;
-		rdma_req->send_wr.opcode = IBV_WR_SEND;
-		rdma_req->send_wr.send_flags = IBV_SEND_SIGNALED;
+		rdma_req->send_wr.exp_opcode = IBV_EXP_WR_SEND;
+		rdma_req->send_wr.exp_send_flags = IBV_EXP_SEND_SIGNALED;
 		rdma_req->send_wr.sg_list = rdma_req->send_sgl;
-		rdma_req->send_wr.imm_data = 0;
 
 		TAILQ_INSERT_TAIL(&rqpair->free_reqs, rdma_req, link);
 	}
@@ -837,30 +876,7 @@ nvme_rdma_register_reqs(struct nvme_rdma_qpair *rqpair)
 		rdma_req->send_sgl[0].lkey = rqpair->cmd_mr->lkey;
 
 		if (rqpair->sig_handover_supported) {
-			struct ibv_exp_sig_attrs* sig_attrs = &rdma_req->sig_attrs;
-			struct ibv_exp_send_wr* reg_wr = &rdma_req->reg_wr;
-			struct ibv_exp_send_wr* inv_wr = &rdma_req->inv_wr;
-
-			sig_attrs->check_mask = 0xff;
-			/* no signature in memory*/
-			sig_attrs->mem.sig_type = IBV_EXP_SIG_TYPE_NONE;
-
-			/* T10 DIF signature in wire, default values */
-			sig_attrs->wire.sig_type = IBV_EXP_SIG_TYPE_T10_DIF;
-			sig_attrs->wire.sig.dif.bg_type = IBV_EXP_T10DIF_CRC;
-			sig_attrs->wire.sig.dif.bg = 0;
-			sig_attrs->wire.sig.dif.ref_remap = 1;
-			sig_attrs->wire.sig.dif.app_escape = 1;
-			sig_attrs->wire.sig.dif.ref_escape = 1;
-
-			reg_wr->exp_opcode = IBV_EXP_WR_REG_SIG_MR;
-			reg_wr->ext_op.sig_handover.sig_attrs = sig_attrs;
-			reg_wr->ext_op.sig_handover.sig_mr = rqpair->sig_mrs[i];
-			reg_wr->ext_op.sig_handover.access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_LOCAL_WRITE;
-			reg_wr->sg_list = &rdma_req->sig_sgl;
-			reg_wr->num_sge = 1;
-
-			inv_wr->exp_opcode = IBV_EXP_WR_LOCAL_INV;
+			nvme_rdma_fill_dif_with_defaults(rqpair, rdma_req);
 		}
 	}
 
@@ -872,33 +888,12 @@ fail:
 }
 
 static int
-nvme_rdma_inv_sig_mr(struct spdk_nvme_rdma_req *rdma_req)
-{
-	struct nvme_rdma_qpair *rqpair = nvme_rdma_qpair(rdma_req->req->qpair);
-	struct ibv_exp_send_wr* inv_wr = &rdma_req->inv_wr;
-	struct ibv_exp_send_wr *bad_wr;
-	int rc;
-
-	inv_wr->ex.invalidate_rkey = rqpair->sig_mrs[rdma_req->id]->rkey;
-
-	SPDK_NOTICELOG("Invalidating sig mr rkey %u\n", inv_wr->ex.invalidate_rkey);
-	rc = ibv_exp_post_send(rqpair->qp, inv_wr, &bad_wr);
-	if (rc) {
-		SPDK_ERRLOG("Failed to post LOCAL_INV work request, errno %d\n", rc);
-		return rc;
-	}
-
-	return 0;
-}
-
-static int
 nvme_rdma_check_sig_mr(struct spdk_nvme_rdma_req *rdma_req)
 {
-	struct nvme_rdma_qpair *rqpair = nvme_rdma_qpair(rdma_req->req->qpair);
 	struct ibv_exp_mr_status status;
 	int rc;
 
-	rc = ibv_exp_check_mr_status(rqpair->sig_mrs[rdma_req->id], IBV_EXP_MR_CHECK_SIG_STATUS, &status);
+	rc = ibv_exp_check_mr_status(rdma_req->dif.sig_mr, IBV_EXP_MR_CHECK_SIG_STATUS, &status);
 	if (rc) {
 		SPDK_ERRLOG("Failed to check signature MR status, errno %d\n", rc);
 		return -1;
@@ -932,8 +927,7 @@ nvme_rdma_recv(struct nvme_rdma_qpair *rqpair, uint64_t rsp_idx)
 
 	if (rdma_req->request_ready_to_put) {
 		nvme_rdma_req_put(rqpair, rdma_req);
-		if (spdk_unlikely(rqpair->sig_handover_supported && rdma_req->dif_mode == NVME_DIF_MODE_INSERT_OR_STRIP &&
-			rdma_req->sig_mr_registered)) {
+		if (spdk_unlikely(rdma_req->dif.sig_mr_registered)) {
 			nvme_rdma_check_sig_mr(rdma_req);
 		}
 	} else {
@@ -1371,7 +1365,6 @@ nvme_rdma_build_contig_inline_request(struct nvme_rdma_qpair *rqpair,
 			return -EINVAL;
 		}
 		rdma_req->send_sgl[1].lkey	= mr->lkey;
-		rdma_req->sig_sgl.lkey		= mr->lkey;
 	} else {
 		rdma_req->send_sgl[1].lkey = spdk_mem_map_translate(rqpair->mr_map->map,
 					     (uint64_t)payload,
@@ -1387,9 +1380,6 @@ nvme_rdma_build_contig_inline_request(struct nvme_rdma_qpair *rqpair,
 	rdma_req->send_sgl[1].addr = (uint64_t)payload;
 	rdma_req->send_sgl[1].length = (uint32_t)req->payload_size;
 
-	rdma_req->sig_sgl.addr		= (uint64_t)payload;
-	rdma_req->sig_sgl.length	= (uint32_t)req->payload_size;
-
 	/* The RDMA SGL contains two elements. The first describes
 	 * the NVMe command and the second describes the data
 	 * payload. */
@@ -1402,6 +1392,8 @@ nvme_rdma_build_contig_inline_request(struct nvme_rdma_qpair *rqpair,
 	/* Inline only supported for icdoff == 0 currently.  This function will
 	 * not get called for controllers with other values. */
 	req->cmd.dptr.sgl1.address = (uint64_t)0;
+
+	nvme_rdma_update_sig_sge(rdma_req, rdma_req->send_sgl[1].addr, rdma_req->send_sgl[1].length, mr->lkey);
 
 	return 0;
 }
@@ -1430,7 +1422,6 @@ nvme_rdma_build_contig_request(struct nvme_rdma_qpair *rqpair,
 			return -1;
 		}
 		req->cmd.dptr.sgl1.keyed.key 	= mr->rkey;
-		rdma_req->sig_sgl.lkey			= mr->lkey;
 	} else {
 		req->cmd.dptr.sgl1.keyed.key = spdk_mem_map_translate(rqpair->mr_map->map,
 					       (uint64_t)payload,
@@ -1457,8 +1448,7 @@ nvme_rdma_build_contig_request(struct nvme_rdma_qpair *rqpair,
 	req->cmd.dptr.sgl1.keyed.length = req->payload_size;
 	req->cmd.dptr.sgl1.address = (uint64_t)payload;
 
-	rdma_req->sig_sgl.addr		= rdma_req->req->cmd.dptr.sgl1.address;
-	rdma_req->sig_sgl.length	= rdma_req->req->cmd.dptr.sgl1.keyed.length;
+	nvme_rdma_update_sig_sge(rdma_req, rdma_req->req->cmd.dptr.sgl1.address, rdma_req->req->cmd.dptr.sgl1.keyed.length, mr->lkey);
 
 	return 0;
 }
@@ -1505,7 +1495,6 @@ nvme_rdma_build_sgl_request(struct nvme_rdma_qpair *rqpair,
 				return -1;
 			}
 			cmd->sgl[num_sgl_desc].keyed.key	= mr->rkey;
-			rdma_req->sig_sgl.lkey				= mr->lkey;
 		} else {
 			cmd->sgl[num_sgl_desc].keyed.key = spdk_mem_map_translate(rqpair->mr_map->map,
 							   (uint64_t)virt_addr,
@@ -1521,9 +1510,6 @@ nvme_rdma_build_sgl_request(struct nvme_rdma_qpair *rqpair,
 		cmd->sgl[num_sgl_desc].keyed.subtype = SPDK_NVME_SGL_SUBTYPE_ADDRESS;
 		cmd->sgl[num_sgl_desc].keyed.length = sge_length;
 		cmd->sgl[num_sgl_desc].address = (uint64_t)virt_addr;
-
-		rdma_req->sig_sgl.addr		= (uint64_t)virt_addr;
-		rdma_req->sig_sgl.length	= sge_length;
 
 		remaining_size -= sge_length;
 		num_sgl_desc++;
@@ -1557,6 +1543,8 @@ nvme_rdma_build_sgl_request(struct nvme_rdma_qpair *rqpair,
 		req->cmd.dptr.sgl1.keyed.length = cmd->sgl[0].keyed.length;
 		req->cmd.dptr.sgl1.keyed.key = cmd->sgl[0].keyed.key;
 		req->cmd.dptr.sgl1.address = cmd->sgl[0].address;
+
+		nvme_rdma_update_sig_sge(rdma_req, cmd->sgl[0].address, cmd->sgl[0].keyed.length, mr->lkey);
 	} else {
 		/*
 		 * Otherwise, The SGL descriptor embedded in the command must point to the list of
@@ -1628,9 +1616,7 @@ nvme_rdma_build_sgl_inline_request(struct nvme_rdma_qpair *rqpair,
 	rdma_req->send_sgl[1].length = length;
 	rdma_req->send_sgl[1].lkey = mr->lkey;
 
-	rdma_req->sig_sgl.addr		= (uint64_t)virt_addr;
-	rdma_req->sig_sgl.length	= length;
-	rdma_req->sig_sgl.lkey		= mr->lkey;
+	nvme_rdma_update_sig_sge(rdma_req, (uint64_t)virt_addr, length, mr->lkey);
 
 	rdma_req->send_wr.num_sge = 2;
 
@@ -1742,92 +1728,48 @@ nvme_rdma_get_dif_ctx(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_qpair* qpa
 	return NVME_DIF_MODE_NONE;
 }
 
-static int
+static inline void
 nvme_rdma_reg_sig_mr(struct spdk_nvme_rdma_req *rdma_req)
 {
-	struct nvme_rdma_qpair *rqpair = nvme_rdma_qpair(rdma_req->req->qpair);
-	struct ibv_exp_sig_attrs* sig_attrs = &rdma_req->sig_attrs; 
-	struct ibv_exp_send_wr* reg_wr = &rdma_req->reg_wr;
-	struct ibv_exp_send_wr* inv_wr = &rdma_req->inv_wr;
-	struct ibv_exp_send_wr* first_wr = NULL;
-	struct ibv_exp_send_wr *bad_wr;
-	int rc;
+	struct ibv_exp_sig_attrs* sig_attrs = &rdma_req->dif.sig_attrs;
 
-	sig_attrs->wire.sig.dif.pi_interval = rdma_req->dif.dif_ctx.guard_interval;
-	sig_attrs->wire.sig.dif.ref_tag = rdma_req->dif.dif_ctx.init_ref_tag;
-	sig_attrs->wire.sig.dif.app_tag = rdma_req->dif.dif_ctx.app_tag;
-	sig_attrs->wire.sig.dif.apptag_check_mask = rdma_req->dif.dif_ctx.apptag_mask;
+	sig_attrs->wire.sig.dif.pi_interval			= rdma_req->dif.dif_ctx.guard_interval;
+	sig_attrs->wire.sig.dif.ref_tag				= rdma_req->dif.dif_ctx.init_ref_tag;
+	sig_attrs->wire.sig.dif.app_tag				= rdma_req->dif.dif_ctx.app_tag;
+	sig_attrs->wire.sig.dif.apptag_check_mask	= rdma_req->dif.dif_ctx.apptag_mask;
 
-	SPDK_NOTICELOG("pi_interval %u, ref_tag %u, app_tag %u, apptag_mask %u\n", 
-		sig_attrs->wire.sig.dif.pi_interval, sig_attrs->wire.sig.dif.ref_tag,
-		sig_attrs->wire.sig.dif.app_tag, sig_attrs->wire.sig.dif.apptag_check_mask);
-
-	SPDK_NOTICELOG("Registering sig_mr, sig_sgl: addr %lu len %u lkey %u\n", reg_wr->sg_list[0].addr,
-		reg_wr->sg_list[0].length, reg_wr->sg_list[0].lkey);
-
-	if(rdma_req->sig_mr_registered) {
-		first_wr = inv_wr;
-		first_wr->ex.invalidate_rkey = rqpair->sig_mrs[rdma_req->id]->rkey; //rdma_req->data.sig_mr->rkey;
-		rdma_req->sig_mr_registered = false;
-		first_wr->next = reg_wr;
-		SPDK_NOTICELOG("Batch invalidation and register new\n");
-		
+	if (rdma_req->dif.sig_mr_registered) {
+		rdma_req->dif.inv_wr.ex.invalidate_rkey = rdma_req->dif.sig_mr->rkey;
+		rdma_req->dif.first = &rdma_req->dif.inv_wr;
 	} else {
-		first_wr = reg_wr;
-		first_wr->next = NULL;
-		SPDK_NOTICELOG("Register new\n");
+		rdma_req->dif.first = &rdma_req->dif.reg_wr;
 	}
 
-	rc = ibv_exp_post_send(rqpair->qp, first_wr, &bad_wr);
-
-	if (rc) {
-		SPDK_ERRLOG("Failed to post REG_SIG_MR work request, errno %d\n", rc);
-		assert(0);
-		return rc;
-	}
-
-	rdma_req->dif.dif_insert_or_strip = true;
-	rdma_req->sig_mr_registered = true;
-
-	return 0;
+	rdma_req->dif.sig_mr_registered = true;
 }
 
-static void
+static inline void
 nvme_rdma_update_data_pointers(struct spdk_nvme_rdma_req *rdma_req)
 {
-	struct nvme_request *req = rdma_req->req;
-	struct spdk_nvme_sgl_descriptor* sgl_desc = &req->cmd.dptr.sgl1;
-	struct nvme_rdma_qpair *rqpair = nvme_rdma_qpair(rdma_req->req->qpair);
-	struct ibv_mr* sig_mr = rqpair->sig_mrs[rdma_req->id];
-
-	rdma_req->sig_sgl.addr = (uint64_t)sig_mr->addr;
-	rdma_req->sig_sgl.lkey = sig_mr->lkey;
+	struct spdk_nvme_sgl_descriptor* sgl_desc = &rdma_req->req->cmd.dptr.sgl1;
 
 	if (sgl_desc->generic.type == SPDK_NVME_SGL_TYPE_KEYED_DATA_BLOCK) {
 		assert(sgl_desc->keyed.subtype == SPDK_NVME_SGL_SUBTYPE_ADDRESS);
-		sgl_desc->address		= (uint64_t)rdma_req->sig_sgl.addr;
-		sgl_desc->keyed.key		= sig_mr->rkey;
+		// contig SGL, multi SGL is not supported now
+		sgl_desc->address		= (uint64_t)rdma_req->dif.sig_mr->addr;
+		sgl_desc->keyed.key		= rdma_req->dif.sig_mr->rkey;
+
 	} else if(sgl_desc->generic.type == SPDK_NVME_SGL_TYPE_DATA_BLOCK) {
-		rdma_req->send_sgl[1].addr = (uint64_t)sig_mr->addr;
-		rdma_req->send_sgl[1].lkey = sig_mr->lkey;
+		rdma_req->send_sgl[1].addr = (uint64_t)rdma_req->dif.sig_mr->addr;
+		rdma_req->send_sgl[1].lkey = rdma_req->dif.sig_mr->lkey;
 	}
 }
 
-static int
+static void
 nvme_rdma_offload_signature(struct spdk_nvme_rdma_req *rdma_req)
 {
-	int rc;
-	struct nvme_rdma_qpair *rqpair = nvme_rdma_qpair(rdma_req->req->qpair);
-
-	rc = nvme_rdma_reg_sig_mr(rdma_req);
-	if (rc) {
-		SPDK_ERRLOG("Failed to register signature MR\n");
-		return rc;
-	}
-
+	nvme_rdma_reg_sig_mr(rdma_req);
 	nvme_rdma_update_data_pointers(rdma_req);
-
-	return 0;
 }
 
 static int
@@ -1841,7 +1783,7 @@ nvme_rdma_req_init(struct nvme_rdma_qpair *rqpair, struct nvme_request *req,
 	req->cmd.cid = rdma_req->id;
 
 	if (spdk_unlikely(ctrlr->opts.dif_mode != NVME_DIF_MODE_NONE && req->payload_size > 0)) {
-		rdma_req->dif_mode = nvme_rdma_get_dif_ctx(ctrlr, &rqpair->qpair, &req->cmd, &rdma_req->dif.dif_ctx);
+		rdma_req->dif.dif_mode = nvme_rdma_get_dif_ctx(ctrlr, &rqpair->qpair, &req->cmd, &rdma_req->dif.dif_ctx);
 	}
 
 	if (req->payload_size == 0) {
@@ -1876,7 +1818,8 @@ nvme_rdma_req_init(struct nvme_rdma_qpair *rqpair, struct nvme_request *req,
 		return rc;
 	}
 
-	if (spdk_unlikely(rqpair->sig_handover_supported && rdma_req->dif_mode == NVME_DIF_MODE_INSERT_OR_STRIP)) {
+	if (spdk_unlikely(rqpair->sig_handover_supported &&
+			rdma_req->dif.dif_mode == NVME_DIF_MODE_INSERT_OR_STRIP)) {
 		nvme_rdma_offload_signature(rdma_req);
 	}
 
@@ -2178,7 +2121,7 @@ nvme_rdma_qpair_submit_request(struct spdk_nvme_qpair *qpair,
 {
 	struct nvme_rdma_qpair *rqpair;
 	struct spdk_nvme_rdma_req *rdma_req;
-	struct ibv_send_wr *wr, *bad_wr = NULL;
+	struct ibv_exp_send_wr *wr, *bad_wr = NULL;
 	int rc;
 
 	rqpair = nvme_rdma_qpair(qpair);
@@ -2201,7 +2144,11 @@ nvme_rdma_qpair_submit_request(struct spdk_nvme_qpair *qpair,
 
 	nvme_rdma_trace_ibv_sge(wr->sg_list);
 
-	rc = ibv_post_send(rqpair->cm_id->qp, wr, &bad_wr);
+	if (rdma_req->dif.sig_mr_registered) {
+		wr = rdma_req->dif.first;
+	}
+
+	rc = ibv_exp_post_send(rqpair->cm_id->qp, wr, &bad_wr);
 	if (rc) {
 		SPDK_ERRLOG("Failure posting rdma send for NVMf completion: %d (%s)\n", rc, spdk_strerror(rc));
 		nvme_rdma_req_put(rqpair, rdma_req);
