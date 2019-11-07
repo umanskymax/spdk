@@ -62,7 +62,6 @@ nvme_ns_set_identify_data(struct spdk_nvme_ns *ns)
 		ns->flags |= SPDK_NVME_NS_EXTENDED_LBA_SUPPORTED;
 		ns->extended_lba_size += ns->md_size;
 	}
-	SPDK_NOTICELOG("elba %u, md_size %u\n", ns->extended_lba_size, ns->md_size);
 
 	ns->sectors_per_max_io = spdk_nvme_ns_get_max_io_xfer_size(ns) / ns->extended_lba_size;
 

@@ -1599,6 +1599,12 @@ bdev_nvme_library_init(void)
 				snprintf(opts.src_svcid, sizeof(opts.src_svcid), "%s", probe_ctx->hostids[i].hostsvcid);
 			}
 
+			val = spdk_conf_section_get_nmval(sp, "TransportID", i, 3);
+			if (val) {
+				opts.dif_mode = strtol(val, NULL, 10);
+			}
+			opts.prchk_flag = probe_ctx->prchk_flags[i];
+
 			ctrlr = spdk_nvme_connect(&probe_ctx->trids[i], &opts, sizeof(opts));
 			if (ctrlr == NULL) {
 				SPDK_ERRLOG("Unable to connect to provided trid (traddr: %s)\n",

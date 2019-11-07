@@ -337,6 +337,7 @@ struct spdk_nvmf_ctrlr {
 	struct spdk_poller		*keep_alive_poller;
 
 	bool				dif_insert_or_strip;
+	bool				hide_ns_md;
 
 	TAILQ_ENTRY(spdk_nvmf_ctrlr)	link;
 };

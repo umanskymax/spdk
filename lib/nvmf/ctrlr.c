@@ -354,6 +354,7 @@ spdk_nvmf_ctrlr_create(struct spdk_nvmf_subsystem *subsystem,
 	SPDK_DEBUGLOG(SPDK_LOG_NVMF, "csts 0x%x\n", ctrlr->vcprop.csts.raw);
 
 	ctrlr->dif_insert_or_strip = transport->opts.dif_insert_or_strip;
+	ctrlr->hide_ns_md = transport->opts.hide_ns_md;
 
 	req->qpair->ctrlr = ctrlr;
 	spdk_thread_send_msg(subsystem->thread, _spdk_nvmf_subsystem_add_ctrlr, req);
@@ -1555,7 +1556,7 @@ spdk_nvmf_ctrlr_identify_ns(struct spdk_nvmf_ctrlr *ctrlr,
 		return SPDK_NVMF_REQUEST_EXEC_STATUS_COMPLETE;
 	}
 
-	spdk_nvmf_bdev_ctrlr_identify_ns(ns, nsdata, ctrlr->dif_insert_or_strip);
+	spdk_nvmf_bdev_ctrlr_identify_ns(ns, nsdata, ctrlr->dif_insert_or_strip || ctrlr->hide_ns_md);
 
 	/* Due to bug in the Linux kernel NVMe driver we have to set noiob no larger than mdts */
 	max_num_blocks = ctrlr->admin_qpair->transport->opts.max_io_size /

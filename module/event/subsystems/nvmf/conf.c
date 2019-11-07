@@ -643,6 +643,9 @@ spdk_nvmf_parse_transport(struct spdk_nvmf_parse_transport_ctx *ctx)
 	bval = spdk_conf_section_get_boolval(ctx->sp, "DifInsertOrStrip", false);
 	opts.dif_insert_or_strip = bval;
 
+	bval = spdk_conf_section_get_boolval(ctx->sp, "HideMetadata", false);
+	opts.hide_ns_md = bval;
+
 	transport = spdk_nvmf_transport_create(trtype, &opts);
 	if (transport) {
 		spdk_nvmf_tgt_add_transport(g_spdk_nvmf_tgt, transport, spdk_nvmf_tgt_add_transport_done, ctx);

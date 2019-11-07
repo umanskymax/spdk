@@ -100,10 +100,10 @@ _nvme_ns_cmd_split_request(struct spdk_nvme_ns *ns,
 	uint32_t		remaining_lba_count = lba_count;
 	struct nvme_request	*child;
 
-	sector_size = ns->extended_lba_size;
+	sector_size = spdk_nvme_ns_get_extended_sector_size(ns);
 
 	if ((io_flags & SPDK_NVME_IO_FLAGS_PRACT) &&
-	    (ns->flags & SPDK_NVME_NS_EXTENDED_LBA_SUPPORTED) &&
+	    spdk_nvme_ns_supports_extended_lba(ns) &&
 	    (ns->flags & SPDK_NVME_NS_DPS_PI_SUPPORTED) &&
 	    (md_size == 8)) {
 		sector_size -= 8;
@@ -382,12 +382,12 @@ _nvme_ns_cmd_rw(struct spdk_nvme_ns *ns, struct spdk_nvme_qpair *qpair,
 		return NULL;
 	}
 
-	sector_size = ns->extended_lba_size;
+	sector_size = spdk_nvme_ns_get_extended_sector_size(ns);
 	sectors_per_max_io = ns->sectors_per_max_io;
 	sectors_per_stripe = ns->sectors_per_stripe;
 
 	if ((io_flags & SPDK_NVME_IO_FLAGS_PRACT) &&
-	    (ns->flags & SPDK_NVME_NS_EXTENDED_LBA_SUPPORTED) &&
+	    spdk_nvme_ns_supports_extended_lba(ns) &&
 	    (ns->flags & SPDK_NVME_NS_DPS_PI_SUPPORTED) &&
 	    (ns->md_size == 8)) {
 		sector_size -= 8;
