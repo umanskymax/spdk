@@ -53,11 +53,6 @@
 #include <libaio.h>
 #endif
 
-#include <sys/fcntl.h>
-#include <sys/ioctl.h>
-#include <linux/fs.h>
-#include <linux/fiemap.h>
-
 struct ctrlr_entry {
 	struct spdk_nvme_ctrlr			*ctrlr;
 	enum spdk_nvme_transport_type		trtype;
@@ -2037,183 +2032,11 @@ nvme_poll_ctrlrs(void *arg)
 	return NULL;
 }
 
-struct lba_ranges {
-	uint32_t phys_lba_start;
-	uint32_t lba_count;
-};
-
-struct nvme_file_reader_ctx;
-
-struct nvme_file_read_io_ctx {
-	struct nvme_file_reader_ctx* main;
-	uint32_t idx;			//idx of this IO request
-	uint32_t lba_count;		//count of lba's to be read in this request
-};
-
-struct nvme_file_reader_ctx {
-	struct spdk_nvme_ctrlr*	ctrlr;
-	struct spdk_nvme_ns*	ns;
-	struct spdk_nvme_qpair*	qpair;
-
-	uint32_t				qdepth;
-	struct nvme_file_read_io_ctx* reqs;
-
-	uint32_t 				max_lba_per_io;
-
-	struct iovec			data;
-
-	uint32_t				lba_ranges_count;
-	struct lba_ranges*		lba_ranges;
-
-	uint32_t				lba_array_idx;	//current idx in lba_ranges
-	uint32_t 				lba_idx;		//current number of lba in lba_ranges
-	uint32_t 				lba_count;		//total number of lba's
-	uint32_t 				lba_read;		//number of lba already read
-	uint32_t 				lba_submitted_to_read;	//number of lba's submitted to read but not completted yet
-
-	uint32_t 				file_size;		//in bytes
-	uint32_t 				dev_block_size;
-};
-
-int fill_lba_ranges(const char* filepath, struct nvme_file_reader_ctx* ctx)
-{
-	int flags, fd;
-	int bs;
-	uint32_t bs_log2;
-	int rc;
-
-	flags = O_DIRECT | O_RDONLY;
-
-	fd = open(filepath, flags);
-	if (fd < 0) {
-		fprintf(stderr, "Could not open AIO device %s: %s\n", filepath, strerror(errno));
-		return -1;
-	}
-
-	ctx->file_size = spdk_fd_get_size(fd);
-	printf("file size %lu\n", ctx->file_size);
-	if (ctx->file_size == 0) {
-		fprintf(stderr, "Could not determine size of AIO device %s\n", filepath);
-		close(fd);
-		return -1;
-	}
-
-	if (ioctl(fd, FIGETBSZ, &bs) < 0) {
-		printf("failed to get block size\n");
-		close(fd);
-		return rc;
-	}
-
-	ctx->lba_count = (ctx->file_size + (ctx->dev_block_size - 1)) / ctx->dev_block_size;
-	bs_log2 = spdk_u32log2(ctx->dev_block_size);
-	printf("device block size %d (%u)\n", bs, bs_log2);
-	printf("file uses %u blocks\n", ctx->lba_count);
-
-	union { struct fiemap f; char c[4096]; } fiemap_buf;
-	struct fiemap *fiemap = &fiemap_buf.f;
-	struct fiemap_extent *fm_extents = &fiemap->fm_extents[0];
-	enum { count = (sizeof fiemap_buf - sizeof (*fiemap))/sizeof (*fm_extents) };
-	memset (&fiemap_buf, 0, sizeof fiemap_buf);
-
-	fiemap->fm_extent_count = count;
-	fiemap->fm_length = FIEMAP_MAX_OFFSET;
-
-	rc = ioctl (fd, FS_IOC_FIEMAP, fiemap);
-	if(rc) {
-		printf("ioctl failed, rc %d errno %d\n", rc, errno);
-		return rc;
-	}
-
-	printf("fiemap: extents %u fm_flags %u\n",
-		   fiemap->fm_mapped_extents, fiemap->fm_flags);
-
-	if(fiemap->fm_mapped_extents == 0) {
-		fprintf(stderr, "fiemap contains 0 extents\n");
-		return -1;
-	}
-	ctx->lba_ranges_count = fiemap->fm_mapped_extents;
-	ctx->lba_ranges = calloc(ctx->lba_ranges_count, sizeof(*ctx->lba_ranges));
-
-	for(uint32_t j = 0; j < fiemap->fm_mapped_extents; j++) {
-		uint32_t length = fm_extents[j].fe_length >> bs_log2;
-		uint32_t logical_start = fm_extents[j].fe_logical >> bs_log2;
-		uint32_t physical_start = fm_extents[j].fe_physical >> bs_log2;
-		printf("[%4u]: logical %8u .. %8u \tphysical %8u .. %8u \tlen %8u\n",
-			   j, logical_start, logical_start + length,
-			   physical_start, physical_start + length, length);
-
-		ctx->lba_ranges[j].phys_lba_start = physical_start;
-		ctx->lba_ranges[j].lba_count = length - 1;
-	}
-
-	close(fd);
-
-	return 0;
-}
-
-int file_read_submit_io(struct nvme_file_read_io_ctx* ctx);
-
-void file_read_complete_io(void *ctx , const struct spdk_nvme_cpl *cpl)
-{
-	struct nvme_file_read_io_ctx* req_ctx = ctx;
-	struct nvme_file_reader_ctx* read_ctx = req_ctx->main;
-	if (spdk_unlikely(spdk_nvme_cpl_is_error(cpl))) {
-		fprintf(stderr, "read completed with error (sct=%d, sc=%d)\n",
-				cpl->status.sct, cpl->status.sc);
-	}
-
-//	printf("completed req %u with lbas %u. Total %u/%u\n", req_ctx->idx,
-//			req_ctx->lba_count, read_ctx->lba_read, read_ctx->lba_count);
-	read_ctx->lba_read += req_ctx->lba_count;
-	assert(read_ctx->lba_read <= read_ctx->lba_count);
-
-	if(read_ctx->lba_read < read_ctx->lba_count) {
-		file_read_submit_io(req_ctx);
-	}
-}
-
-int file_read_submit_io(struct nvme_file_read_io_ctx* req_ctx)
-{
-	struct nvme_file_reader_ctx* ctx = req_ctx->main;
-	int rc = 0;
-	if (ctx->lba_read >= ctx->lba_count || ctx->lba_array_idx >= ctx->lba_ranges_count) {
-//		printf("all io requests already issued\n");
-		return rc;
-	}
-
-	uint32_t lba_count = spdk_min(ctx->lba_ranges[ctx->lba_array_idx].lba_count - ctx->lba_idx, ctx->max_lba_per_io);
-	void* payload_ptr = ((char*)ctx->data.iov_base) + ctx->lba_submitted_to_read * ctx->dev_block_size;
-	uint32_t start_lba = ctx->lba_ranges[ctx->lba_array_idx].phys_lba_start + ctx->lba_idx;
-	ctx->lba_submitted_to_read += lba_count;
-
-//	printf("iov_base %p, current %p; lba[%u] start %u, count %u - read %u/%u\n",
-//		   ctx->data.iov_base, payload_ptr, ctx->lba_array_idx, start_lba, lba_count, ctx->lba_read, ctx->lba_count);
-
-	ctx->lba_idx += lba_count;
-	req_ctx->lba_count = lba_count;
-	assert(ctx->lba_idx <= ctx->lba_ranges[ctx->lba_array_idx].lba_count);
-
-	if(ctx->lba_idx  >= ctx->lba_ranges[ctx->lba_array_idx].lba_count) {
-//		printf("range %u completed, switch to the next\n", ctx->lba_array_idx);
-		ctx->lba_array_idx++;
-		ctx->lba_idx = 0;
-	}
-
-	rc = spdk_nvme_ns_cmd_read_with_md(ctx->ns, ctx->qpair, payload_ptr, NULL, start_lba, lba_count, file_read_complete_io,
-									   req_ctx, 0, 0, 0);
-	if(rc) {
-		fprintf("nvme read failed with %d\n", rc);
-	}
-
-	return rc;
-}
-
 int main(int argc, char **argv)
 {
 	int rc;
 	struct worker_thread *worker, *master_worker;
 	struct spdk_env_opts opts;
-	struct nvme_file_reader_ctx read_ctx = {};
 	pthread_t thread_id = 0;
 
 	rc = parse_args(argc, argv);
@@ -2242,7 +2065,17 @@ int main(int argc, char **argv)
 
 	g_tsc_rate = spdk_get_ticks_hz();
 
-	////////////////////////////////////////////////////////
+	if (register_workers() != 0) {
+		rc = -1;
+		goto cleanup;
+	}
+
+#if HAVE_LIBAIO
+	if (register_aio_files(argc, argv) != 0) {
+		rc = -1;
+		goto cleanup;
+	}
+#endif
 
 	if (register_controllers() != 0) {
 		rc = -1;
@@ -2264,85 +2097,42 @@ int main(int argc, char **argv)
 		goto cleanup;
 	}
 
-	read_ctx.ctrlr	= g_controllers->ctrlr;
-	read_ctx.ns		= g_namespaces->u.nvme.ns;
-
-	struct spdk_nvme_io_qpair_opts qopts;
-	spdk_nvme_ctrlr_get_default_io_qpair_opts(read_ctx.ctrlr, &qopts, sizeof(qopts));
-	qopts.io_queue_requests = g_queue_depth * 4;
-	qopts.io_queue_size = g_queue_depth;
-	read_ctx.qdepth = qopts.io_queue_size;
-	printf("creating io qpair, depth %u num_requests %u\n", qopts.io_queue_size, qopts.io_queue_requests);
-
-	read_ctx.qpair = spdk_nvme_ctrlr_alloc_io_qpair(read_ctx.ctrlr, &qopts, sizeof(qopts));
-	if(!read_ctx.qpair) {
-		fprintf(stderr, "failed to create IO qpair\n");
+	if (associate_workers_with_ns() != 0) {
 		rc = -1;
 		goto cleanup;
 	}
 
-	read_ctx.reqs = calloc(read_ctx.qdepth, sizeof(*read_ctx.reqs));
-	for (uint32_t i = 0; i < read_ctx.qdepth; i++) {
-		read_ctx.reqs[i].main = &read_ctx;
-		read_ctx.reqs[i].idx = i;
-	}
+	printf("Initialization complete. Launching workers.\n");
 
-	read_ctx.dev_block_size = spdk_nvme_ns_get_sector_size(read_ctx.ns);
-
-	////////////////////////////////////////////////////////
-	int i = g_aio_optind;
-	printf("treat argv[%d] = %s as a file name\n", i, argv[i]);
-
-	rc = fill_lba_ranges(argv[i], &read_ctx);
-	if (rc) {
-		fprintf(stderr, "file parsing failed");
-		goto cleanup;
-	}
-	////////////////////////////////////////////////////////
-
-	read_ctx.max_lba_per_io = spdk_nvme_ctrlr_get_max_xfer_size(read_ctx.ctrlr) / read_ctx.dev_block_size;
-	read_ctx.data.iov_base = spdk_dma_zmalloc(read_ctx.lba_count * read_ctx.dev_block_size, g_io_align, NULL);
-
-	for(uint32_t i = 0; i < read_ctx.qdepth; i++) {
-		file_read_submit_io(&read_ctx.reqs[i]);
-	}
-
-	while (read_ctx.lba_read < read_ctx.lba_count)
-	{
-		int completions = spdk_nvme_qpair_process_completions(read_ctx.qpair, read_ctx.qdepth);
-		if(completions < 0) {
-			fprintf(stderr, "process_completions failed with %d\n", completions);
-			exit(1);
+	/* Launch all of the slave workers */
+	g_master_core = spdk_env_get_current_core();
+	master_worker = NULL;
+	worker = g_workers;
+	while (worker != NULL) {
+		if (worker->lcore != g_master_core) {
+			spdk_env_thread_launch_pinned(worker->lcore, work_fn, worker);
+		} else {
+			assert(master_worker == NULL);
+			master_worker = worker;
 		}
+		worker = worker->next;
 	}
-	printf("Done, first 100 symbols:\n\n");
 
-	char first_100_symbols[101] = {};
-	memcpy(first_100_symbols, (char*)read_ctx.data.iov_base, 100);
-	printf("%s\n", first_100_symbols);
+	assert(master_worker != NULL);
+	rc = work_fn(master_worker);
+
+	spdk_env_thread_wait_all();
+
+	print_stats();
 
 cleanup:
-//	if (thread_id && pthread_cancel(thread_id) == 0) {
-//		pthread_join(thread_id, NULL);
-//	}
-
-	if (read_ctx.lba_ranges) {
-		free(read_ctx.lba_ranges);
+	if (thread_id && pthread_cancel(thread_id) == 0) {
+		pthread_join(thread_id, NULL);
 	}
-
-	if (read_ctx.data.iov_base) {
-		spdk_dma_free(read_ctx.data.iov_base);
-	}
-
-	if(read_ctx.qpair) {
-		spdk_nvme_ctrlr_free_io_qpair(read_ctx.qpair);
-	}
-
 	unregister_trids();
 	unregister_namespaces();
 	unregister_controllers();
-//	unregister_workers();
-
+	unregister_workers();
 
 	if (rc != 0) {
 		fprintf(stderr, "%s: errors occured\n", argv[0]);
