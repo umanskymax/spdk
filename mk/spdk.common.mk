@@ -60,7 +60,7 @@ ifeq ($(MAKECMDGOALS),)
 MAKECMDGOALS=$(.DEFAULT_GOAL)
 endif
 
-TARGET_TRIPLET := $(shell $(CC) -dumpmachine)
+TARGET_TRIPLET := $(shell gcc -dumpmachine)
 TARGET_TRIPLET_WORDS := $(subst -, ,$(TARGET_TRIPLET))
 
 ifneq ($(filter linux%,$(TARGET_TRIPLET_WORDS)),)
@@ -137,6 +137,11 @@ ifeq ($(OS),FreeBSD)
 SYS_LIBS += -L/usr/local/lib
 COMMON_CFLAGS += -I/usr/local/include
 endif
+
+SYS_LIBS += -L/hpc/local/oss/cuda10.1/targets/x86_64-linux/lib
+SYS_LIBS += -lcuda -lcudart
+SYS_LIBS += -L/lib64
+COMMON_CFLAGS += -I/hpc/local/oss/cuda10.1/include/
 
 # Attach only if PMDK lib specified with configure
 ifneq ($(CONFIG_PMDK_DIR),)
@@ -220,6 +225,7 @@ endif
 COMMON_CFLAGS += -pthread
 LDFLAGS += -pthread
 
+CUFALGS  = -D_GNU_SOURCE -I$(SPDK_ROOT_DIR)/include -I/usr/local/include -I/hpc/local/oss/cuda10.1/include/ -DDEBUG -O0
 CFLAGS   += $(COMMON_CFLAGS) -Wno-pointer-sign -Wstrict-prototypes -Wold-style-definition -std=gnu99
 CXXFLAGS += $(COMMON_CFLAGS)
 
@@ -248,6 +254,10 @@ COMPILE_C=\
 	$(Q)echo "  CC $S/$@"; \
 	$(CC) -o $@ $(DEPFLAGS) $(CFLAGS) -c $< && \
 	mv -f $*.d.tmp $*.d && touch -c $@
+
+COMPILE_CU=\
+	$(Q)echo "  nvcc $S/$@"; \
+	nvcc -o $@ $(CUFALGS) -c $<
 
 COMPILE_CXX=\
 	$(Q)echo "  CXX $S/$@"; \
@@ -372,6 +382,9 @@ UNINSTALL_HEADER=\
 
 %.o: %.c %.d $(MAKEFILE_LIST)
 	$(COMPILE_C)
+
+%.o: %.cu %.d $(MAKEFILE_LIST)
+	$(COMPILE_CU)
 
 %.o: %.cpp %.d $(MAKEFILE_LIST)
 	$(COMPILE_CXX)

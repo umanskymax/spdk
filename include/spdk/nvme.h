@@ -2598,6 +2598,17 @@ struct spdk_nvme_rdma_hooks {
 	 * \return Infiniband remote key (rkey) for this buf
 	 */
 	uint64_t (*get_rkey)(struct ibv_pd *pd, void *buf, size_t size);
+
+	/**
+	 * \brief Get an InfiniBand Verbs memory region for a buffer.
+	 *
+	 * \param pd The protection domain returned from get_ibv_pd
+	 * \param buf Memory buffer for which an rkey should be returned.
+	 * \param size size of buf
+	 *
+	 * \return Infiniband remote key (rkey) for this buf
+	 */
+	struct ibv_mr* (*get_user_mr)(struct ibv_pd *pd, void *buf, size_t* size);
 };
 
 /**
