@@ -138,7 +138,6 @@ SYS_LIBS += -L/usr/local/lib
 COMMON_CFLAGS += -I/usr/local/include
 endif
 
-SYS_LIBS += -L/hpc/local/oss/cuda10.1/targets/x86_64-linux/lib
 SYS_LIBS += -lcuda -lcudart
 SYS_LIBS += -L/lib64
 COMMON_CFLAGS += -I/hpc/local/oss/cuda10.1/include/

@@ -934,7 +934,6 @@ unregister_controllers(void)
 	}
 }
 
-
 static void *
 nvme_poll_ctrlrs(void *arg)
 {
@@ -1343,8 +1342,10 @@ int main(int argc, char **argv)
 	}
 	////////////////////////////////////////////////////////
 
-	read_ctx.data.iov_len = read_ctx.lba_count * read_ctx.dev_block_size;
 	read_ctx.max_lba_per_io = spdk_nvme_ctrlr_get_max_xfer_size(read_ctx.ctrlr) / read_ctx.dev_block_size;
+	read_ctx.data.iov_len = read_ctx.lba_count * read_ctx.dev_block_size;
+
+#ifdef CUDA_DRAM
 	read_ctx.data.iov_base = spdk_dma_zmalloc(read_ctx.data.iov_len, g_io_align, NULL);
 
 	res = cudaHostRegister(read_ctx.data.iov_base, read_ctx.data.iov_len, cudaHostRegisterDefault);
@@ -1353,6 +1354,15 @@ int main(int argc, char **argv)
 		rc = -1;
 		goto cleanup;
 	}
+#else
+	 res = cudaMalloc(&read_ctx.data.iov_base, read_ctx.data.iov_len);
+	if (res != CUDA_SUCCESS) {
+		fprintf(stderr, "failed to allocate GPU memory\n");
+		rc = -1;
+		goto cleanup;
+	}
+
+#endif
 
 	for (int i = 0; i < g_perf_ibv_num_contexts; i++) {
 		g_perf_ibv[i].mr = ibv_reg_mr(g_perf_ibv[i].pd, read_ctx.data.iov_base, read_ctx.data.iov_len,
@@ -1376,20 +1386,25 @@ int main(int argc, char **argv)
 			exit(1);
 		}
 	}
-	printf("Done, CPU 150 symbols:\n\n");
+
+	printf("Done!\n");
+
+#ifdef CUDA_DRAM
+	printf("CPU 150 symbols:\n\n");
 
 	for(uint32_t i = 0; i < 150; i++) {
 		printf("%c", ((char*)read_ctx.data.iov_base)[i]);
 	}
 	printf("\n");
+#endif
 
 	printf("Running kernel to print 150 symbols\n");
 	print_gpu_mem<<<1, 1>>>((char*)read_ctx.data.iov_base, 150);
 
 cleanup:
-//	if (thread_id && pthread_cancel(thread_id) == 0) {
-//		pthread_join(thread_id, NULL);
-//	}
+	if (thread_id && pthread_cancel(thread_id) == 0) {
+		pthread_join(thread_id, NULL);
+	}
 
 	if (read_ctx.lba_ranges) {
 		free(read_ctx.lba_ranges);
@@ -1400,8 +1415,12 @@ cleanup:
 	}
 
 	if (read_ctx.data.iov_base) {
+#ifdef CUDA_DRAM
 		cudaHostUnregister(read_ctx.data.iov_base);
 		spdk_dma_free(read_ctx.data.iov_base);
+#else
+		cudaFree(read_ctx.data.iov_base);
+#endif
 	}
 
 	if(read_ctx.qpair) {
@@ -1411,8 +1430,6 @@ cleanup:
 	unregister_trids();
 	unregister_namespaces();
 	unregister_controllers();
-//	unregister_workers();
-
 
 	if (rc != 0) {
 		fprintf(stderr, "%s: errors occured\n", argv[0]);
