@@ -123,12 +123,6 @@ ibv_mr *spdk_ibv_device_storage::get_user_mr(struct ibv_pd *pd, void *buf, size_
 	return nullptr;
 }
 
-struct spdk_nvme_rdma_hooks g_spdk_reader_hooks = {
-	.get_ibv_pd = &spdk_ibv_device_storage::get_ibv_pd,
-	.get_rkey = nullptr,
-	.get_user_mr = &spdk_ibv_device_storage::get_user_mr
-};
-
 //////////////////////
 
 class spdk_do_read;
@@ -367,6 +361,12 @@ spdk_reader_ctx::spdk_reader_ctx(const char *transport) {
 	if (rc) {
 		throw std::runtime_error("Failed to init dpdk env, result " + std::to_string(rc));
 	}
+
+	struct spdk_nvme_rdma_hooks g_spdk_reader_hooks = {
+		.get_ibv_pd = &spdk_ibv_device_storage::get_ibv_pd,
+		.get_rkey = nullptr,
+		.get_user_mr = &spdk_ibv_device_storage::get_user_mr
+	};
 
 	spdk_nvme_rdma_init_hooks(&g_spdk_reader_hooks);
 

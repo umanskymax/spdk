@@ -13,9 +13,9 @@ SO_SRCS = spdk_reader.cpp
 SO_OBJS := $(SO_SRCS:.cpp=.o)
 SO_NAME = libspdkreader.so
 
-PY_SRC = spdk_reader.cpp spdk_reader_2py.cpp
-PY_COMPILE_SCRIPT = compile_spdk_reader.py
-PY_MODULE = spdk_reader_py
+PY_SRC = spdk_reader_py.cpp
+PY_COMPILE_SCRIPT = setup.py
+PY_MODULE = spdk_reader_cpp
 
 HEADERS = spdk_reader.h
 
@@ -34,15 +34,14 @@ LDFLAGS += -Wl,-Bdynamic $(LD_DYNAMIC)
 	$(Q)echo "Compiling $<"
 	$(Q)$(CXX) -c $(CXXFLAGS) $(INCS) $(LDFLAGS) $< -o $@
 
+all: $(SO_NAME) $(PY_MODULE)
+
 $(SO_NAME): $(SO_OBJS)
 	$(Q)echo "Building $(SO_NAME)"
 	$(Q)$(CXX) $(CXXFLAGS) $(INCS) -shared -Wl,-soname,$(SO_NAME) $(SO_OBJS) $(LDFLAGS) -o $(SO_NAME)
 
-#$(PY_MODULE): $(PY_SRC) $(PY_COMPILE_SCRIPT) $(HEADERS)
-#	$(CPYTHON3) $(MODULE_COMPILE_SCRIPT) build_ext --inplace
-
-all: $(SO_NAME)
-#all: $(SO_NAME) $(PY_MODULE)
+$(PY_MODULE): $(PY_SRC) $(PY_COMPILE_SCRIPT) $(HEADERS)
+	$(Q)$(CPYTHON3) $(PY_COMPILE_SCRIPT) build_ext --inplace
 
 clean:
 	$(Q)echo "Clean lib"
