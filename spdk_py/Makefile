@@ -8,11 +8,12 @@ CXX = nvcc
 DIR := ${CURDIR}/
 LIB_DIR := $(DIR)lib
 ROOT_DIR := $(DIR)../
+SPDK_PATH ?= $(ROOT_DIR)/install
 
 SRCS = app.cu
 OBJS_CU := $(SRCS:.cu=.o)
 
-INCS = -I$(LIB_DIR) -I$(ROOT_DIR)install_x86_file/include
+INCS = -I$(LIB_DIR) -I$(SPDK_PATH)/include
 CXXFLAGS = -std=c++11  -O0 -g
 LDFLAGS = -L$(LIB_DIR) -lspdkreader
 

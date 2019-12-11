@@ -19,11 +19,17 @@ PY_MODULE = spdk_reader_cpp
 
 HEADERS = spdk_reader.h
 
-INCS = -I$(ROOT_DIR)install_x86_file/include
+CUDA_PATH ?= /hpc/local/oss/cuda10.1
+SPDK_PATH ?= $(ROOT_DIR)/install
+
+export CUDA_PATH
+export SPDK_PATH
+
+INCS = -I$(SPDK_PATH)/include -I$(CUDA_PATH)/include
 CXXFLAGS = -std=c++0x -fPIC -Werror -Wall -O0 -g
-LDFLAGS = -L$(ROOT_DIR)install_x86_file/lib/
+LDFLAGS = -L$(SPDK_PATH)/lib/
 LDFLAGS += -L$(ROOT_DIR)dpdk/build/lib
-LDFLAGS += -L/usr/lib64
+LDFLAGS += -L/usr/lib64 -L$(CUDA_PATH)/lib
 LD_STATIC = -lspdk_nvme -lspdk_env_dpdk -lspdk_util -lspdk_log -lspdk_sock
 LD_STATIC += -lrte_eal -lrte_mempool -lrte_kvargs -lrte_ring -lrte_bus_pci -lrte_pci
 LD_DYNAMIC = -lpthread -libverbs -lrdmacm -luuid -lnuma -lcudart

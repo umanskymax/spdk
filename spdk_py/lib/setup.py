@@ -5,12 +5,13 @@ except:
 
 import os
 cur_dir = os.path.dirname(os.path.abspath(__file__))
+cuda_path = os.environ.get('CUDA_PATH')
+spdk_path = os.environ.get('SPDK_PATH')
 
 # Definition of extension modules
 spdk_reader_cpp = Extension('spdk_reader_cpp',
                  sources = ['spdk_reader_py.cpp'],
-#                 include_dirs=['/hpc/local/oss/cuda9.2/include/', '/hpc/local/work/alexeymar/repo/spdk/install_x86_file/include'],
-                 include_dirs=['/hpc/local/oss/cuda9.2/include/', cur_dir + '/../../install_x86_file/include'],
+                 include_dirs=[ cuda_path + '/include', spdk_path + '/include'],
                  extra_compile_args=['-std=c++11', '-O0', '-g'],
                  library_dirs=[cur_dir],
                  libraries=['stdc++', 'spdkreader'],

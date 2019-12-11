@@ -138,9 +138,10 @@ SYS_LIBS += -L/usr/local/lib
 COMMON_CFLAGS += -I/usr/local/include
 endif
 
-SYS_LIBS += -lcuda -lcudart
-SYS_LIBS += -L/lib64
-COMMON_CFLAGS += -I/hpc/local/oss/cuda10.1/include/
+CUDA_PATH ?= /hpc/local/oss/cuda10.1
+SYS_LIBS += -lcuda -lcudart -lstdc++
+SYS_LIBS += -L/lib64 -L$(CUDA_PATH)/lib
+COMMON_CFLAGS += -I$(CUDA_PATH)/include
 
 # Attach only if PMDK lib specified with configure
 ifneq ($(CONFIG_PMDK_DIR),)
@@ -224,7 +225,7 @@ endif
 COMMON_CFLAGS += -pthread
 LDFLAGS += -pthread
 
-CUFALGS  = -D_GNU_SOURCE -I$(SPDK_ROOT_DIR)/include -I/usr/local/include -I/hpc/local/oss/cuda10.1/include/ -DDEBUG -O0
+CUFALGS  = -D_GNU_SOURCE -I$(SPDK_ROOT_DIR)/include -I/usr/local/include -I$(CUDA_PATH)/include/ -DDEBUG -O0
 CFLAGS   += $(COMMON_CFLAGS) -Wno-pointer-sign -Wstrict-prototypes -Wold-style-definition -std=gnu99
 CXXFLAGS += $(COMMON_CFLAGS)
 
