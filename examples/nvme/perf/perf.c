@@ -53,6 +53,11 @@
 #include <libaio.h>
 #endif
 
+#if HAVE_CUDA
+#include <cuda_runtime_api.h>
+#include <cuda.h>
+#endif
+
 struct ctrlr_entry {
 	struct spdk_nvme_ctrlr			*ctrlr;
 	enum spdk_nvme_transport_type		trtype;
