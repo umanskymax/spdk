@@ -222,6 +222,20 @@ static bool g_data_digest;
 static bool g_no_shn_notification = false;
 static uint32_t g_keep_alive_timeout_in_ms = 0;
 
+enum spdk_mem_alloc_mode {
+	spdk_perf_alloc_mem_cpu = 0,
+	spdk_perf_alloc_mem_gpu,
+	spdk_perf_alloc_mem_unknown
+};
+
+static enum spdk_mem_alloc_mode g_alloc_mode = spdk_perf_alloc_mem_cpu;
+
+static char spdk_mem_mode_descr[][1024] = {
+	"CPU memory",
+	"GPU memory",
+	"Unknown mode"
+};
+
 static const char *g_core_mask;
 
 struct trid_entry {
@@ -1128,6 +1142,8 @@ static void usage(char *program_name)
 	printf(" [AIO device(s)]...");
 #endif
 	printf("\n");
+	printf("\t[-a memory allocation mode: 0 - CPU, 1 - GPU ]\n");
+	printf("\t\t(default: 0)\n");
 	printf("\t[-q io depth]\n");
 	printf("\t[-o io size in bytes]\n");
 	printf("\t[-n number of io queues per namespace. default: 1]\n");
@@ -1586,9 +1602,11 @@ parse_args(int argc, char **argv)
 	g_rw_percentage = -1;
 	g_core_mask = NULL;
 	g_max_completions = 0;
+	g_alloc_mode = spdk_perf_alloc_mem_cpu;
 
-	while ((op = getopt(argc, argv, "c:e:i:lm:n:o:q:r:k:s:t:w:DGHILM:NT:U:V")) != -1) {
+	while ((op = getopt(argc, argv, "a:c:e:i:lm:n:o:q:r:k:s:t:w:DGHILM:NT:U:V")) != -1) {
 		switch (op) {
+		case 'a':
 		case 'i':
 		case 'm':
 		case 'n':
@@ -1636,6 +1654,8 @@ parse_args(int argc, char **argv)
 			case 'U':
 				g_nr_unused_io_queues = val;
 				break;
+			case 'a':
+				g_alloc_mode = val;
 			}
 			break;
 		case 'c':
@@ -1796,6 +1816,13 @@ parse_args(int argc, char **argv)
 			}
 		}
 	}
+
+	if (g_alloc_mode < 0 || g_alloc_mode > spdk_perf_alloc_mem_unknown) {
+		fprintf(stderr,
+				"-a must be in interval [0..%d).\n", spdk_perf_alloc_mem_unknown);
+		return 1;
+		}
+
 
 	g_aio_optind = optind;
 
@@ -2103,6 +2130,7 @@ int main(int argc, char **argv)
 	}
 
 	printf("Initialization complete. Launching workers.\n");
+	printf("Memory allocation mode is %s.\n", spdk_mem_mode_descr[g_alloc_mode]);
 
 	/* Launch all of the slave workers */
 	g_master_core = spdk_env_get_current_core();
