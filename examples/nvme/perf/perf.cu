@@ -449,6 +449,50 @@ register_aio_files(int argc, char **argv)
 
 static void io_complete(void *ctx, const struct spdk_nvme_cpl *cpl);
 
+
+static void * _alloc_mem(size_t size)
+{
+	void *mem = NULL;
+
+
+	if (g_alloc_mode == spdk_perf_alloc_mem_cpu)
+		mem = spdk_dma_zmalloc(size, g_io_align, NULL);
+
+#ifdef __NVCC__
+	int res = 0;
+
+	if (g_alloc_mode == spdk_perf_alloc_mem_gpu) {
+		res = cudaMalloc(&mem, size);
+		if (res != CUDA_SUCCESS) {
+			fprintf(stderr, "failed to allocate GPU memory %d\n", res);
+			exit(-1);
+		}
+	} else {
+		res = cudaHostRegister(mem, size, cudaHostRegisterDefault);
+		if(res != cudaSuccess) {
+			fprintf(stderr, "cudaHostRegister failed with %d\n", res);
+			exit (-1);
+		}
+	}
+#endif
+	return mem;
+}
+
+static void _free_mem(void *mem)
+{
+#ifdef __NVCC__
+	if (g_alloc_mode == spdk_perf_alloc_mem_gpu) {
+		cudaFree(mem);
+		return;
+	} else {
+		cudaHostUnregister(mem);
+		spdk_dma_free(mem);
+	}
+#else
+	spdk_dma_free(mem);
+#endif
+}
+
 static void
 nvme_setup_payload(struct perf_task *task, uint8_t pattern)
 {
@@ -458,32 +502,16 @@ nvme_setup_payload(struct perf_task *task, uint8_t pattern)
 	 * it's same with g_io_size_bytes for namespace without metadata.
 	 */
 	max_io_size_bytes = g_io_size_bytes + g_max_io_md_size * g_max_io_size_blocks;
-	if (g_alloc_mode == spdk_perf_alloc_mem_cpu)
-		task->iov.iov_base = spdk_dma_zmalloc(max_io_size_bytes, g_io_align, NULL);
+	task->iov.iov_base = _alloc_mem(max_io_size_bytes);
 
-#ifdef __NVCC__
-	int res = 0;
-
-	if (g_alloc_mode == spdk_perf_alloc_mem_gpu) {
-		res = cudaMalloc(&task->iov.iov_base, max_io_size_bytes);
-		if (res != CUDA_SUCCESS) {
-			fprintf(stderr, "failed to allocate GPU memory %d\n", res);
-			exit(-1);
-		}
-	} else {
-		res = cudaHostRegister(task->iov.iov_base, max_io_size_bytes, cudaHostRegisterDefault);
-		if(res != cudaSuccess) {
-			fprintf(stderr, "cudaHostRegister failed with %d\n", res);
-			exit (-1);
-		}
-	}
-#endif
 	task->iov.iov_len = max_io_size_bytes;
 	if (task->iov.iov_base == NULL) {
 		fprintf(stderr, "task->buf allocation failed\n");
 		exit(1);
 	}
-	memset(task->iov.iov_base, pattern, task->iov.iov_len);
+
+	if (g_alloc_mode != spdk_perf_alloc_mem_gpu)
+		memset(task->iov.iov_base, pattern, task->iov.iov_len);
 
 	max_io_md_size = g_max_io_md_size * g_max_io_size_blocks;
 	if (max_io_md_size != 0) {
@@ -983,7 +1011,7 @@ task_complete(struct perf_task *task)
 	 * the one just completed.
 	 */
 	if (spdk_unlikely(ns_ctx->is_draining)) {
-		spdk_dma_free(task->iov.iov_base);
+		_free_mem(task->iov.iov_base);
 		spdk_dma_free(task->md_iov.iov_base);
 		free(task);
 	} else {
