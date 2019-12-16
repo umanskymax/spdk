@@ -20,6 +20,10 @@ sudo rpm -i /hpc/local/work/alexeymar/nvidia_peer_memory-1.0-8.x86_64.rpm
 
 module load dev/cuda9.2
 
+sudo mkdir -p  ~root/.cgdb/
+sudo cp -n ~sashakot/.cgdb/cgdbrc ~root/.cgdb/cgdbrc
+
+
 #sudo modprobe nvme-rdma
 #sudo nvme connect -t rdma -a 1.1.10.1 -s 4420 -n nqn.2016-06.io.spdk:cnode1
 #sudo mkfs.ext3 /dev/nvme0n1
