@@ -17,6 +17,7 @@ modinfo nv_peer_mem
 #if no nv_peer_mem found
 sudo rpm -i /hpc/local/work/alexeymar/nvidia_peer_memory-1.0-8.x86_64.rpm 
 
+module load dev/cuda9.2
 
 #sudo modprobe nvme-rdma
 #sudo nvme connect -t rdma -a 1.1.10.1 -s 4420 -n nqn.2016-06.io.spdk:cnode1

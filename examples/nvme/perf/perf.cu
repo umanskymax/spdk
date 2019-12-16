@@ -55,7 +55,7 @@ extern "C" {
 #include <libaio.h>
 #endif
 
-#if HAVE_CUDA
+#if __NVCC__
 #include <cuda_runtime_api.h>
 #include <cuda.h>
 #endif
@@ -458,10 +458,29 @@ nvme_setup_payload(struct perf_task *task, uint8_t pattern)
 	 * it's same with g_io_size_bytes for namespace without metadata.
 	 */
 	max_io_size_bytes = g_io_size_bytes + g_max_io_md_size * g_max_io_size_blocks;
-	task->iov.iov_base = spdk_dma_zmalloc(max_io_size_bytes, g_io_align, NULL);
+	if (g_alloc_mode == spdk_perf_alloc_mem_cpu)
+		task->iov.iov_base = spdk_dma_zmalloc(max_io_size_bytes, g_io_align, NULL);
+
+#ifdef __NVCC__
+	int res = 0;
+
+	if (g_alloc_mode == spdk_perf_alloc_mem_gpu) {
+		res = cudaMalloc(&task->iov.iov_base, max_io_size_bytes);
+		if (res != CUDA_SUCCESS) {
+			fprintf(stderr, "failed to allocate GPU memory %d\n", res);
+			exit(-1);
+		}
+	} else {
+		res = cudaHostRegister(task->iov.iov_base, max_io_size_bytes, cudaHostRegisterDefault);
+		if(res != cudaSuccess) {
+			fprintf(stderr, "cudaHostRegister failed with %d\n", res);
+			exit (-1);
+		}
+	}
+#endif
 	task->iov.iov_len = max_io_size_bytes;
 	if (task->iov.iov_base == NULL) {
-		fprintf(stderr, "task->buf spdk_dma_zmalloc failed\n");
+		fprintf(stderr, "task->buf allocation failed\n");
 		exit(1);
 	}
 	memset(task->iov.iov_base, pattern, task->iov.iov_len);
@@ -1825,6 +1844,12 @@ parse_args(int argc, char **argv)
 		}
 	}
 
+#ifndef __NVCC__
+	if (g_alloc_mode ! = spdk_perf_alloc_mem_cpu ) {
+		fprintf(stderr, "Non CPU allocation needs CUDA compiler\n");
+		exit(1);
+	}
+#endif
 	if (g_alloc_mode < 0 || g_alloc_mode > spdk_perf_alloc_mem_unknown) {
 		fprintf(stderr,
 				"-a must be in interval [0..%d).\n", spdk_perf_alloc_mem_unknown);
