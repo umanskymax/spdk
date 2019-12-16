@@ -1175,6 +1175,7 @@ nvme_rdma_build_contig_request(struct nvme_rdma_qpair *rqpair,
 
 	rc = nvme_rdma_get_rkey(rqpair, payload, req->payload_size, &rkey);
 	if(rc) {
+		SPDK_ERRLOG("nvme_rdma_get_rkey failed\n");
 		return -1;
 	}
 	req->cmd.dptr.sgl1.keyed.key = rkey;
@@ -1373,6 +1374,9 @@ nvme_rdma_req_init(struct nvme_rdma_qpair *rqpair, struct nvme_request *req,
 
 	if (req->payload_size == 0) {
 		rc = nvme_rdma_build_null_request(rdma_req);
+		if (rc) {
+			SPDK_ERRLOG("nvme_rdma_build_null_request\n");
+		}
 	} else if (nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_CONTIG) {
 		/*
 		 * Check if icdoff is non zero, to avoid interop conflicts with
@@ -1384,16 +1388,28 @@ nvme_rdma_req_init(struct nvme_rdma_qpair *rqpair, struct nvme_request *req,
 		    req->payload_size <= nvme_rdma_icdsz_bytes(ctrlr) &&
 		    (ctrlr->cdata.nvmf_specific.icdoff == 0)) {
 			rc = nvme_rdma_build_contig_inline_request(rqpair, rdma_req);
+			if (rc) {
+				SPDK_ERRLOG("nvme_rdma_build_contig_inline_request\n");
+			}
 		} else {
 			rc = nvme_rdma_build_contig_request(rqpair, rdma_req);
+			if (rc) {
+				SPDK_ERRLOG("nvme_rdma_build_contig_request\n");
+			}
 		}
 	} else if (nvme_payload_type(&req->payload) == NVME_PAYLOAD_TYPE_SGL) {
 		if (req->cmd.opc == SPDK_NVME_OPC_WRITE &&
 		    req->payload_size <= nvme_rdma_icdsz_bytes(ctrlr) &&
 		    ctrlr->cdata.nvmf_specific.icdoff == 0) {
 			rc = nvme_rdma_build_sgl_inline_request(rqpair, rdma_req);
+			if (rc) {
+				SPDK_ERRLOG("nvme_rdma_build_sgl_inline_request\n");
+			}
 		} else {
 			rc = nvme_rdma_build_sgl_request(rqpair, rdma_req);
+			if (rc) {
+				SPDK_ERRLOG("nvme_rdma_build_sgl_request\n");
+			}
 		}
 	} else {
 		rc = -1;
