@@ -44,7 +44,9 @@
 #include "spdk/nvme_intel.h"
 #include "spdk/histogram_data.h"
 #include "spdk/endian.h"
+extern "C" {
 #include "spdk/dif.h"
+}
 #include "spdk/util.h"
 #include "spdk/log.h"
 #include "spdk/likely.h"
@@ -607,7 +609,7 @@ nvme_init_ns_worker_ctx(struct ns_worker_ctx *ns_ctx)
 	int i;
 
 	ns_ctx->u.nvme.num_qpairs = g_nr_io_queues_per_ns;
-	ns_ctx->u.nvme.qpair = calloc(ns_ctx->u.nvme.num_qpairs, sizeof(struct spdk_nvme_qpair *));
+	ns_ctx->u.nvme.qpair = (struct spdk_nvme_qpair **)calloc(ns_ctx->u.nvme.num_qpairs, sizeof(struct spdk_nvme_qpair *));
 	if (!ns_ctx->u.nvme.qpair) {
 		return -1;
 	}
@@ -723,7 +725,7 @@ register_ns(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme_ns *ns)
 	 */
 	entries += 1;
 
-	entry = calloc(1, sizeof(struct ns_entry));
+	entry = (struct ns_entry*)calloc(1, sizeof(struct ns_entry));
 	if (entry == NULL) {
 		perror("ns_entry malloc");
 		exit(1);
@@ -822,7 +824,7 @@ static void
 register_ctrlr(struct spdk_nvme_ctrlr *ctrlr, struct trid_entry *trid_entry)
 {
 	struct spdk_nvme_ns *ns;
-	struct ctrlr_entry *entry = malloc(sizeof(struct ctrlr_entry));
+	struct ctrlr_entry *entry = (struct ctrlr_entry *)malloc(sizeof(struct ctrlr_entry));
 	uint32_t nsid;
 
 	if (entry == NULL) {
@@ -830,7 +832,7 @@ register_ctrlr(struct spdk_nvme_ctrlr *ctrlr, struct trid_entry *trid_entry)
 		exit(1);
 	}
 
-	entry->latency_page = spdk_dma_zmalloc(sizeof(struct spdk_nvme_intel_rw_latency_page),
+	entry->latency_page = (struct spdk_nvme_intel_rw_latency_page*)spdk_dma_zmalloc(sizeof(struct spdk_nvme_intel_rw_latency_page),
 					       4096, NULL);
 	if (entry->latency_page == NULL) {
 		printf("Allocation error (latency page)\n");
@@ -873,7 +875,7 @@ register_ctrlr(struct spdk_nvme_ctrlr *ctrlr, struct trid_entry *trid_entry)
 
 		printf("Creating %u unused qpairs for controller %s\n", g_nr_unused_io_queues, entry->name);
 
-		entry->unused_qpairs = calloc(g_nr_unused_io_queues, sizeof(struct spdk_nvme_qpair *));
+		entry->unused_qpairs = (struct spdk_nvme_qpair **)calloc(g_nr_unused_io_queues, sizeof(struct spdk_nvme_qpair *));
 		if (!entry->unused_qpairs) {
 			fprintf(stderr, "Unable to allocate memory for qpair array\n");
 			exit(1);
@@ -973,7 +975,7 @@ task_complete(struct perf_task *task)
 static void
 io_complete(void *ctx, const struct spdk_nvme_cpl *cpl)
 {
-	struct perf_task *task = ctx;
+	struct perf_task *task = (struct perf_task *)ctx;
 
 	if (spdk_unlikely(spdk_nvme_cpl_is_error(cpl))) {
 		fprintf(stderr, "%s completed with error (sct=%d, sc=%d)\n",
@@ -995,7 +997,7 @@ allocate_task(struct ns_worker_ctx *ns_ctx, int queue_depth)
 {
 	struct perf_task *task;
 
-	task = calloc(1, sizeof(*task));
+	task = (struct perf_task *)calloc(1, sizeof(*task));
 	if (task == NULL) {
 		fprintf(stderr, "Out of memory allocating tasks\n");
 		exit(1);
@@ -1203,7 +1205,7 @@ check_cutoff(void *ctx, uint64_t start, uint64_t end, uint64_t count,
 	     uint64_t total, uint64_t so_far)
 {
 	double so_far_pct;
-	double **cutoff = ctx;
+	double **cutoff = (double **)ctx;
 
 	if (count == 0) {
 		return;
@@ -1454,7 +1456,7 @@ add_trid(const char *trid_str)
 	struct spdk_nvme_transport_id *trid;
 	char *ns;
 
-	trid_entry = calloc(1, sizeof(*trid_entry));
+	trid_entry = (struct trid_entry *)calloc(1, sizeof(*trid_entry));
 	if (trid_entry == NULL) {
 		return -1;
 	}
@@ -1469,7 +1471,7 @@ add_trid(const char *trid_str)
 		return 1;
 	}
 
-	ns = strcasestr(trid_str, "ns:");
+	ns = (char*)strcasestr(trid_str, "ns:");
 	if (ns) {
 		char nsid_str[6]; /* 5 digits maximum in an nsid */
 		int len;
@@ -1661,7 +1663,7 @@ parse_args(int argc, char **argv)
 				g_nr_unused_io_queues = val;
 				break;
 			case 'a':
-				g_alloc_mode = val;
+				g_alloc_mode = (enum spdk_mem_alloc_mode)val;
 			}
 			break;
 		case 'c':
@@ -1845,7 +1847,7 @@ register_workers(void)
 	g_num_workers = 0;
 
 	SPDK_ENV_FOREACH_CORE(i) {
-		worker = calloc(1, sizeof(*worker));
+		worker = (struct worker_thread *)calloc(1, sizeof(*worker));
 		if (worker == NULL) {
 			fprintf(stderr, "Unable to allocate worker\n");
 			return -1;
@@ -1914,7 +1916,7 @@ static void
 attach_cb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
 	  struct spdk_nvme_ctrlr *ctrlr, const struct spdk_nvme_ctrlr_opts *opts)
 {
-	struct trid_entry	*trid_entry = cb_ctx;
+	struct trid_entry	*trid_entry = (struct trid_entry       *)cb_ctx;
 	struct spdk_pci_addr	pci_addr;
 	struct spdk_pci_device	*pci_dev;
 	struct spdk_pci_id	pci_id;
@@ -2010,7 +2012,7 @@ associate_workers_with_ns(void)
 			break;
 		}
 
-		ns_ctx = calloc(1, sizeof(struct ns_worker_ctx));
+		ns_ctx = (struct ns_worker_ctx*)calloc(1, sizeof(struct ns_worker_ctx));
 		if (!ns_ctx) {
 			return -1;
 		}
