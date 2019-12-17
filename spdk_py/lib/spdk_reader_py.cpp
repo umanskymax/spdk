@@ -54,6 +54,24 @@ PyObject* get_file_size(PyObject* self, PyObject* args)
 	return PyLong_FromLong(rc);
 }
 
+PyObject* reg_mem(PyObject* self, PyObject* args)
+{
+	//allocates pinned memory on cpu
+	PyObject* capsule;
+	PyObject *mem_ptr;
+	size_t size;
+	PyArg_ParseTuple(args, "OOK", &capsule, &mem_ptr, &size);
+
+	auto ctx = static_cast<spdk_reader_ctx*>(PyCapsule_GetPointer(capsule, "spdk_reader_ctx"));
+	void* ptr = PyLong_AsVoidPtr(mem_ptr);
+
+	std::cout << "Registering mem, ptr " << ptr << ", size " << size
+		  << ", ctx " << static_cast<void*>(ctx) << std::endl;
+
+	ctx->reg_mem(ptr, size);
+
+	return Py_BuildValue("");
+}
 
 PyObject* alloc_cpu_mem(PyObject* self, PyObject* args)
 {
@@ -176,8 +194,6 @@ PyObject* spdk_do_read(PyObject* self, PyObject* args)
 	auto ctx = static_cast<spdk_reader_ctx*>(PyCapsule_GetPointer(capsule, "spdk_reader_ctx"));
 	void* ptr = PyLong_AsVoidPtr(mem_ptr);
 
-	std::cout << "Reading from file " << file << ", ctx " << static_cast<void*>(ctx) << ", mem " << ptr << std::endl;
-
 	auto rc = ctx->do_read(file, ptr);
 
 	return PyLong_FromLong(rc);
@@ -199,6 +215,10 @@ PyMethodDef spdk_reader_cpp_functions[] =
 	{"get_file_size",
 		get_file_size, METH_VARARGS,
 		"Get algined file size"},
+
+	{"reg_mem",
+		reg_mem, METH_VARARGS,
+		"Register previously allocated memory"},
 
 	{"alloc_cpu_mem",
 		alloc_cpu_mem, METH_VARARGS,

@@ -15,6 +15,10 @@ class spdk_reader():
         size = spdk_reader_cpp.get_file_size(self.spdk_capsule, filepath)
         return size
 
+    def reg_mem(self, mem_ptr, size):
+        rc = spdk_reader_cpp.reg_mem(self.spdk_capsule, mem_ptr, size)
+        return rc
+
     def alloc_cpu_mem(self, size):
         mem_ptr = spdk_reader_cpp.alloc_cpu_mem(self.spdk_capsule, size)
         return mem_ptr

@@ -76,6 +76,7 @@ class spdk_reader_ctx {
 
 	static std::shared_ptr<void> get_gpu_mem(size_t size);
 
+	void reg_mem(void* ptr, size_t size);
 	void* alloc_cpu_mem(size_t size);
 	void free_cpu_mem(void* ptr);
 

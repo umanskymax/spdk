@@ -32,7 +32,7 @@ class spdk_ibv_device {
 		for (auto mr : mrs) {
 			char *mr_start = reinterpret_cast<char *>(mr->addr);
 			char *mr_end = mr_start + mr->length;
-			if (mr_start <= address && address <= mr_end) {
+			if (mr_start <= address && address < mr_end) {
 				available_size = mr_end - address;
 				return mr;
 			}
@@ -51,7 +51,12 @@ class spdk_ibv_device {
 	ibv_pd *pd;
 
 	ibv_mr *reg_mr(void *addr, size_t size) {
-		auto mr = ibv_reg_mr(pd, addr, size, IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE |
+		size_t available_size;
+		auto mr = get_mr(addr, 1, available_size);
+		if (mr) {
+			throw std::runtime_error("Address is already registered");
+		}
+		mr = ibv_reg_mr(pd, addr, size, IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE |
 											 IBV_ACCESS_REMOTE_READ);
 		if (!mr) {
 			throw std::runtime_error("failed to register MR\n");
@@ -170,17 +175,17 @@ class spdk_do_read {
 		}
 		close(fd);
 
-		std::cout << "File " << filepath << ", size " << file_size << ", lbas " << total_lba_count
-				  <<
-				  ", extents " << fiemap->fm_mapped_extents << std::endl;
-
 		for (uint32_t j = 0; j < fiemap->fm_mapped_extents; j++) {
 			auto length = fm_extents[j].fe_length >> sector_log2;
-			auto logical_start = fm_extents[j].fe_logical >> sector_log2;
-			auto physical_start = fm_extents[j].fe_physical >> sector_log2;
-			printf("[%4u]: logical %8llu .. %8llu \tphysical %8llu .. %8llu \tlen %8llu\n",
-				   j, logical_start, logical_start + length - 1,
-				   physical_start, physical_start + length - 1, length);
+			//auto logical_start = fm_extents[j].fe_logical >> sector_log2;
+			auto physical_start = (fm_extents[j].fe_physical >> sector_log2) + 256;
+			/* printf("[%4u]: flags %08x, logical %8llu .. %8llu \tphysical %8llu .. %8llu \tlen %8llu\n",
+				   j, fm_extents[j].fe_flags, logical_start, logical_start + length - 1,
+				   physical_start, physical_start + length - 1, length); */
+
+			if ((fm_extents[j].fe_flags & ~FIEMAP_EXTENT_LAST) != 0) {
+				throw std::runtime_error("Unsupported extent flags: " + std::to_string(fm_extents[j].fe_flags));
+			}
 
 			lbas.emplace_back(std::make_pair(physical_start, length));
 		}
@@ -206,11 +211,12 @@ class spdk_do_read {
 
 	void submit_io(spdk_io_ctx &ctx) {
 
-		if (lba_read >= total_lba_count || lba_array_idx >= lbas.size()) {
+		if (lba_submitted_to_read >= total_lba_count || lba_array_idx >= lbas.size()) {
 			return;
 		}
 
 		uint32_t lba_count = spdk_min(lbas[lba_array_idx].second - lba_idx, max_lbas_per_io);
+		lba_count = spdk_min(lba_count, total_lba_count - lba_submitted_to_read);
 		void *payload_ptr = static_cast<char *>(buffer) + lba_submitted_to_read * sector_size;
 		uint32_t start_lba = lbas[lba_array_idx].first + lba_idx;
 		lba_submitted_to_read += lba_count;
@@ -228,6 +234,7 @@ class spdk_do_read {
 											   &ctx, 0, 0, 0);
 		if (rc) {
 			fprintf(stderr, "nvme read failed with %d\n", rc);
+			throw std::runtime_error("read submit failed");
 		}
 	}
 
@@ -247,7 +254,6 @@ class spdk_do_read {
 				return completions;
 			}
 		}
-		std::cout << "Done" << std::endl;
 		reset_state();
 
 		return 0;
@@ -436,6 +442,12 @@ std::shared_ptr<void> spdk_reader_ctx::get_gpu_mem(size_t size) {
 	}
 
 	return mem;
+}
+
+void spdk_reader_ctx::reg_mem(void *ptr, size_t size) {
+	for (auto &it: g_ibv_devices.devices_by_pd) {
+		it.second->reg_mr(ptr, size);
+	}
 }
 
 void *spdk_reader_ctx::alloc_cpu_mem(size_t size) {
