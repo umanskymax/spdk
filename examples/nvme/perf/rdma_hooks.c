@@ -30,11 +30,15 @@ struct ibv_mr* perf_get_mr(struct ibv_pd *pd, void *buf, size_t* size)
 		if(g_perf_ibv[i].pd == pd) {
 			if(g_perf_ibv[i].mr) {
 //				printf("DEBUG !!! match %d\n", i);
-				assert((char*)buf >= (char*)g_perf_ibv[i].mr->addr);
+//				assert((char*)buf >= (char*)g_perf_ibv[i].mr->addr);
+				if ((char*)buf < (char*)g_perf_ibv[i].mr->addr) {
+//					*size = 0;
+					return NULL;
+				}
 				int64_t available = (int64_t)g_perf_ibv[i].mr->length - ((char*)g_perf_ibv[i].mr->addr - (char*)buf);
 				if (available < 0 || available < (int64_t)*size) {
 					fprintf(stderr, "request %zu bytes, available %ld\n", *size, available);
-					*size = 0;
+//					*size = 0;
 					return NULL;
 				}
 				*size = (size_t)available;
@@ -45,6 +49,7 @@ struct ibv_mr* perf_get_mr(struct ibv_pd *pd, void *buf, size_t* size)
 		}
 	}
 //	assert(0);
+//	*size = 0;
 	return NULL;
 }
 

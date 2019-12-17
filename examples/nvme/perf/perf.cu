@@ -167,6 +167,7 @@ struct perf_task {
 	struct iovec		gpu_iov;
 	struct iovec		md_iov;
 	uint64_t		submit_tsc;
+	int			gpu_chunk_id;
 	bool			is_read;
 	struct spdk_dif_ctx	dif_ctx;
 #if HAVE_LIBAIO
@@ -456,6 +457,7 @@ register_aio_files(int argc, char **argv)
 static void io_complete(void *ctx, const struct spdk_nvme_cpl *cpl);
 
 static void *g_gpu_mem = NULL;
+static volatile int g_num_gpu_chunks = 0;
 
 static void * _alloc_gpu_mem(size_t size)
 {
@@ -512,9 +514,8 @@ nvme_setup_payload(struct perf_task *task, uint8_t pattern)
 		fprintf(stderr, "cudaHostRegister failed with %d\n", res);
 		exit (-1);
 	}
-	task->gpu_iov.iov_base = _alloc_gpu_mem(max_io_size_bytes);
+	task->gpu_iov.iov_base = g_gpu_mem + max_io_size_bytes * task->gpu_chunk_id ;
 	task->gpu_iov.iov_len = max_io_size_bytes;
-	_register_mem(task->gpu_iov.iov_base, task->gpu_iov.iov_len);
 #endif
 
 	task->iov.iov_len = max_io_size_bytes;
@@ -522,7 +523,7 @@ nvme_setup_payload(struct perf_task *task, uint8_t pattern)
 		fprintf(stderr, "task->buf allocation failed\n");
 		exit(1);
 	}
-	_register_mem(task->iov.iov_base, task->iov.iov_len);
+//	_register_mem(task->iov.iov_base, task->iov.iov_len);
 
 //	if (g_alloc_mode != spdk_perf_alloc_mem_gpu)
 		memset(task->iov.iov_base, pattern, task->iov.iov_len);
@@ -1097,6 +1098,12 @@ allocate_task(struct ns_worker_ctx *ns_ctx, int queue_depth)
 	task = (struct perf_task *)calloc(1, sizeof(*task));
 	if (task == NULL) {
 		fprintf(stderr, "Out of memory allocating tasks\n");
+		exit(1);
+	}
+
+	task->gpu_chunk_id = __sync_fetch_and_sub(&g_num_gpu_chunks, 1);
+	if (task->gpu_chunk_id < 0) {
+		fprintf(stderr, "GPU chunk id is negative\n");
 		exit(1);
 	}
 
@@ -2261,13 +2268,14 @@ int main(int argc, char **argv)
 
 	printf("# tasks %d,  GPU memory size %d\n", n_tasks, gpu_mem_size);
 	g_gpu_mem = _alloc_gpu_mem(gpu_mem_size);
+	g_num_gpu_chunks = n_tasks;
 #if __NVCC__
 	if(!g_gpu_mem) {
 		fprintf(stderr, "GPU memory allocation failed\n");
 		goto cleanup;
 	}
-#endif
 	_register_mem(g_gpu_mem, gpu_mem_size);
+#endif
 
 	/* Launch all of the slave workers */
 	g_master_core = spdk_env_get_current_core();

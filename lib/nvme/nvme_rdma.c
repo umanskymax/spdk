@@ -1073,7 +1073,7 @@ static inline struct ibv_mr* nvme_rdma_get_mr(struct nvme_rdma_qpair *rqpair, vo
 	//fall through to SPDK memory map
 	if (!g_nvme_hooks.get_rkey && mr == NULL) {
 		mr = (struct ibv_mr *)spdk_mem_map_translate(rqpair->mr_map->map,
-													 (uint64_t)payload, &requested_size);
+													 (uint64_t)payload, requested_size);
 	}
 
 	return mr;
