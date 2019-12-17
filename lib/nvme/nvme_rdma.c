@@ -1076,6 +1076,8 @@ static inline struct ibv_mr* nvme_rdma_get_mr(struct nvme_rdma_qpair *rqpair, vo
 													 (uint64_t)payload, requested_size);
 	}
 
+//	printf(" !!!! DEBUG !!!! %p\n", mr);
+
 	return mr;
 }
 

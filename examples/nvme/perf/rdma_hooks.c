@@ -31,7 +31,7 @@ struct ibv_mr* perf_get_mr(struct ibv_pd *pd, void *buf, size_t* size)
 			if(g_perf_ibv[i].mr) {
 //				printf("DEBUG !!! match %d\n", i);
 //				assert((char*)buf >= (char*)g_perf_ibv[i].mr->addr);
-				if ((char*)buf < (char*)g_perf_ibv[i].mr->addr) {
+				if ((char*)buf < (char*)g_perf_ibv[i].mr->addr || (char*)buf > (char*)g_perf_ibv[i].mr->addr + (int64_t)g_perf_ibv[i].mr->length) {
 //					*size = 0;
 					return NULL;
 				}
@@ -42,6 +42,9 @@ struct ibv_mr* perf_get_mr(struct ibv_pd *pd, void *buf, size_t* size)
 					return NULL;
 				}
 				*size = (size_t)available;
+
+//				printf("buf = %p, size = %d mr = %p \n", buf, *size, g_perf_ibv[i].mr);
+
 				return g_perf_ibv[i].mr;
 			}
 		} else {

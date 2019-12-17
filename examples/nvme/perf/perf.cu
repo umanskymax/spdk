@@ -1101,7 +1101,7 @@ allocate_task(struct ns_worker_ctx *ns_ctx, int queue_depth)
 		exit(1);
 	}
 
-	task->gpu_chunk_id = __sync_fetch_and_sub(&g_num_gpu_chunks, 1);
+	task->gpu_chunk_id = __sync_sub_and_fetch(&g_num_gpu_chunks, 1);
 	if (task->gpu_chunk_id < 0) {
 		fprintf(stderr, "GPU chunk id is negative\n");
 		exit(1);
@@ -2273,6 +2273,8 @@ int main(int argc, char **argv)
 	if(!g_gpu_mem) {
 		fprintf(stderr, "GPU memory allocation failed\n");
 		goto cleanup;
+	} else {
+		fprintf(stdout, "GPU memory %p\n", g_gpu_mem);
 	}
 	_register_mem(g_gpu_mem, gpu_mem_size);
 #endif
