@@ -550,8 +550,20 @@ nvme_submit_io(struct perf_task *task, struct ns_worker_ctx *ns_ctx,
 
 	if (g_alloc_mode == spdk_perf_alloc_mem_gpu) {
 		iov = task->gpu_iov;
+
 	} else {
 		iov = task->iov;
+#ifdef __NVCC__
+		if(g_alloc_mode == spdk_perf_alloc_mem_gpu_to_cpu && !task->is_read) {
+			int res;
+
+			res = cudaMemcpy(task->gpu_iov.iov_base, iov.iov_base, iov.iov_len, cudaMemcpyDeviceToHost);
+			if(res != cudaSuccess) {
+				fprintf(stderr, "cudaHostRegister failed with %d\n", res);
+				exit (-1);
+			}
+		}
+#endif
 	}
 
 	enum dif_mode {
