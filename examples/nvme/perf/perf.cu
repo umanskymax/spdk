@@ -164,6 +164,7 @@ struct ns_worker_ctx {
 struct perf_task {
 	struct ns_worker_ctx	*ns_ctx;
 	struct iovec		iov;
+	struct iovec		gpu_iov;
 	struct iovec		md_iov;
 	uint64_t		submit_tsc;
 	bool			is_read;
@@ -236,6 +237,7 @@ static uint32_t g_keep_alive_timeout_in_ms = 0;
 enum spdk_mem_alloc_mode {
 	spdk_perf_alloc_mem_cpu = 0,
 	spdk_perf_alloc_mem_gpu,
+	spdk_perf_alloc_mem_gpu_to_cpu,
 	spdk_perf_alloc_mem_unknown
 };
 
@@ -244,6 +246,7 @@ static enum spdk_mem_alloc_mode g_alloc_mode = spdk_perf_alloc_mem_cpu;
 static char spdk_mem_mode_descr[][1024] = {
 	"CPU memory",
 	"GPU memory",
+	"GPU <-> CPU memory",
 	"Unknown mode"
 };
 
@@ -453,56 +456,40 @@ register_aio_files(int argc, char **argv)
 static void io_complete(void *ctx, const struct spdk_nvme_cpl *cpl);
 
 
-static void * _alloc_mem(size_t size)
+static void * _alloc_gpu_mem(size_t size)
 {
 	void *mem = NULL;
-
-
-	if (g_alloc_mode == spdk_perf_alloc_mem_cpu)
-		mem = spdk_dma_zmalloc(size, g_io_align, NULL);
 
 #ifdef __NVCC__
 	int res = 0;
 
-	if (g_alloc_mode == spdk_perf_alloc_mem_gpu) {
-		res = cudaMalloc(&mem, size);
-		if (res != CUDA_SUCCESS) {
-			fprintf(stderr, "failed to allocate GPU memory %d\n", res);
-			exit(-1);
-		}
-		for (int i = 0; i < g_perf_ibv_num_contexts; i++) {
-			g_perf_ibv[i].mr = ibv_reg_mr(g_perf_ibv[i].pd, mem, size,
-					IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
-			if (g_perf_ibv[i].mr == NULL) {
-				fprintf(stderr, "failed to register MR, errno %d\n", errno);
-				exit (-1);
-			} else {
-				fprintf(stdout, "i = %d ,  mr = %p\n", i, g_perf_ibv[i].mr);
-			}
-	}
-	} else {
-		res = cudaHostRegister(mem, size, cudaHostRegisterDefault);
-		if(res != cudaSuccess) {
-			fprintf(stderr, "cudaHostRegister failed with %d\n", res);
-			exit (-1);
-		}
+	res = cudaMalloc(&mem, size);
+	if (res != CUDA_SUCCESS) {
+		fprintf(stderr, "failed to allocate GPU memory %d\n", res);
+		exit(-1);
 	}
 #endif
 	return mem;
 }
 
-static void _free_mem(void *mem)
+static void _register_mem(void *mem, size_t size)
+{
+	for (int i = 0; i < g_perf_ibv_num_contexts; i++) {
+		g_perf_ibv[i].mr = ibv_reg_mr(g_perf_ibv[i].pd, mem, size,
+				IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
+		if (g_perf_ibv[i].mr == NULL) {
+			fprintf(stderr, "failed to register MR, errno %d\n", errno);
+			exit (-1);
+		} else {
+			fprintf(stdout, "i = %d ,  mr = %p\n", i, g_perf_ibv[i].mr);
+		}
+	}
+}
+
+static void _free_gpu_mem(void *mem)
 {
 #ifdef __NVCC__
-	if (g_alloc_mode == spdk_perf_alloc_mem_gpu) {
-		cudaFree(mem);
-		return;
-	} else {
-		cudaHostUnregister(mem);
-		spdk_dma_free(mem);
-	}
-#else
-	spdk_dma_free(mem);
+	cudaFree(mem);
 #endif
 }
 
@@ -515,15 +502,28 @@ nvme_setup_payload(struct perf_task *task, uint8_t pattern)
 	 * it's same with g_io_size_bytes for namespace without metadata.
 	 */
 	max_io_size_bytes = g_io_size_bytes + g_max_io_md_size * g_max_io_size_blocks;
-	task->iov.iov_base = _alloc_mem(max_io_size_bytes);
+	task->iov.iov_base = spdk_dma_zmalloc(max_io_size_bytes, g_io_align, NULL);
+#ifdef __NVCC__
+	int res;
+
+	res = cudaHostRegister(task->iov.iov_base, max_io_size_bytes, cudaHostRegisterDefault);
+	if(res != cudaSuccess) {
+		fprintf(stderr, "cudaHostRegister failed with %d\n", res);
+		exit (-1);
+	}
+	task->gpu_iov.iov_base = _alloc_gpu_mem(max_io_size_bytes);
+	task->gpu_iov.iov_len = max_io_size_bytes;
+	_register_mem(task->gpu_iov.iov_base, task->gpu_iov.iov_len);
+#endif
 
 	task->iov.iov_len = max_io_size_bytes;
+	_register_mem(task->iov.iov_base, task->iov.iov_len);
 	if (task->iov.iov_base == NULL) {
 		fprintf(stderr, "task->buf allocation failed\n");
 		exit(1);
 	}
 
-	if (g_alloc_mode != spdk_perf_alloc_mem_gpu)
+//	if (g_alloc_mode != spdk_perf_alloc_mem_gpu)
 		memset(task->iov.iov_base, pattern, task->iov.iov_len);
 
 	max_io_md_size = g_max_io_md_size * g_max_io_size_blocks;
@@ -545,6 +545,14 @@ nvme_submit_io(struct perf_task *task, struct ns_worker_ctx *ns_ctx,
 	uint64_t lba;
 	int rc;
 	int qp_num;
+
+	struct iovec iov;
+
+	if (g_alloc_mode == spdk_perf_alloc_mem_gpu) {
+		iov = task->gpu_iov;
+	} else {
+		iov = task->iov;
+	}
 
 	enum dif_mode {
 		DIF_MODE_NONE = 0,
@@ -581,7 +589,7 @@ nvme_submit_io(struct perf_task *task, struct ns_worker_ctx *ns_ctx,
 
 	if (task->is_read) {
 		return spdk_nvme_ns_cmd_read_with_md(entry->u.nvme.ns, ns_ctx->u.nvme.qpair[qp_num],
-						     task->iov.iov_base, task->md_iov.iov_base,
+						     iov.iov_base, task->md_iov.iov_base,
 						     lba,
 						     entry->io_size_blocks, io_complete,
 						     task, entry->io_flags,
@@ -608,7 +616,7 @@ nvme_submit_io(struct perf_task *task, struct ns_worker_ctx *ns_ctx,
 		}
 
 		return spdk_nvme_ns_cmd_write_with_md(entry->u.nvme.ns, ns_ctx->u.nvme.qpair[qp_num],
-						      task->iov.iov_base, task->md_iov.iov_base,
+						      iov.iov_base, task->md_iov.iov_base,
 						      lba,
 						      entry->io_size_blocks, io_complete,
 						      task, entry->io_flags,
@@ -1024,7 +1032,11 @@ task_complete(struct perf_task *task)
 	 * the one just completed.
 	 */
 	if (spdk_unlikely(ns_ctx->is_draining)) {
-		_free_mem(task->iov.iov_base);
+#ifdef __NVCC__
+		cudaHostUnregister(task->iov.iov_base);
+		_free_gpu_mem(task->gpu_iov.iov_base);
+#endif
+		spdk_dma_free(task->iov.iov_base);
 		spdk_dma_free(task->md_iov.iov_base);
 		free(task);
 	} else {
