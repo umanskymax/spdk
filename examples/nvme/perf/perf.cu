@@ -517,11 +517,11 @@ nvme_setup_payload(struct perf_task *task, uint8_t pattern)
 #endif
 
 	task->iov.iov_len = max_io_size_bytes;
-	_register_mem(task->iov.iov_base, task->iov.iov_len);
 	if (task->iov.iov_base == NULL) {
 		fprintf(stderr, "task->buf allocation failed\n");
 		exit(1);
 	}
+	_register_mem(task->iov.iov_base, task->iov.iov_len);
 
 //	if (g_alloc_mode != spdk_perf_alloc_mem_gpu)
 		memset(task->iov.iov_base, pattern, task->iov.iov_len);
