@@ -60,6 +60,9 @@ extern "C" {
 #include <cuda.h>
 #endif
 #include <rdma/rdma_cma.h>
+extern "C" {
+#include "rdma_hooks.h"
+}
 
 struct ctrlr_entry {
 	struct spdk_nvme_ctrlr			*ctrlr;
@@ -467,6 +470,16 @@ static void * _alloc_mem(size_t size)
 			fprintf(stderr, "failed to allocate GPU memory %d\n", res);
 			exit(-1);
 		}
+		for (int i = 0; i < g_perf_ibv_num_contexts; i++) {
+			g_perf_ibv[i].mr = ibv_reg_mr(g_perf_ibv[i].pd, mem, size,
+					IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
+			if (g_perf_ibv[i].mr == NULL) {
+				fprintf(stderr, "failed to register MR, errno %d\n", errno);
+				exit (-1);
+			} else {
+				fprintf(stdout, "i = %d ,  mr = %p\n", i, g_perf_ibv[i].mr);
+			}
+	}
 	} else {
 		res = cudaHostRegister(mem, size, cudaHostRegisterDefault);
 		if(res != cudaSuccess) {
@@ -2121,99 +2134,6 @@ nvme_poll_ctrlrs(void *arg)
 }
 
 
-struct nvme_file_read_ibv {
-	struct ibv_context* context;
-	struct ibv_pd* pd;
-	struct ibv_mr* mr;
-};
-
-struct nvme_file_read_ibv* g_perf_ibv;
-int g_perf_ibv_num_contexts;
-
-struct ibv_mr* perf_get_mr(struct ibv_pd *pd, void *buf, size_t* size)
-{
-	assert(g_perf_ibv);
-//	printf("addr %p size %zu\n", buf, size);
-	for (int i = 0; i < g_perf_ibv_num_contexts; i++) {
-		if(g_perf_ibv[i].pd == pd) {
-			if(g_perf_ibv[i].mr) {
-//				printf("match %d\n", i);
-				assert((char*)buf >= (char*)g_perf_ibv[i].mr->addr);
-				int64_t available = (int64_t)g_perf_ibv[i].mr->length - ((char*)g_perf_ibv[i].mr->addr - (char*)buf);
-				if (available < 0 || available < (int64_t)*size) {
-					fprintf(stderr, "request %zu bytes, available %ld\n", *size, available);
-					*size = 0;
-					return NULL;
-				}
-				*size = (size_t)available;
-				return g_perf_ibv[i].mr;
-			}
-		}
-	}
-//	assert(0);
-	return NULL;
-}
-
-struct ibv_pd* perf_get_pd(const struct spdk_nvme_transport_id *trid,
-							 struct ibv_context *verbs)
-{
-	assert(g_perf_ibv);
-	printf("verbs %p\n", verbs);
-	for(uint32_t i = 0; i < g_perf_ibv_num_contexts; i++) {
-		if(g_perf_ibv[i].context == verbs) {
-			printf("match at idx %u\n", i);
-			return g_perf_ibv[i].pd;
-		}
-	}
-	assert(0);
-	return NULL;
-}
-
-struct spdk_nvme_rdma_hooks g_perf_hooks = {
-		.get_ibv_pd = perf_get_pd,
-		.get_rkey = NULL,
-		.get_user_mr = perf_get_mr
-};
-
-int alloc_ctx_and_pd(struct nvme_file_read_ibv** ctx, int* num)
-{
-	struct ibv_context ** contexts = rdma_get_devices(num);
-	if (contexts == NULL) {
-		fprintf(stderr, "failed to retrieve ibv devices\n");
-		return -1;
-	}
-	printf("got %u ibv devices\n", *num);
-	*ctx = (struct nvme_file_read_ibv*)calloc(*num, sizeof(struct nvme_file_read_ibv));
-
-	for (int i = 0; i < *num; i++) {
-		(*ctx)[i].context = contexts[i];
-		(*ctx)[i].pd = ibv_alloc_pd(contexts[i]);
-		if (!(*ctx)[i].pd) {
-			fprintf(stderr, "failed to alloc PD\n");
-			return -1;
-		}
-	}
-
-	rdma_free_devices(contexts);
-
-	return 0;
-}
-
-void free_mr_and_pd(struct nvme_file_read_ibv * ctx, int num)
-{
-	if(ctx) {
-		for (int i = 0; i < num; i++) {
-			if(ctx[i].pd) {
-				ibv_dealloc_pd(ctx[i].pd);
-			}
-			if(ctx[i].mr) {
-				ibv_dereg_mr(ctx[i].mr);
-			}
-		}
-	}
-
-	free(ctx);
-}
 
 int main(int argc, char **argv)
 {
