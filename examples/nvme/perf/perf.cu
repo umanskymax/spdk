@@ -455,6 +455,7 @@ register_aio_files(int argc, char **argv)
 
 static void io_complete(void *ctx, const struct spdk_nvme_cpl *cpl);
 
+static void *g_gpu_mem = NULL;
 
 static void * _alloc_gpu_mem(size_t size)
 {
@@ -2177,6 +2178,8 @@ int main(int argc, char **argv)
 	struct worker_thread *worker, *master_worker;
 	struct spdk_env_opts opts;
 	pthread_t thread_id = 0;
+	int n_tasks = 0;
+	int gpu_mem_size = 0;
 
 	rc = parse_args(argc, argv);
 	if (rc != 0) {
@@ -2224,6 +2227,7 @@ int main(int argc, char **argv)
 
 	spdk_nvme_rdma_init_hooks(&g_perf_hooks);
 
+
 	if (register_controllers() != 0) {
 		rc = -1;
 		goto cleanup;
@@ -2251,6 +2255,19 @@ int main(int argc, char **argv)
 
 	printf("Initialization complete. Launching workers.\n");
 	printf("Memory allocation mode is %s.\n", spdk_mem_mode_descr[g_alloc_mode]);
+
+	n_tasks = g_num_workers * g_num_namespaces * g_queue_depth;
+	gpu_mem_size = n_tasks * g_io_size_bytes;
+
+	printf("# tasks %d,  GPU memory size %d\n", n_tasks, gpu_mem_size);
+	g_gpu_mem = _alloc_gpu_mem(gpu_mem_size);
+#if __NVCC__
+	if(!g_gpu_mem) {
+		fprintf(stderr, "GPU memory allocation failed\n");
+		goto cleanup;
+	}
+#endif
+	_register_mem(g_gpu_mem, gpu_mem_size);
 
 	/* Launch all of the slave workers */
 	g_master_core = spdk_env_get_current_core();
@@ -2281,6 +2298,8 @@ cleanup:
 	unregister_namespaces();
 	unregister_controllers();
 	unregister_workers();
+
+	_free_gpu_mem(g_gpu_mem);
 
 	if (rc != 0) {
 		fprintf(stderr, "%s: errors occured\n", argv[0]);
