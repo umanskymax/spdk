@@ -656,6 +656,18 @@ nvme_verify_io(struct perf_task *task, struct ns_entry *entry)
 	struct spdk_dif_error err_blk = {};
 	int rc;
 
+#ifdef __NVCC__
+	if(g_alloc_mode == spdk_perf_alloc_mem_gpu_to_cpu && task->is_read) {
+		int res;
+
+		res = cudaMemcpy(task->gpu_iov.iov_base, task->iov.iov_base, task->iov.iov_len, cudaMemcpyHostToDevice);
+		if(res != cudaSuccess) {
+			fprintf(stderr, "cudaHostRegister failed with %d\n", res);
+			exit (-1);
+		}
+	}
+#endif
+
 	if (!task->is_read || (entry->io_flags & SPDK_NVME_IO_FLAGS_PRACT)) {
 		return;
 	}
