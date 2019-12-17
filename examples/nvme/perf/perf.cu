@@ -191,6 +191,8 @@ struct ns_fn_table {
 
 	void	(*verify_io)(struct perf_task *task, struct ns_entry *entry);
 
+	void	(*post_process_io)(struct perf_task *task);
+
 	int	(*init_ns_worker_ctx)(struct ns_worker_ctx *ns_ctx);
 
 	void	(*cleanup_ns_worker_ctx)(struct ns_worker_ctx *ns_ctx);
@@ -365,6 +367,7 @@ static const struct ns_fn_table aio_fn_table = {
 	.submit_io		= aio_submit_io,
 	.check_io		= aio_check_io,
 	.verify_io		= aio_verify_io,
+	.post_process_io	= NULL,
 	.init_ns_worker_ctx	= aio_init_ns_worker_ctx,
 	.cleanup_ns_worker_ctx	= aio_cleanup_ns_worker_ctx,
 };
@@ -653,10 +656,8 @@ nvme_check_io(struct ns_worker_ctx *ns_ctx)
 }
 
 static void
-nvme_verify_io(struct perf_task *task, struct ns_entry *entry)
+nvme_post_process_io(struct perf_task *task)
 {
-	struct spdk_dif_error err_blk = {};
-	int rc;
 
 #ifdef __NVCC__
 	if(g_alloc_mode == spdk_perf_alloc_mem_gpu_to_cpu && task->is_read) {
@@ -669,6 +670,14 @@ nvme_verify_io(struct perf_task *task, struct ns_entry *entry)
 		}
 	}
 #endif
+}
+
+static void
+nvme_verify_io(struct perf_task *task, struct ns_entry *entry)
+{
+	struct spdk_dif_error err_blk = {};
+	int rc;
+
 
 	if (!task->is_read || (entry->io_flags & SPDK_NVME_IO_FLAGS_PRACT)) {
 		return;
@@ -743,6 +752,7 @@ static const struct ns_fn_table nvme_fn_table = {
 	.submit_io		= nvme_submit_io,
 	.check_io		= nvme_check_io,
 	.verify_io		= nvme_verify_io,
+	.post_process_io	= nvme_post_process_io,
 	.init_ns_worker_ctx	= nvme_init_ns_worker_ctx,
 	.cleanup_ns_worker_ctx	= nvme_cleanup_ns_worker_ctx,
 };
@@ -1050,6 +1060,9 @@ task_complete(struct perf_task *task)
 		/* add application level verification for end-to-end data protection */
 		entry->fn_table->verify_io(task, entry);
 	}
+
+	if (entry->fn_table->post_process_io)
+		entry->fn_table->post_process_io(task);
 
 	/*
 	 * is_draining indicates when time has expired for the test run
