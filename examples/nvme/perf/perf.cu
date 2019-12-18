@@ -1073,7 +1073,6 @@ task_complete(struct perf_task *task)
 	if (spdk_unlikely(ns_ctx->is_draining)) {
 #ifdef __NVCC__
 		cudaHostUnregister(task->iov.iov_base);
-//		_free_gpu_mem(task->gpu_iov.iov_base);
 #endif
 		spdk_dma_free(task->iov.iov_base);
 		spdk_dma_free(task->md_iov.iov_base);

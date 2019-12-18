@@ -23,6 +23,7 @@ module load dev/cuda9.2
 sudo mkdir -p  ~root/.cgdb/
 sudo cp -n ~sashakot/.cgdb/cgdbrc ~root/.cgdb/cgdbrc
 
+nvidia-smi topo -m
 
 #sudo modprobe nvme-rdma
 #sudo nvme connect -t rdma -a 1.1.10.1 -s 4420 -n nqn.2016-06.io.spdk:cnode1
