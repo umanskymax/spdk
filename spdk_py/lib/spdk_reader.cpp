@@ -147,6 +147,21 @@ class spdk_do_read {
 		  max_lbas_per_io(
 			  spdk_nvme_ctrlr_get_max_xfer_size(spdk_nvme_ns_get_ctrlr(ns)) / sector_size),
 		  io_ctx(qdepth) {
+		add_file(filepath);
+	}
+
+	spdk_do_read(std::vector<const char *> &filepaths, spdk_nvme_ns *_ns, spdk_nvme_qpair *_qpair, uint32_t qdepth)
+		: ns(_ns), qpair(_qpair), queue_depth(qdepth),
+		  sector_size(spdk_nvme_ns_get_sector_size(_ns)),
+		  max_lbas_per_io(
+			  spdk_nvme_ctrlr_get_max_xfer_size(spdk_nvme_ns_get_ctrlr(ns)) / sector_size),
+		  io_ctx(qdepth) {
+		for (auto &f: filepaths) {
+			add_file(f);
+		}
+	}
+
+	void add_file(const char *filepath) {
 		int flags = O_DIRECT | O_RDONLY;
 		int fd = open(filepath, flags);
 		if (fd < 0) {
@@ -157,7 +172,8 @@ class spdk_do_read {
 			throw std::runtime_error("Failed to stat file " + std::string(filepath));
 		}
 		file_size = st.st_size;
-		total_lba_count = (file_size + (sector_size - 1)) / sector_size;
+		uint32_t file_size_lba = (file_size + (sector_size - 1)) / sector_size;
+		total_lba_count += file_size_lba;
 		uint32_t sector_log2 = spdk_u32log2(sector_size);
 
 		union {
@@ -175,6 +191,7 @@ class spdk_do_read {
 		}
 		close(fd);
 
+		uint32_t num_lbas = 0;
 		for (uint32_t j = 0; j < fiemap->fm_mapped_extents; j++) {
 			auto length = fm_extents[j].fe_length >> sector_log2;
 			//auto logical_start = fm_extents[j].fe_logical >> sector_log2;
@@ -187,7 +204,14 @@ class spdk_do_read {
 				throw std::runtime_error("Unsupported extent flags: " + std::to_string(fm_extents[j].fe_flags));
 			}
 
-			lbas.emplace_back(std::make_pair(physical_start, length));
+			if (num_lbas + length > file_size_lba) {
+				length = file_size_lba - num_lbas;
+			}
+			if (length > 0) {
+				lbas.emplace_back(std::make_pair(physical_start, length));
+			} else {
+				break;
+			}
 		}
 	}
 
@@ -202,6 +226,7 @@ class spdk_do_read {
 		}
 
 		reader->lba_read += entry->lba_count;
+		reader->in_flight_reqs--;
 		assert(reader->lba_read <= reader->total_lba_count);
 
 		if (reader->lba_read < reader->total_lba_count) {
@@ -228,7 +253,6 @@ class spdk_do_read {
 			lba_array_idx++;
 			lba_idx = 0;
 		}
-
 		int rc = spdk_nvme_ns_cmd_read_with_md(ns, qpair, payload_ptr, nullptr, start_lba,
 											   lba_count, &spdk_do_read::io_complete_cb,
 											   &ctx, 0, 0, 0);
@@ -236,6 +260,7 @@ class spdk_do_read {
 			fprintf(stderr, "nvme read failed with %d\n", rc);
 			throw std::runtime_error("read submit failed");
 		}
+		in_flight_reqs++;
 	}
 
 	int do_read(void *buf) {
@@ -254,6 +279,7 @@ class spdk_do_read {
 				return completions;
 			}
 		}
+		assert(in_flight_reqs == 0);
 		reset_state();
 
 		return 0;
@@ -277,6 +303,7 @@ class spdk_do_read {
 	uint32_t lba_idx = 0;        //current number of lba in lbas
 	uint32_t lba_read = 0;        //number of lba already read
 	uint32_t lba_submitted_to_read = 0;    //number of lba's submitted to read but not completted yet
+	uint32_t in_flight_reqs = 0;
 
 	private:
 	void reset_state() {
@@ -406,6 +433,18 @@ void spdk_reader_ctx::poll_controllers() {
 int spdk_reader_ctx::do_read(const char *file, void *output) {
 	spdk_do_read task{file, ns, qpair, g_queue_depth};
 	return task.do_read(output);
+}
+
+int spdk_reader_ctx::do_read_list(void *output) {
+	spdk_do_read task{file_list, ns, qpair, g_queue_depth};
+	int rc = task.do_read(output);
+	file_list.clear();
+	return rc;
+}
+
+int spdk_reader_ctx::add_file(const char *file) {
+	file_list.push_back(file);
+	return 0;
 }
 
 std::shared_ptr<void> spdk_reader_ctx::get_cpu_mem(size_t size) {

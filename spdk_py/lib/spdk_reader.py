@@ -37,6 +37,12 @@ class spdk_reader():
         rc = spdk_reader_cpp.spdk_do_read(self.spdk_capsule,  filepath, mem_ptr)
         return rc
 
+    def do_read_list(self, filepaths, mem_ptr):
+        for f in filepaths:
+            spdk_reader_cpp.spdk_add_file(self.spdk_capsule, f)
+        rc = spdk_reader_cpp.spdk_do_read_list(self.spdk_capsule, mem_ptr)
+        return rc
+    
     def print_cpu_mem(self, mem_ptr, count):
         rc = spdk_reader_cpp.print_cpu_mem(self.spdk_capsule,  mem_ptr, count)
         return rc

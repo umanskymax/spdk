@@ -84,6 +84,8 @@ class spdk_reader_ctx {
 	void free_gpu_mem(void* ptr);
 
 	int do_read(const char *file, void *output);
+	int do_read_list(void *output);
+	int add_file(const char *file);
 
 	size_t get_aligned_file_size(const char* file);
 
@@ -106,6 +108,7 @@ class spdk_reader_ctx {
 	spdk_nvme_ns* ns = {};
 	spdk_nvme_qpair* qpair = {};
 	uint32_t sector_size = {};
+	std::vector<const char *> file_list;
 
 	private:
 	std::thread ctrlr_poller;

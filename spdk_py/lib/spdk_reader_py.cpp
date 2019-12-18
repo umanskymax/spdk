@@ -199,6 +199,35 @@ PyObject* spdk_do_read(PyObject* self, PyObject* args)
 	return PyLong_FromLong(rc);
 }
 
+PyObject* spdk_do_read_list(PyObject* self, PyObject* args)
+{
+	//allocates pinned memory on cpu
+	PyObject* capsule;
+	PyObject *mem_ptr;
+	PyArg_ParseTuple(args, "OO", &capsule, &mem_ptr);
+
+	auto ctx = static_cast<spdk_reader_ctx*>(PyCapsule_GetPointer(capsule, "spdk_reader_ctx"));
+	void* ptr = PyLong_AsVoidPtr(mem_ptr);
+
+	auto rc = ctx->do_read_list(ptr);
+
+	return PyLong_FromLong(rc);
+}
+
+PyObject* spdk_add_file(PyObject* self, PyObject* args)
+{
+	//allocates pinned memory on cpu
+	PyObject* capsule;
+	const char* file;
+	PyArg_ParseTuple(args, "Os", &capsule, &file);
+
+	auto ctx = static_cast<spdk_reader_ctx*>(PyCapsule_GetPointer(capsule, "spdk_reader_ctx"));
+
+	auto rc = ctx->add_file(file);
+
+	return PyLong_FromLong(rc);
+}
+
 /////////////////////////////
 PyMethodDef spdk_reader_cpp_functions[] =
 {
@@ -237,6 +266,14 @@ PyMethodDef spdk_reader_cpp_functions[] =
 	{"spdk_do_read",
 		spdk_do_read, METH_VARARGS,
 		"Read file content to the provided memory"},
+
+	{"spdk_do_read_list",
+		spdk_do_read_list, METH_VARARGS,
+		"Read list of files content to the provided memory"},
+
+	{"spdk_add_file",
+		spdk_add_file, METH_VARARGS,
+		"Add file to read list"},
 
 	{"print_cpu_mem",
 		print_cpu_mem, METH_VARARGS,
