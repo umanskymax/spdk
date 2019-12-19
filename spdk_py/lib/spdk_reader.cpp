@@ -13,7 +13,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static constexpr uint32_t g_queue_depth = 8;
+static constexpr uint32_t g_queue_depth = 128;
+static constexpr uint64_t g_fs_start_offset = 2048;
+
+// LBA cache
+static std::vector<std::pair<uint64_t, uint64_t>> lba_cache;
+// file name -> (postion, len) in lba_cache
+static std::map<std::string, std::pair<uint64_t, uint64_t>> lba_cache_map;
 
 class spdk_ibv_device {
 	public:
@@ -161,7 +167,23 @@ class spdk_do_read {
 		}
 	}
 
+	bool try_add_file_from_cache(const char *filepath) {
+		auto iter = lba_cache_map.find(filepath);
+		if (lba_cache_map.end() == iter) {
+			return false;
+		}
+		for (auto i = iter->second.first; i < iter->second.first + iter->second.second; ++i) {
+			lbas.emplace_back(lba_cache[i]);
+			total_lba_count += lba_cache[i].second;
+		}
+		return true;
+	}
+
 	void add_file(const char *filepath) {
+		if (try_add_file_from_cache(filepath)) {
+			return;
+		}
+
 		int flags = O_DIRECT | O_RDONLY;
 		int fd = open(filepath, flags);
 		if (fd < 0) {
@@ -192,10 +214,11 @@ class spdk_do_read {
 		close(fd);
 
 		uint32_t num_lbas = 0;
+		auto lba_cache_map_entry = std::make_pair(lba_cache.size(), 0);
 		for (uint32_t j = 0; j < fiemap->fm_mapped_extents; j++) {
 			auto length = fm_extents[j].fe_length >> sector_log2;
 			//auto logical_start = fm_extents[j].fe_logical >> sector_log2;
-			auto physical_start = (fm_extents[j].fe_physical >> sector_log2) + 256;
+			auto physical_start = (fm_extents[j].fe_physical >> sector_log2) + g_fs_start_offset;
 			/* printf("[%4u]: flags %08x, logical %8llu .. %8llu \tphysical %8llu .. %8llu \tlen %8llu\n",
 				   j, fm_extents[j].fe_flags, logical_start, logical_start + length - 1,
 				   physical_start, physical_start + length - 1, length); */
@@ -209,10 +232,13 @@ class spdk_do_read {
 			}
 			if (length > 0) {
 				lbas.emplace_back(std::make_pair(physical_start, length));
+				lba_cache.emplace_back(std::make_pair(physical_start, length));
+				lba_cache_map_entry.second++;
 			} else {
 				break;
 			}
 		}
+		lba_cache_map[filepath] = lba_cache_map_entry;
 	}
 
 	static void io_complete_cb(void *ctx, const struct spdk_nvme_cpl *cpl) {
@@ -304,6 +330,7 @@ class spdk_do_read {
 	uint32_t lba_read = 0;        //number of lba already read
 	uint32_t lba_submitted_to_read = 0;    //number of lba's submitted to read but not completted yet
 	uint32_t in_flight_reqs = 0;
+
 
 	private:
 	void reset_state() {
