@@ -13,6 +13,8 @@ sudo rpm -i /hpc/local/work/alexeymar/python-srpm-macros-3-32.el7.noarch.rpm
 sudo rpm -i /hpc/local/work/alexeymar/python-rpm-macros-3-32.el7.noarch.rpm
 sudo yum install -y python34-devel.x86_64
 sudo yum install -y cgdb.x86_64
+sudo yum install -y CUnit-devel.x86_64
+sudo yum install -y CUnit.x86_64
 
 modinfo nv_peer_mem
 #if no nv_peer_mem found
