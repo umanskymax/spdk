@@ -39,6 +39,10 @@ ifeq ($(SPDK_ROOT_DIR)/lib/env_dpdk,$(CONFIG_ENV))
 DIRS-y += env_dpdk
 endif
 
+ifeq ($(CONFIG_RDMA),y)
+DIRS-y += rdma
+endif
+
 DEPDIRS-blob :=
 DEPDIRS-accel :=
 DEPDIRS-env_dpdk :=
