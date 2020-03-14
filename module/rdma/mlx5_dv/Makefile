@@ -2,7 +2,7 @@
 #  BSD LICENSE
 #
 #  Copyright (c) Intel Corporation. All rights reserved.
-#  Copyright (c) Mellanox Technologies LTD. All rights reserved.
+#  Copyright (c) 2020 Mellanox Technologies LTD. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions
@@ -31,20 +31,11 @@
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-SPDK_ROOT_DIR := $(abspath $(CURDIR)/../..)
+SPDK_ROOT_DIR := $(abspath $(CURDIR)/../../..)
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
-ifeq ($(CONFIG_RDMA_PROV),verbs)
-DIRS-y = verbs
-else ifeq ($(CONFIG_RDMA_PROV),mlx5_dv)
-DIRS-y = mlx5_dv
-else
-$(error Wrong RDMA provider specified: $(CONFIG_RDMA_PROV))
-endif
+LIBNAME = rdma
+C_SRCS = rdma_mlx5_dv.c
+LOCAL_SYS_LIBS = -libverbs -lrdmacm -lmlx5
 
-.PHONY: all clean $(DIRS-y)
-
-all: $(DIRS-y)
-clean: $(DIRS-y)
-
-include $(SPDK_ROOT_DIR)/mk/spdk.subdirs.mk
+include $(SPDK_ROOT_DIR)/mk/spdk.lib.mk

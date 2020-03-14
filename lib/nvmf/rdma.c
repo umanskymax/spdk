@@ -566,7 +566,7 @@ spdk_nvmf_rdma_update_ibv_state(struct spdk_nvmf_rdma_qpair *rqpair) {
 	int rc;
 
 	old_state = rqpair->ibv_state;
-	rc = ibv_query_qp(rqpair->cm_id->qp, &qp_attr,
+	rc = ibv_query_qp(rqpair->rdma_qp->qp, &qp_attr,
 			  g_spdk_nvmf_ibv_query_mask, &init_attr);
 
 	if (rc)
@@ -648,7 +648,7 @@ spdk_nvmf_rdma_set_ibv_state(struct spdk_nvmf_rdma_qpair *rqpair,
 		return rc;
 	}
 
-	rc = ibv_query_qp(rqpair->cm_id->qp, &qp_attr,
+	rc = ibv_query_qp(rqpair->rdma_qp->qp, &qp_attr,
 			  g_spdk_nvmf_ibv_query_mask, &init_attr);
 
 	if (rc) {
@@ -658,7 +658,7 @@ spdk_nvmf_rdma_set_ibv_state(struct spdk_nvmf_rdma_qpair *rqpair,
 	qp_attr.cur_qp_state = rqpair->ibv_state;
 	qp_attr.qp_state = new_state;
 
-	rc = ibv_modify_qp(rqpair->cm_id->qp, &qp_attr,
+	rc = ibv_modify_qp(rqpair->rdma_qp->qp, &qp_attr,
 			   attr_mask_rc[new_state]);
 
 	if (rc) {
@@ -1060,6 +1060,7 @@ spdk_nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 	qp_init_attr.cap.max_send_wr	= (uint32_t)rqpair->max_queue_depth * 2;
 	qp_init_attr.cap.max_send_sge	= spdk_min((uint32_t)device->attr.max_sge, NVMF_DEFAULT_TX_SGE);
 	qp_init_attr.cap.max_recv_sge	= spdk_min((uint32_t)device->attr.max_sge, NVMF_DEFAULT_RX_SGE);
+	qp_init_attr.active_side		= false;
 
 	if (rqpair->srq == NULL && nvmf_rdma_resize_cq(rqpair, device) < 0) {
 		SPDK_ERRLOG("Failed to resize the completion queue. Cannot initialize qpair.\n");
@@ -1085,7 +1086,7 @@ spdk_nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 		rtransport = SPDK_CONTAINEROF(qpair->transport, struct spdk_nvmf_rdma_transport, transport);
 		transport = &rtransport->transport;
 
-		opts.qp = rqpair->cm_id->qp;
+		opts.qp = rqpair->rdma_qp->qp;
 		opts.pd = rqpair->cm_id->pd;
 		opts.qpair = rqpair;
 		opts.shared = false;
@@ -3661,7 +3662,7 @@ get_rdma_qpair_from_wc(struct spdk_nvmf_rdma_poller *rpoller, struct ibv_wc *wc)
 	struct spdk_nvmf_rdma_qpair *rqpair;
 	/* @todo: improve QP search */
 	TAILQ_FOREACH(rqpair, &rpoller->qpairs, link) {
-		if (wc->qp_num == rqpair->cm_id->qp->qp_num) {
+		if (wc->qp_num == rqpair->rdma_qp->qp->qp_num) {
 			return rqpair;
 		}
 	}
@@ -3729,7 +3730,7 @@ _poller_submit_recvs(struct spdk_nvmf_rdma_transport *rtransport,
 		while (!STAILQ_EMPTY(&rpoller->qpairs_pending_recv)) {
 			rqpair = STAILQ_FIRST(&rpoller->qpairs_pending_recv);
 			assert(rqpair->resources->recvs_to_post.first != NULL);
-			rc = ibv_post_recv(rqpair->cm_id->qp, rqpair->resources->recvs_to_post.first, &bad_recv_wr);
+			rc = ibv_post_recv(rqpair->rdma_qp->qp, rqpair->resources->recvs_to_post.first, &bad_recv_wr);
 			if (rc) {
 				_qp_reset_failed_recvs(rqpair, bad_recv_wr, rc);
 			}
@@ -3812,7 +3813,7 @@ _poller_submit_sends(struct spdk_nvmf_rdma_transport *rtransport,
 	while (!STAILQ_EMPTY(&rpoller->qpairs_pending_send)) {
 		rqpair = STAILQ_FIRST(&rpoller->qpairs_pending_send);
 		assert(rqpair->sends_to_post.first != NULL);
-		rc = ibv_post_send(rqpair->cm_id->qp, rqpair->sends_to_post.first, &bad_wr);
+		rc = ibv_post_send(rqpair->rdma_qp->qp, rqpair->sends_to_post.first, &bad_wr);
 
 		/* bad wr always points to the first wr that failed. */
 		if (rc) {

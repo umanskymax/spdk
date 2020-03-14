@@ -52,6 +52,9 @@ endif
 
 ifeq ($(CONFIG_RDMA),y)
 SYS_LIBS += -libverbs -lrdmacm
+ifeq ($(CONFIG_RDMA_PROV),mlx5_dv)
+SYS_LIBS += -lmlx5
+endif
 RDMA_MODULES_LIST = rdma
 endif
 
