@@ -34,6 +34,12 @@ Support for AES_XTS was added for the QAT polled mode driver (pmd).  The create 
 AES_CBC (default) or AES_XTS. AES_XTS isonly valid when using the QAT polled mode driver.
 The key2 parameter is the second key required for AES_XTS.
 
+### rdma
+
+New `rdma` module has been added. It is an abstraction layer over different RDMA providers.
+Two providers are available - verbs (enabled by default) and mlx5 Direct Verbs (enabled by
+--with-rdma-mlx5-dv flag). Using mlx5-dv requires libmlx5 installed on the system.
+
 ## v20.01
 
 ### bdev

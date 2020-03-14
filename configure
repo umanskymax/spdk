@@ -286,6 +286,14 @@ for i in "$@"; do
 		--without-rdma)
 			CONFIG[RDMA]=n
 			;;
+		--with-rdma-mlx5-dv)
+			CONFIG[RDMA_PROV_MLX5_DV]=y
+			CONFIG[RDMA_PROV_VERBS]=n
+			;;
+		--without-rdma-mlx5-dv)
+			CONFIG[RDMA_PROV_MLX5_DV]=n
+			CONFIG[RDMA_PROV_VERBS]=y
+			;;
 		--with-fc=*)
 			CONFIG[FC]=y
 			CONFIG[FC_PATH]=$(readlink -f ${i#*=})
@@ -605,6 +613,27 @@ than or equal to 4.14 will see significantly reduced performance.
 		echo "RDMA_OPTION_ID_ACK_TIMEOUT is not supported"
 	fi
 
+	if [ "${CONFIG[RDMA_PROV_MLX5_DV]}" = "y" ]; then
+	  if echo -e '#include <stdint.h>\n#include <infiniband/mlx5dv.h>\n' \
+		  'int main(void) { return !!MLX5_OPCODE_RDMA_WRITE; }\n' \
+		  | ${BUILD_CMD[@]} -lmlx5 -c - 2>/dev/null; then
+		  CONFIG[RDMA_PROV_MLX5_DV]="y"
+		  CONFIG[RDMA_PROV_VERBS]="n"
+		  echo "Using mlx5 Direct Verbs RDMA provider"
+		else
+	    CONFIG[RDMA_PROV_MLX5_DV]="n"
+	    CONFIG[RDMA_PROV_VERBS]="y"
+      echo "mlx5 Direct Verbs are not supported, using Verbs RDMA provider"
+	  fi
+  else
+	  CONFIG[RDMA_PROV_MLX5_DV]="n"
+	  CONFIG[RDMA_PROV_VERBS]="y"
+    echo "Using Verbs RDMA provider"
+	fi
+
+elif [ "${CONFIG[RDMA_PROV_MLX5_DV]}" = "y" ]; then
+	echo "ERROR: --with-rdma-mlx5-dv requires --with-rdma."
+	exit 1
 fi
 
 if [[ "${CONFIG[FC]}" = "y" ]]; then

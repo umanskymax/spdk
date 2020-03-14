@@ -2,7 +2,7 @@
 #  BSD LICENSE
 #
 #  Copyright (c) Intel Corporation. All rights reserved.
-#  Copyright (c) Mellanox Technologies LTD. All rights reserved.
+#  Copyright (c) 2020 Mellanox Technologies LTD. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions
@@ -31,27 +31,11 @@
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-SPDK_ROOT_DIR := $(abspath $(CURDIR)/../..)
+SPDK_ROOT_DIR := $(abspath $(CURDIR)/../../..)
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
-ifeq ($(CONFIG_RDMA_PROV_VERBS),y)
-ifeq ($(CONFIG_RDMA_PROV_MLX5_DV),y)
-$(error Only one RDMA provider can be chosen)
-endif
-endif
+LIBNAME = rdma
+C_SRCS = rdma_mlx5_dv.c
+LOCAL_SYS_LIBS = -libverbs -lrdmacm -lmlx5
 
-ifeq ($(CONFIG_RDMA_PROV_VERBS),n)
-ifeq ($(CONFIG_RDMA_PROV_MLX5_DV),n)
-$(error At least one RDMA provider must be chosen)
-endif
-endif
-
-DIRS-$(CONFIG_RDMA_PROV_VERBS) = verbs
-DIRS-$(CONFIG_RDMA_PROV_MLX5_DV) = mlx5_dv
-
-.PHONY: all clean $(DIRS-y)
-
-all: $(DIRS-y)
-clean: $(DIRS-y)
-
-include $(SPDK_ROOT_DIR)/mk/spdk.subdirs.mk
+include $(SPDK_ROOT_DIR)/mk/spdk.lib.mk
