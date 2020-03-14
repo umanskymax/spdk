@@ -1,8 +1,8 @@
 #
 #  BSD LICENSE
 #
-#  Copyright (c) Intel Corporation.
-#  All rights reserved.
+#  Copyright (c) Intel Corporation. All rights reserved.
+#  Copyright (c) Mellanox Technologies LTD. All rights reserved.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions
@@ -31,22 +31,10 @@
 #  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
-SPDK_ROOT_DIR := $(abspath $(CURDIR)/..)
+SPDK_ROOT_DIR := $(abspath $(CURDIR)/../..)
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
-DIRS-y = bdev blob blobfs accel event sock
-ifeq ($(SPDK_ROOT_DIR)/lib/env_dpdk,$(CONFIG_ENV))
-DIRS-y += env_dpdk
-endif
-DIRS-$(CONFIG_RDMA) += rdma
-
-DEPDIRS-blob :=
-DEPDIRS-accel :=
-DEPDIRS-env_dpdk :=
-DEPDIRS-sock :=
-DEPDIRS-bdev := blob
-DEPDIRS-blobfs := blob
-DEPDIRS-event := bdev blob
+DIRS-y = verbs
 
 .PHONY: all clean $(DIRS-y)
 

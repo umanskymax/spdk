@@ -82,6 +82,7 @@ DEPDIRS-vhost = log util conf thread $(JSON_LIBS) bdev event scsi
 ifeq ($(CONFIG_VHOST_INTERNAL_LIB),y)
 DEPDIRS-vhost += rte_vhost
 endif
+DEPDIRS-rdma := log util
 
 # ------------------------------------------------------------------------
 # Start module/ directory - This section extends the organizational pattern from
