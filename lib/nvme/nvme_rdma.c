@@ -37,10 +37,6 @@
 
 #include "spdk/stdinc.h"
 
-#include <infiniband/verbs.h>
-#include <rdma/rdma_cma.h>
-#include <rdma/rdma_verbs.h>
-
 #include "spdk/assert.h"
 #include "spdk/log.h"
 #include "spdk/trace.h"
@@ -54,6 +50,7 @@
 #include "spdk/config.h"
 
 #include "nvme_internal.h"
+#include "spdk_internal/rdma.h"
 
 #define NVME_RDMA_TIME_OUT_IN_MS 2000
 #define NVME_RDMA_RW_BUFFER_SIZE 131072
@@ -128,11 +125,6 @@ struct nvme_rdma_ctrlr {
 	struct nvme_rdma_cm_event_entry		*cm_events;
 };
 
-struct spdk_nvme_send_wr_list {
-	struct ibv_send_wr	*first;
-	struct ibv_send_wr	*last;
-};
-
 struct spdk_nvme_recv_wr_list {
 	struct ibv_recv_wr	*first;
 	struct ibv_recv_wr	*last;
@@ -142,8 +134,8 @@ struct spdk_nvme_recv_wr_list {
 struct nvme_rdma_qpair {
 	struct spdk_nvme_qpair			qpair;
 
+	struct spdk_rdma_qp			*qp;
 	struct rdma_cm_id			*cm_id;
-
 	struct ibv_cq				*cq;
 
 	struct	spdk_nvme_rdma_req		*rdma_reqs;
@@ -161,7 +153,6 @@ struct nvme_rdma_qpair {
 	struct ibv_recv_wr			*rsp_recv_wrs;
 
 	bool					delay_cmd_submit;
-	struct spdk_nvme_send_wr_list		sends_to_post;
 	struct spdk_nvme_recv_wr_list		recvs_to_post;
 
 	/* Memory region describing all rsps for this qpair */
@@ -466,7 +457,7 @@ static int
 nvme_rdma_qpair_init(struct nvme_rdma_qpair *rqpair)
 {
 	int			rc;
-	struct ibv_qp_init_attr	attr;
+	struct spdk_rdma_qp_init_attr	attr = {};
 	struct ibv_device_attr	dev_attr;
 	struct nvme_rdma_ctrlr	*rctrlr;
 
@@ -489,8 +480,7 @@ nvme_rdma_qpair_init(struct nvme_rdma_qpair *rqpair)
 		rctrlr->pd = NULL;
 	}
 
-	memset(&attr, 0, sizeof(struct ibv_qp_init_attr));
-	attr.qp_type		= IBV_QPT_RC;
+	attr.pd = rctrlr->pd;
 	attr.send_cq		= rqpair->cq;
 	attr.recv_cq		= rqpair->cq;
 	attr.cap.max_send_wr	= rqpair->num_entries; /* SEND operations */
@@ -498,10 +488,9 @@ nvme_rdma_qpair_init(struct nvme_rdma_qpair *rqpair)
 	attr.cap.max_send_sge	= spdk_min(NVME_RDMA_DEFAULT_TX_SGE, dev_attr.max_sge);
 	attr.cap.max_recv_sge	= spdk_min(NVME_RDMA_DEFAULT_RX_SGE, dev_attr.max_sge);
 
-	rc = rdma_create_qp(rqpair->cm_id, rctrlr->pd, &attr);
+	rqpair->qp = spdk_rdma_create_qp(rqpair->cm_id, &attr);
 
-	if (rc) {
-		SPDK_ERRLOG("rdma_create_qp failed\n");
+	if (!rqpair->qp) {
 		return -1;
 	}
 
@@ -522,21 +511,21 @@ nvme_rdma_qpair_submit_sends(struct nvme_rdma_qpair *rqpair)
 	struct ibv_send_wr *bad_send_wr;
 	int rc;
 
-	if (rqpair->sends_to_post.first) {
-		rc = ibv_post_send(rqpair->cm_id->qp, rqpair->sends_to_post.first, &bad_send_wr);
-		if (spdk_unlikely(rc)) {
-			SPDK_ERRLOG("Failed to post WRs on send queue, errno %d (%s), bad_wr %p\n",
-				    rc, spdk_strerror(rc), bad_send_wr);
-			/* Restart queue from bad wr. If it failed during
-			 * completion processing, controller will be moved to
-			 * failed state. Otherwise it will likely fail again
-			 * in next submit attempt from completion processing.
-			 */
-			rqpair->sends_to_post.first = bad_send_wr;
-			return -1;
-		}
-		rqpair->sends_to_post.first = NULL;
+	rc = spdk_rdma_flush_queued_wrs(rqpair->qp, &bad_send_wr);
+
+	if (spdk_unlikely(rc)) {
+		SPDK_ERRLOG("Failed to post WRs on send queue, errno %d (%s), bad_wr %p\n",
+			    rc, spdk_strerror(rc), bad_send_wr);
+
+		/* Restart queue from bad wr. If it failed during
+		 * completion processing, controller will be moved to
+		 * failed state. Otherwise it will likely fail again
+		 * in next submit attempt from completion processing.
+		 */
+		spdk_rdma_queue_send_wrs(rqpair->qp, bad_send_wr);
+		return rc;
 	}
+
 	return 0;
 }
 
@@ -571,13 +560,7 @@ nvme_rdma_qpair_queue_send_wr(struct nvme_rdma_qpair *rqpair, struct ibv_send_wr
 {
 	assert(wr->next == NULL);
 
-	if (rqpair->sends_to_post.first == NULL) {
-		rqpair->sends_to_post.first = wr;
-	} else {
-		rqpair->sends_to_post.last->next = wr;
-	}
-
-	rqpair->sends_to_post.last = wr;
+	spdk_rdma_queue_send_wrs(rqpair->qp, wr);
 
 	if (!rqpair->delay_cmd_submit) {
 		return nvme_rdma_qpair_submit_sends(rqpair);
@@ -1674,8 +1657,9 @@ nvme_rdma_ctrlr_disconnect_qpair(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nvme
 	}
 
 	if (rqpair->cm_id) {
-		if (rqpair->cm_id->qp) {
-			rdma_destroy_qp(rqpair->cm_id);
+		if (rqpair->qp) {
+			spdk_rdma_destroy_qp(rqpair->qp);
+			rqpair->qp = NULL;
 		}
 		rdma_destroy_id(rqpair->cm_id);
 		rqpair->cm_id = NULL;

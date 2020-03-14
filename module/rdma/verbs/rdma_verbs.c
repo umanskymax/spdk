@@ -103,16 +103,22 @@ spdk_rdma_destroy_qp(struct spdk_rdma_qp *spdk_rdma_qp)
 bool
 spdk_rdma_queue_send_wrs(struct spdk_rdma_qp *spdk_rdma_qp, struct ibv_send_wr *first)
 {
+	struct ibv_send_wr *last;
+
 	assert(first);
-	assert(first->next == NULL);
+
+	last = first;
+	while (last->next != NULL) {
+		last = last->next;
+	}
 
 	if (spdk_rdma_qp->send_wrs.first == NULL) {
 		spdk_rdma_qp->send_wrs.first = first;
-		spdk_rdma_qp->send_wrs.last = first;
+		spdk_rdma_qp->send_wrs.last = last;
 		return true;
 	} else {
 		spdk_rdma_qp->send_wrs.last->next = first;
-		spdk_rdma_qp->send_wrs.last = first;
+		spdk_rdma_qp->send_wrs.last = last;
 		return false;
 	}
 }
