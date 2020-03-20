@@ -262,6 +262,7 @@ struct spdk_nvmf_rdma_request {
 	uint64_t				receive_tsc;
 
 	STAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
+	uint32_t req_id;
 };
 
 enum spdk_nvmf_rdma_qpair_disconnect_flags {
@@ -1053,6 +1054,8 @@ spdk_nvmf_rdma_qpair_initialize(struct spdk_nvmf_qpair *qpair)
 	qp_init_attr.cap.max_send_sge	= spdk_min((uint32_t)device->attr.max_sge, NVMF_DEFAULT_TX_SGE);
 	qp_init_attr.cap.max_recv_sge	= spdk_min((uint32_t)device->attr.max_sge, NVMF_DEFAULT_RX_SGE);
 
+	qp_init_attr.num_entries = rqpair->max_queue_depth;
+
 	if (rqpair->srq == NULL && nvmf_rdma_resize_cq(rqpair, device) < 0) {
 		SPDK_ERRLOG("Failed to resize the completion queue. Cannot initialize qpair.\n");
 		goto error;
@@ -1128,12 +1131,58 @@ nvmf_rdma_qpair_queue_recv_wrs(struct spdk_nvmf_rdma_qpair *rqpair, struct ibv_r
 	}
 }
 
+static struct ibv_send_wr *
+get_first_send_wr(struct spdk_nvmf_rdma_request *rdma_req, bool transfer_in)
+{
+	struct spdk_nvmf_rdma_qpair	*rqpair;
+	struct ibv_send_wr *release_wr, *reg_wr, *first;
+	struct spdk_nvme_cpl *res = &rdma_req->req.rsp->nvme_cpl;
+
+	/* Failed command. No data - no signature */
+	bool is_ok = res->status.sc == SPDK_NVME_SC_SUCCESS &&
+		     rdma_req->req.xfer == SPDK_NVME_DATA_CONTROLLER_TO_HOST;
+
+	rqpair = SPDK_CONTAINEROF(rdma_req->req.qpair, struct spdk_nvmf_rdma_qpair, qpair);
+
+	if (spdk_unlikely(rdma_req->req.dif.hw_dif_offload &&
+			  !(rdma_req->req.xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER && rdma_req->req.data_from_pool) &&
+			  rdma_req->num_outstanding_data_wr == 1) && is_ok) {
+
+		release_wr = spdk_rdma_release_signature(rqpair->qp, rdma_req->req_id);
+		reg_wr = spdk_rdma_prepare_signature(rqpair->qp, &rdma_req->req_id, &rdma_req->data.wr,
+						     &rdma_req->req.dif.dif_ctx);
+
+		assert(reg_wr);
+
+		if (release_wr) {
+			first = release_wr;
+			first->next = reg_wr;
+		} else {
+			first = reg_wr;
+		}
+
+		if (!transfer_in && is_ok) {
+			/* Add SEND (response) to chain */
+			reg_wr->next = &rdma_req->rsp.wr;
+		}
+
+		return first;
+	}
+
+	if (!transfer_in && !is_ok) {
+		return &rdma_req->rsp.wr;
+	}
+
+	return &rdma_req->data.wr;
+}
+
 static int
 request_transfer_in(struct spdk_nvmf_request *req)
 {
 	struct spdk_nvmf_rdma_request	*rdma_req;
 	struct spdk_nvmf_qpair		*qpair;
 	struct spdk_nvmf_rdma_qpair	*rqpair;
+	struct ibv_send_wr *first;
 
 	qpair = req->qpair;
 	rdma_req = SPDK_CONTAINEROF(req, struct spdk_nvmf_rdma_request, req);
@@ -1142,7 +1191,9 @@ request_transfer_in(struct spdk_nvmf_request *req)
 	assert(req->xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER);
 	assert(rdma_req != NULL);
 
-	if (spdk_rdma_queue_send_wrs(rqpair->qp, &rdma_req->data.wr)) {
+	first = get_first_send_wr(rdma_req, true);
+
+	if (spdk_rdma_queue_send_wrs(rqpair->qp, first)) {
 		STAILQ_INSERT_TAIL(&rqpair->poller->qpairs_pending_send, rqpair, send_link);
 	}
 	rqpair->current_read_depth += rdma_req->num_outstanding_data_wr;
@@ -1187,7 +1238,8 @@ request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 	 * RDMA WRITEs to transfer data, plus an RDMA SEND
 	 * containing the response.
 	 */
-	first = &rdma_req->rsp.wr;
+	first = get_first_send_wr(rdma_req, false);
+//	first = &rdma_req->rsp.wr;
 
 	if (rsp->status.sc == SPDK_NVME_SC_SUCCESS &&
 	    req->xfer == SPDK_NVME_DATA_CONTROLLER_TO_HOST) {
@@ -1702,7 +1754,7 @@ spdk_nvmf_rdma_request_fill_iovs(struct spdk_nvmf_rdma_transport *rtransport,
 
 	rdma_req->iovpos = 0;
 
-	if (spdk_unlikely(req->dif.dif_insert_or_strip)) {
+	if (spdk_unlikely(req->dif.dif_insert_or_strip && !req->dif.hw_dif_offload)) {
 		num_wrs = nvmf_rdma_calc_num_wrs(length, rtransport->transport.opts.io_unit_size,
 						 req->dif.dif_ctx.block_size);
 		if (num_wrs > 1) {
@@ -2043,6 +2095,9 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 
 			if (spdk_unlikely(spdk_nvmf_request_get_dif_ctx(&rdma_req->req, &rdma_req->req.dif.dif_ctx))) {
 				rdma_req->req.dif.dif_insert_or_strip = true;
+				if (spdk_rdma_qpair_sig_offload_supported(rqpair->qp)) {
+					rdma_req->req.dif.hw_dif_offload = true;
+				}
 			}
 
 #ifdef SPDK_CONFIG_RDMA_SEND_WITH_INVAL
@@ -2138,7 +2193,8 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
 
 			if (spdk_unlikely(rdma_req->req.dif.dif_insert_or_strip)) {
-				if (rdma_req->req.xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER) {
+				if (rdma_req->req.xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER &&
+				    !rdma_req->req.dif.hw_dif_offload) {
 					/* generate DIF for write operation */
 					num_blocks = SPDK_CEIL_DIV(rdma_req->req.dif.elba_length, rdma_req->req.dif.dif_ctx.block_size);
 					assert(num_blocks > 0);
@@ -2180,7 +2236,8 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 				/* restore the original length */
 				rdma_req->req.length = rdma_req->req.dif.orig_length;
 
-				if (rdma_req->req.xfer == SPDK_NVME_DATA_CONTROLLER_TO_HOST) {
+				if (rdma_req->req.xfer == SPDK_NVME_DATA_CONTROLLER_TO_HOST &&
+				    !rdma_req->req.dif.hw_dif_offload) {
 					struct spdk_dif_error error_blk;
 
 					num_blocks = SPDK_CEIL_DIV(rdma_req->req.dif.elba_length, rdma_req->req.dif.dif_ctx.block_size);

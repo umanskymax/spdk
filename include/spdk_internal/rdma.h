@@ -45,6 +45,7 @@ struct spdk_rdma_qp_init_attr {
 	struct ibv_srq	       *srq;
 	struct ibv_qp_cap	cap;
 	struct ibv_pd	       *pd;
+	uint32_t num_entries;
 };
 
 struct spdk_rdma_qp;
@@ -81,5 +82,41 @@ bool spdk_rdma_queue_send_wrs(struct spdk_rdma_qp *spdk_rdma_qp, struct ibv_send
  * \return 0 on succes, errno on failure
  */
 int spdk_rdma_flush_queued_wrs(struct spdk_rdma_qp *spdk_rdma_qp, struct ibv_send_wr **bad_wr);
+
+/**
+ * Check whether the device used by qpair supports signature offload
+ * @return
+ */
+bool spdk_rdma_qpair_sig_offload_supported(struct spdk_rdma_qp *spdk_rdma_qp);
+
+/**
+ * Prepares a Work Request to be send in a regular way to register signature offload for
+ * a particular wr_in
+ * @param spdk_rdma_qp
+ * @param idx - identifier of the operation returned to the called. Will be used to release the registered sig offload
+ * @param wr_in - Work Request which describes data to be used for signature offload
+ * @param dif_ctx - T10DIF related info
+ * @return Pointer to WR to be chanined with regular data WRs
+ */
+struct ibv_send_wr *spdk_rdma_prepare_signature(struct spdk_rdma_qp *spdk_rdma_qp, uint32_t *idx,
+		struct ibv_send_wr *wr_in, const struct spdk_dif_ctx *dif_ctx);
+
+/**
+ * Prepares a Work Request to be send in a regular way to release previously registered signature offload
+ * @param spdk_rdma_qp
+ * @param idx
+ * @param rkey
+ * @return
+ */
+struct ibv_send_wr *spdk_rdma_release_signature(struct spdk_rdma_qp *spdk_rdma_qp, uint32_t idx);
+
+/**
+ * Check result of signature offload operation
+ * @param spdk_rdma_qp
+ * @param idx
+ * @return
+ */
+int spdk_rdma_validate_signature(struct spdk_rdma_qp *spdk_rdma_qp, uint32_t idx);
+
 
 #endif /* SPDK_RDMA_H */

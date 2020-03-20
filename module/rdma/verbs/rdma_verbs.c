@@ -140,3 +140,30 @@ spdk_rdma_flush_queued_wrs(struct spdk_rdma_qp *spdk_rdma_qp, struct ibv_send_wr
 
 	return rc;
 }
+
+bool
+spdk_rdma_qpair_sig_offload_supported(struct spdk_rdma_qp *spdk_rdma_qp)
+{
+	return false;
+}
+
+struct ibv_send_wr *
+spdk_rdma_prepare_signature(struct spdk_rdma_qp *spdk_rdma_qp, uint32_t *idx,
+			    struct ibv_send_wr *wr_in, const struct spdk_dif_ctx *dif_ctx)
+{
+	assert(0);
+	return NULL;
+}
+
+
+struct ibv_send_wr *spdk_rdma_release_signature(struct spdk_rdma_qp *spdk_rdma_qp, uint32_t idx)
+{
+	assert(0);
+	return NULL;
+}
+
+int spdk_rdma_validate_signature(struct spdk_rdma_qp *spdk_rdma_qp, uint32_t idx)
+{
+	assert(0);
+	return 1;
+}
