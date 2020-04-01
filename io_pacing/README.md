@@ -132,6 +132,18 @@ QD         | BW
 256        | 114.7
 ~~~
 
+Closer look at 40-48 queue depth range.
+
+~~~
+QD         | BW         | WIRE BW
+40         | 180.6      | 194.1261
+41         | 182.4      | 195.4818
+42         | 181.7      | 193.9956
+43         | 179.8      | 193.2307
+44         | 179.4      | 190.9635
+48         | 169.8      | 189.9152
+~~~
+
 ### Test 4
 
 **IO pacing**: `Limit number of SPDK buffers to 96`
