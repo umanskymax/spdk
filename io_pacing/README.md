@@ -86,9 +86,9 @@ Total                          | 175.6      | 184.1      |                 | 193
 
 ### Test 1
 
-Target cmd line: `sudo ./install/bin/spdk_tgt -c nvmf_null_1.conf -m 0xFFFF`
+**IO pacing**: `none`
 
-IO pacing: `none`
+**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_null_1.conf -m 0xFFFF`
 
 ~~~
 QD         | BW
@@ -102,9 +102,9 @@ QD         | BW
 
 ### Test 2
 
-Target cmd line: `sudo ./install/bin/spdk_tgt -c nvmf_null_16.conf -m 0xFFFF`
+**IO pacing**: `none`
 
-IO pacing: `none`
+**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_null_16.conf -m 0xFFFF`
 
 ~~~
 QD         | BW
@@ -118,9 +118,9 @@ QD         | BW
 
 ### Test 3
 
-Target cmd line: `sudo ./install/bin/spdk_tgt -c nvmf_nvme.conf -m 0xFFFF`
+**IO pacing**: `none`
 
-IO pacing: `none`
+**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme.conf -m 0xFFFF`
 
 ~~~
 QD         | BW
@@ -134,9 +134,9 @@ QD         | BW
 
 ### Test 4
 
-Target cmd line: `sudo ./install/bin/spdk_tgt -c nvmf_null_16_num_buffers.conf -m 0xFFFF`
+**IO pacing**: `Limit number of SPDK buffers to 96`
 
-IO pacing: `Limit number of SPDK buffers to 96`
+**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_null_16_num_buffers.conf -m 0xFFFF`
 
 ~~~
 QD         | BW
@@ -150,9 +150,9 @@ QD         | BW
 
 ### Test 5
 
-Target cmd line: `sudo ./install/bin/spdk_tgt -c nvmf_nvme_num_buffers.conf -m 0xFFFF`
+**IO pacing**: `Limit number of SPDK buffers to 96`
 
-IO pacing: `Limit number of SPDK buffers to 96`
+**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme_num_buffers.conf -m 0xFFFF`
 
 ~~~
 QD         | BW
