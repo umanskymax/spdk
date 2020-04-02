@@ -645,8 +645,6 @@ test_spdk_nvmf_rdma_request_process(void)
 	CU_ASSERT(progress == true);
 	CU_ASSERT(rdma_req->state == RDMA_REQUEST_STATE_TRANSFERRING_CONTROLLER_TO_HOST);
 	CU_ASSERT(rdma_req->recv == NULL);
-	CU_ASSERT(rqpair.sends_to_post.first == &rdma_req->data.wr);
-	CU_ASSERT(rqpair.sends_to_post.last == &rdma_req->rsp.wr);
 	CU_ASSERT(resources.recvs_to_post.first == &rdma_recv->wr);
 	CU_ASSERT(resources.recvs_to_post.last == &rdma_recv->wr);
 	/* COMPLETED -> FREE */
@@ -669,9 +667,6 @@ test_spdk_nvmf_rdma_request_process(void)
 	CU_ASSERT(progress == true);
 	CU_ASSERT(rdma_req->state == RDMA_REQUEST_STATE_TRANSFERRING_HOST_TO_CONTROLLER);
 	CU_ASSERT(rdma_req->req.xfer == SPDK_NVME_DATA_HOST_TO_CONTROLLER);
-	CU_ASSERT(rqpair.sends_to_post.first == &rdma_req->data.wr);
-	CU_ASSERT(rqpair.sends_to_post.last == &rdma_req->data.wr);
-	rqpair.sends_to_post.first = rqpair.sends_to_post.last = NULL;
 	STAILQ_INIT(&poller.qpairs_pending_send);
 	/* READY_TO_EXECUTE -> EXECUTING */
 	rdma_req->state = RDMA_REQUEST_STATE_READY_TO_EXECUTE;
@@ -684,8 +679,6 @@ test_spdk_nvmf_rdma_request_process(void)
 	CU_ASSERT(progress == true);
 	CU_ASSERT(rdma_req->state == RDMA_REQUEST_STATE_COMPLETING);
 	CU_ASSERT(rdma_req->recv == NULL);
-	CU_ASSERT(rqpair.sends_to_post.first == &rdma_req->rsp.wr);
-	CU_ASSERT(rqpair.sends_to_post.last == &rdma_req->rsp.wr);
 	CU_ASSERT(resources.recvs_to_post.first == &rdma_recv->wr);
 	CU_ASSERT(resources.recvs_to_post.last == &rdma_recv->wr);
 	/* COMPLETED -> FREE */
@@ -712,20 +705,12 @@ test_spdk_nvmf_rdma_request_process(void)
 		rqpair.current_recv_depth = 1;
 		spdk_nvmf_rdma_request_process(&rtransport, req1);
 		CU_ASSERT(req1->state == RDMA_REQUEST_STATE_TRANSFERRING_HOST_TO_CONTROLLER);
-		/* WRITE 1 is the first in batching list */
-		CU_ASSERT(rqpair.sends_to_post.first == &req1->data.wr);
-		CU_ASSERT(rqpair.sends_to_post.last == &req1->data.wr);
 
 		/* WRITE 2: NEW -> TRANSFERRING_H2C */
 		rqpair.current_recv_depth = 2;
 		spdk_nvmf_rdma_request_process(&rtransport, req2);
 		CU_ASSERT(req2->state == RDMA_REQUEST_STATE_TRANSFERRING_HOST_TO_CONTROLLER);
-		/* WRITE 2 is now also in the batching list */
-		CU_ASSERT(rqpair.sends_to_post.first->next == &req2->data.wr);
-		CU_ASSERT(rqpair.sends_to_post.last == &req2->data.wr);
 
-		/* Send everything */
-		rqpair.sends_to_post.first = rqpair.sends_to_post.last = NULL;
 		STAILQ_INIT(&poller.qpairs_pending_send);
 
 		/* WRITE 1 completes before WRITE 2 has finished RDMA reading */
@@ -737,9 +722,6 @@ test_spdk_nvmf_rdma_request_process(void)
 		req1->state = RDMA_REQUEST_STATE_EXECUTED;
 		spdk_nvmf_rdma_request_process(&rtransport, req1);
 		CU_ASSERT(req1->state == RDMA_REQUEST_STATE_COMPLETING);
-		CU_ASSERT(rqpair.sends_to_post.first == &req1->rsp.wr);
-		CU_ASSERT(rqpair.sends_to_post.last == &req1->rsp.wr);
-		rqpair.sends_to_post.first = rqpair.sends_to_post.last = NULL;
 		STAILQ_INIT(&poller.qpairs_pending_send);
 		/* WRITE 1: COMPLETED -> FREE */
 		req1->state = RDMA_REQUEST_STATE_COMPLETED;
@@ -756,9 +738,6 @@ test_spdk_nvmf_rdma_request_process(void)
 		req2->state = RDMA_REQUEST_STATE_EXECUTED;
 		spdk_nvmf_rdma_request_process(&rtransport, req2);
 		CU_ASSERT(req2->state == RDMA_REQUEST_STATE_COMPLETING);
-		CU_ASSERT(rqpair.sends_to_post.first == &req2->rsp.wr);
-		CU_ASSERT(rqpair.sends_to_post.last == &req2->rsp.wr);
-		rqpair.sends_to_post.first = rqpair.sends_to_post.last = NULL;
 		STAILQ_INIT(&poller.qpairs_pending_send);
 		/* WRITE 1: COMPLETED -> FREE */
 		req2->state = RDMA_REQUEST_STATE_COMPLETED;

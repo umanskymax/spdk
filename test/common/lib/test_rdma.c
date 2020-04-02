@@ -40,3 +40,7 @@ DEFINE_STUB(spdk_rdma_create_qp, struct spdk_rdma_qp *, (struct rdma_cm_id *cm_i
 		struct spdk_rdma_qp_init_attr *qp_attr), NULL);
 DEFINE_STUB_V(spdk_rdma_destroy_qp, (struct spdk_rdma_qp *spdk_rdma_qp));
 DEFINE_STUB(spdk_rdma_complete_connect, int, (struct spdk_rdma_qp *spdk_rdma_qp), 0);
+DEFINE_STUB(spdk_rdma_queue_send_wrs, bool, (struct spdk_rdma_qp *spdk_rdma_qp,
+		struct ibv_send_wr *first), true);
+DEFINE_STUB(spdk_rdma_flush_queued_wrs, int, (struct spdk_rdma_qp *spdk_rdma_qp,
+		struct ibv_send_wr **bad_wr), 0);
