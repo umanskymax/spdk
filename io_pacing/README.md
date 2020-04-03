@@ -82,6 +82,30 @@ spdk03.swx.labs.mlnx           | 87.7       | 91.9       | 364.4           |
 Total                          | 175.6      | 184.1      |                 | 193.4409
 ~~~
 
+## IO pacing methods
+
+### Number of buffers limitation in SPDK
+
+SPDK has a configuration parameter `NumSharedBuffers` that defines
+number of data buffers (and size of buffer) to allocate for NVMf
+transport. Buffers form a pool and are shared among all threads.
+
+At start each thread allocates a number of buffers from common pool to
+thread local cache. Size of the cache is controlled by `BufCacheSize`
+configuration parameter.
+
+When buffer is needed SPDK thread tries to allocate buffer from its
+local cache. If there are no buffers it goes to common pool. If there
+is nothing in common pool, IO request goes to pending buffer queue and
+is retried when buffer is released by the same thread.
+
+When buffer IO request is completed and buffer is not needed anymore,
+SPDK tries to return it to local cache first. If local cache is full,
+i.e. has length `BufCacheSize`, buffer is returned to common pool.
+
+Data buffer pool is built on top of DPDK mempool API. It has its own
+caching mechanism but we disable it in this PoC.
+
 ## Results
 
 ### Test 1
