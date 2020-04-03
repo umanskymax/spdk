@@ -379,4 +379,158 @@ degradation with deep queues. Likely because of the same effect, some
 threads consume all the buffers and others don't get enough to perform
 well.
 
+### Test 9
+
+Check performance effect of number of data buffers. All buffers are
+shared equally between all threads at start with `BufCacheSize`
+parameter.
+
+**IO pacing**: `Limit number of SPDK buffers to 96`
+
+**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme_num_buffers.conf -m 0xFFFF`
+
+**Initiator**: `fio+SPDK`
+
+Number of buffers 128, buffer cache size 32.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 92.8       | 99.8292
+16         | 164.0      | 177.0472
+32         | 180.4      | 193.8725
+64         | 133.7      | 184.1221
+128        | 131.1      | 190.8772
+256        | 127.3      | 177.241
+~~~
+
+Number of buffers 96, buffer cache size 6.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 92.8       | 99.0422
+16         | 166.9      | 177.6865
+32         | 182.5      | 194.0054
+64         | 182.6      | 194.3754
+128        | 182.9      | 194.429
+256        | 183.1      | 194.3922
+~~~
+
+Number of buffers 64, buffer cache size 4.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 93.2       | 100.2594
+16         | 164.0      | 177.9693
+32         | 180.2      | 193.8549
+64         | 182.3      | 193.7867
+128        | 182.8      | 193.4866
+256        | 183.2      | 195.4177
+~~~
+
+Number of buffers 48, buffer cache size 3.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 93.0       | 99.8556
+16         | 164.1      | 177.2571
+32         | 178.7      | 190.3871
+64         | 178.8      | 191.1094
+128        | 179.7      | 190.2044
+256        | 179.9      | 191.586
+~~~
+
+Number of buffers 32, buffer cache size 2.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 93.8       | 99.6489
+16         | 142.1      | 151.7735
+32         | 141.8      | 151.3303
+64         | 136.7      | 148.1263
+128        | 143.7      | 152.5965
+256        | 143.9      | 153.4391
+~~~
+
+Number of buffers 16, buffer cache size 1.
+
+~~~
+rdma.c:2419:spdk_nvmf_rdma_create: *ERROR*: The number of shared data buffers (16) is less thanthe minimum number required to guarantee that forward progress can be made (32)
+~~~
+
+### Test 10
+
+Check performance effect of number of data buffers with 4 cores. All
+buffers are shared equally between all threads at start with
+`BufCacheSize` parameter.
+
+**IO pacing**: `Limit number of SPDK buffers to 96`
+
+**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme_num_buffers.conf -m 0xF`
+
+**Initiator**: `fio+SPDK`
+
+Number of buffers 128, buffer cache size 32.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 94.6       | 100.5571
+16         | 169.0      | 180.0731
+32         | 184.8      | 196.3248
+64         | 123.1      | 130.9857
+128        | 124.9      | 129.8354
+256        | 123.2      | 129.6055
+~~~
+
+Number of buffers 96, buffer cache size 24.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 95.6       | 101.5987
+16         | 168.9      | 179.8312
+32         | 184.8      | 196.3177
+64         | 184.8      | 196.3324
+128        | 184.8      | 196.3333
+256        | 184.8      | 196.3248
+~~~
+
+Number of buffers 64, buffer cache size 16.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 95.9       | 101.7749
+16         | 168.8      | 180.3303
+32         | 184.8      | 196.3154
+64         | 184.8      | 196.3052
+128        | 184.8      | 196.3052
+256        | 184.8      | 196.3063
+~~~
+
+Number of buffers 48, buffer cache size 12.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 95.9       | 102.0887
+16         | 168.9      | 178.9896
+32         | 183.9      | 195.3663
+64         | 183.9      | 195.6575
+128        | 183.3      | 195.2519
+256        | 183.7      | 195.0659
+~~~
+
+Number of buffers 32, buffer cache size 8.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 96.5       | 102.4352
+16         | 155.2      | 165.1455
+32         | 155.4      | 164.9088
+64         | 154.2      | 163.772
+128        | 154.7      | 164.9357
+256        | 152.6      | 163.5733
+~~~
+
+Number of buffers 16, buffer cache size 4.
+
+~~~
+rdma.c:2419:spdk_nvmf_rdma_create: *ERROR*: The number of shared data buffers (16) is less thanthe minimum number required to guarantee that forward progress can be made (32)
 ~~~
