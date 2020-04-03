@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 
 # Input test parameters
-[ -z "$TEST_TIME" ] && TEST_TIME=60
-[ -z "$RW" ] && RW=randread
-[ -z "$QD" ] && QD=32
-[ -z "$IO_SIZE" ] && IO_SIZE=128k
+TEST_TIME=${TEST_TIME-60}
+RW=${RW-randread}
+QD=${QD-32}
+IO_SIZE=${IO_SIZE-128k}
 HOSTS="r-dcs79 spdk03.swx.labs.mlnx"
 TARGET="ubuntu@spdk-tgt-bw-03"
-FIO_JOB="fio-16ns"
+FIO_JOB=${FIO_JOB-"fio-16ns"}
 
 # Paths configuration
 FIO_PATH="$PWD/../../fio"
@@ -56,6 +56,7 @@ function print_report()
     echo "Read/write  : $RW"
     echo "Queue depth : $QD"
     echo "IO size     : $IO_SIZE"
+    echo "Fio job     : $FIO_JOB"
     echo ""
 
     echo Results
