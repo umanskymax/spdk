@@ -2745,8 +2745,8 @@ spdk_nvmf_rdma_listen(struct spdk_nvmf_transport *transport,
 		return -EINVAL;
 	}
 
-	SPDK_NOTICELOG("*** NVMe/RDMA Target Listening on %s port %s ***\n",
-		       trid->traddr, trid->trsvcid);
+	SPDK_NOTICELOG("*** NVMe/RDMA Target Listening on %s port %s device %s ***\n",
+		       trid->traddr, trid->trsvcid, ibv_get_device_name(port->device->context->device));
 
 	TAILQ_INSERT_TAIL(&rtransport->ports, port, link);
 	pthread_mutex_unlock(&rtransport->lock);
@@ -3571,6 +3571,11 @@ spdk_nvmf_rdma_poll_group_add(struct spdk_nvmf_transport_poll_group *group,
 	}
 
 	spdk_nvmf_rdma_update_ibv_state(rqpair);
+
+	SPDK_NOTICELOG("Added QP to poll group: QID %u, device %s, core %d\n",
+		       rqpair->qpair.qid,
+		       ibv_get_device_name(rqpair->device->context->device),
+		       spdk_env_get_current_core());
 
 	return 0;
 }

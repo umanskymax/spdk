@@ -155,6 +155,11 @@ spdk_nvmf_transport_create(const char *transport_name, struct spdk_nvmf_transpor
 		ops->destroy(transport);
 		return NULL;
 	}
+	SPDK_NOTICELOG("Created data buffer pool %p: name %s, count %u, obj_size %llu\n",
+		       transport->data_buf_pool,
+		       spdk_mempool_name,
+		       opts->num_shared_buffers,
+		       opts->io_unit_size + NVMF_DATA_BUFFER_ALIGNMENT);
 
 	return transport;
 }
@@ -288,6 +293,12 @@ spdk_nvmf_transport_poll_group_create(struct spdk_nvmf_transport *transport)
 			STAILQ_INSERT_HEAD(&group->buf_cache, buf, link);
 			group->buf_cache_count++;
 		}
+
+		SPDK_NOTICELOG("Allocated pg %p cache from data buffer pool %p: cache_size %u, core %u\n",
+			       group,
+			       transport->data_buf_pool,
+			       group->buf_cache_count,
+			       spdk_env_get_current_core());
 	}
 	return group;
 }
