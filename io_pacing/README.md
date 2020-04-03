@@ -90,6 +90,8 @@ Total                          | 175.6      | 184.1      |                 | 193
 
 **Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_null_1.conf -m 0xFFFF`
 
+**Initiator**: `fio+SPDK`
+
 ~~~
 QD         | BW
 8          | 184.6
@@ -106,6 +108,8 @@ QD         | BW
 
 **Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_null_16.conf -m 0xFFFF`
 
+**Initiator**: `fio+SPDK`
+
 ~~~
 QD         | BW
 8          | 184.6
@@ -121,6 +125,8 @@ QD         | BW
 **IO pacing**: `none`
 
 **Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme.conf -m 0xFFFF`
+
+**Initiator**: `fio+SPDK`
 
 ~~~
 QD         | BW
@@ -150,6 +156,8 @@ QD         | BW         | WIRE BW
 
 **Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_null_16_num_buffers.conf -m 0xFFFF`
 
+**Initiator**: `fio+SPDK`
+
 ~~~
 QD         | BW
 8          | 169.9
@@ -166,12 +174,18 @@ QD         | BW
 
 **Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme_num_buffers.conf -m 0xFFFF`
 
+**Initiator**: `fio+SPDK`
+
+Buffer cache size 6.
+
 ~~~
-QD         | BW
-8          | 92.7
-16         | 162.6
-32         | 179.8
-64         | 182.0
-128        | 182.6
-256        | 182.9
+QD         | BW         | WIRE BW
+8          | 96.1       | 101.7948
+16         | 167.9      | 179.8046
+32         | 182.3      | 193.8036
+64         | 182.7      | 194.3911
+128        | 182.8      | 195.7273
+256        | 183.1      | 194.1423
+~~~
+
 ~~~
