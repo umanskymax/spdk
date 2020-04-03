@@ -325,4 +325,58 @@ QD         | BW         | WIRE BW
 256        | 156.1      | 165.5522
 ~~~
 
+### Test 8
+
+Check performance effects of buffer cache size.
+
+**IO pacing**: `Limit number of SPDK buffers to 96`
+
+**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme_num_buffers.conf -m 0xFFFF`
+
+**Initiator**: `fio+SPDK`
+
+Buffer cache size 6.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 96.1       | 101.7948
+16         | 167.9      | 179.8046
+32         | 182.3      | 193.8036
+64         | 182.7      | 194.3911
+128        | 182.8      | 195.7273
+256        | 183.1      | 194.1423
+~~~
+
+Buffer cache size 0.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 94.5       | 100.5522
+16         | 166.9      | 178.6776
+32         | 182.1      | 193.7545
+64         | 182.7      | 194.8118
+~~~
+
+Test hangs with queue depth 128 and more. One of initiators can not
+connect all the QPs. Probably, without cache it is possible that some
+threads will never get buffers and will not be able to handle even
+admin commands.
+
+Buffer cache size 1.
+
+~~~
+QD         | BW         | WIRE BW
+8          | 91.9       | 98.8753
+16         | 163.2      | 176.9629
+32         | 182.1      | 194.0412
+64         | 182.6      | 194.3561
+128        | 133.0      | 139.5647
+256        | 134.5      | 137.4158
+~~~
+
+With very small buffer cache it works but we see performance
+degradation with deep queues. Likely because of the same effect, some
+threads consume all the buffers and others don't get enough to perform
+well.
+
 ~~~
