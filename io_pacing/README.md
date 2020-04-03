@@ -108,6 +108,19 @@ caching mechanism but we disable it in this PoC.
 
 ## Results
 
+| Test #              | IO pacing        | Disks   | Description                                  |
+|---------------------|------------------|---------|----------------------------------------------|
+| [Test 1](#test-1)   | none             | 1 Null  | Basic test                                   |
+| [Test 2](#test-2)   | none             | 15 Null | Basic test                                   |
+| [Test 3](#test-3)   | none             | 15 NVMe | Basic test                                   |
+| [Test 4](#test-4)   | NumSharedBuffers | 15 Null | Basic test                                   |
+| [Test 5](#test-5)   | NumSharedBuffers | 15 NVMe | Basic test                                   |
+| [Test 6](#test-6)   | NumSharedBuffers | 15 NVMe | Stability test: multiple same test runs      |
+| [Test 7](#test-7)   | NumSharedBuffers | 15 NVMe | Different number of target cores             |
+| [Test 8](#test-8)   | NumSharedBuffers | 15 NVMe | Different buffer cache size                  |
+| [Test 9](#test-9)   | NumSharedBuffers | 15 NVMe | Different number of buffers, 16 target cores |
+| [Test 10](#test-10) | NumSharedBuffers | 15 NVMe | Different number of buffers, 4 target cores  |
+
 ### Test 1
 
 **IO pacing**: `none`
