@@ -50,6 +50,7 @@ function print_report()
     local HOSTS=$@
     local SUM_IOPS_R=0
     local SUM_BW_R=0
+    local SUM_LAT_AVG_R=0
 
     echo "Test parameters"
     echo "Time        : $TEST_TIME"
@@ -64,20 +65,24 @@ function print_report()
     printf "$FORMAT" "Host" "kIOPS" "BW,Gb/s" "AVG_LAT,us" "Wire BW,Gb/s"
     printf "$FORMAT" | tr " " "-"
 
+    local count=0
     for host in $HOSTS; do
 	parse_fio $OUT_PATH/fio-$host.json
 	SUM_IOPS_R=$(m $SUM_IOPS_R + $IOPS_R)
 	SUM_BW_R=$(m $SUM_BW_R + $BW_R)
+	SUM_LAT_AVG_R=$(m $SUM_LAT_AVG_R + $LAT_AVG_R)
 
 	printf "$FORMAT" $host $(m $IOPS_R/1000) $(m $BW_R*8/1000^3) $(m $LAT_AVG_R/1000)
+	((count+=1))
     done
+    SUM_LAT_AVG_R=$(m $SUM_LAT_AVG_R / $count)
 
     printf "$FORMAT" | tr " " "-"
 
     if [ "1" == "$ENABLE_DEVICE_COUNTERS" ]; then
 	local TX_BW_WIRE=$(jq '.analysis[].analysisAttribute | select(.name=="TX BandWidth") | .value' $OUT_PATH/device-counters.json)
     fi
-    printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "" "$TX_BW_WIRE"
+    printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE"
 }
 
 function run_fio()
