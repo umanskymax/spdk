@@ -146,7 +146,7 @@ def nvmf_create_transport(client,
         params['max_aq_depth'] = max_aq_depth
     if num_shared_buffers:
         params['num_shared_buffers'] = num_shared_buffers
-    if buf_cache_size:
+    if buf_cache_size is not None:
         params['buf_cache_size'] = buf_cache_size
     if max_srq_depth:
         params['max_srq_depth'] = max_srq_depth
