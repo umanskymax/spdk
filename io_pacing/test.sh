@@ -159,13 +159,14 @@ function rpc_start()
 {
     [ -e rpc_pipe ] && rm rpc_pipe
     mkfifo rpc_pipe
-    cat > rpc_pipe &
+    tail -f > rpc_pipe &
     RPC_PID=$!
     ssh $TARGET sudo $TARGET_SPDK_PATH/scripts/rpc.py -v --server >> $OUT_PATH/rpc.log 2>&1 < rpc_pipe &
     SSH_PID=$!
 }
 
-function rpc_send() {
+function rpc_send()
+{
     echo "$@" > rpc_pipe
 }
 
@@ -179,17 +180,20 @@ function rpc_stop()
 function basic_test()
 {
     QD_LIST=${QD_LIST-"8 16 32 64 128 256"}
+    REPEAT=${REPEAT-1}
     local FORMAT="%-10s | %-10s | %-10s | %-15s | %-10s\n"
     printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV"
 
     for qd in $QD_LIST; do
-	QD=$qd run_test $HOSTS > /dev/null
-	OUT=$(print_report $HOSTS | tee $OUT_PATH/basic_test.log)
-	BW="$(echo "$OUT" | grep Total | awk '{print $5}')"
-	LAT_AVG="$(echo "$OUT" | grep Total | awk '{print $7}')"
-	WIRE_BW="$(echo "$OUT" | grep Total | awk '{print $9}')"
-	BW_STDDEV="$(echo "$OUT" | grep Total | awk '{print $11}')"
-	printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV"
+	for rep in $(seq $REPEAT); do
+	    QD=$qd run_test $HOSTS > /dev/null
+	    OUT=$(print_report $HOSTS | tee $OUT_PATH/basic_test.log)
+	    BW="$(echo "$OUT" | grep Total | awk '{print $5}')"
+	    LAT_AVG="$(echo "$OUT" | grep Total | awk '{print $7}')"
+	    WIRE_BW="$(echo "$OUT" | grep Total | awk '{print $9}')"
+	    BW_STDDEV="$(echo "$OUT" | grep Total | awk '{print $11}')"
+	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV"
+	done
     done
 }
 
@@ -349,6 +353,30 @@ function test_5()
     NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme
     FIO_JOB=fio-16ns basic_test
     stop_tgt
+}
+
+function test_6()
+{
+    start_tgt 0xFFFF
+    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme
+    FIO_JOB=fio-16ns QD_LIST="32 64 128 256" REPEAT=10 basic_test
+    stop_tgt
+}
+
+function test_7()
+{
+    for cpu_mask in FFFF FF F 3 1; do
+	local bin_mask=$(m "ibase=16; obase=2; $cpu_mask")
+	bin_mask=${bin_mask//0/}
+	local core_count=${#bin_mask}
+	local cache_size=$((96/core_count))
+	echo "Target cores $core_count (0x$cpu_mask). Buffer cache size $cache_size"
+	start_tgt 0x$cpu_mask
+	NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=$cache_size config_nvme
+	FIO_JOB=fio-16ns basic_test
+	stop_tgt
+	sleep 3
+    done
 }
 
 function test_8()
