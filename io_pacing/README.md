@@ -108,18 +108,24 @@ caching mechanism but we disable it in this PoC.
 
 ## Results
 
-| Test #              | IO pacing        | Disks   | Description                                  |
-|---------------------|------------------|---------|----------------------------------------------|
-| [Test 1](#test-1)   | none             | 1 Null  | Basic test                                   |
-| [Test 2](#test-2)   | none             | 15 Null | Basic test                                   |
-| [Test 3](#test-3)   | none             | 15 NVMe | Basic test                                   |
-| [Test 4](#test-4)   | NumSharedBuffers | 15 Null | Basic test                                   |
-| [Test 5](#test-5)   | NumSharedBuffers | 15 NVMe | Basic test                                   |
-| [Test 6](#test-6)   | NumSharedBuffers | 15 NVMe | Stability test: multiple same test runs      |
-| [Test 7](#test-7)   | NumSharedBuffers | 15 NVMe | Different number of target cores             |
-| [Test 8](#test-8)   | NumSharedBuffers | 15 NVMe | Different buffer cache size                  |
-| [Test 9](#test-9)   | NumSharedBuffers | 15 NVMe | Different number of buffers, 16 target cores |
-| [Test 10](#test-10) | NumSharedBuffers | 15 NVMe | Different number of buffers, 4 target cores  |
+| Test #              | IO pacing        | Disks                     | Description                                  |
+|---------------------|------------------|---------------------------|----------------------------------------------|
+| [Test 1](#test-1)   | none             | 1 Null                    | Basic test                                   |
+| [Test 2](#test-2)   | none             | 16 Null                   | Basic test                                   |
+| [Test 3](#test-3)   | none             | 16 NVMe                   | Basic test                                   |
+| [Test 4](#test-4)   | NumSharedBuffers | 16 Null                   | Basic test                                   |
+| [Test 5](#test-5)   | NumSharedBuffers | 16 NVMe                   | Basic test                                   |
+| [Test 6](#test-6)   | NumSharedBuffers | 16 NVMe                   | Stability test: multiple same test runs      |
+| [Test 7](#test-7)   | NumSharedBuffers | 16 NVMe                   | Different number of target cores             |
+| [Test 8](#test-8)   | NumSharedBuffers | 16 NVMe                   | Different buffer cache size                  |
+| [Test 9](#test-9)   | NumSharedBuffers | 16 NVMe                   | Different number of buffers, 16 target cores |
+| [Test 10](#test-10) | NumSharedBuffers | 16 NVMe                   | Different number of buffers, 4 target cores  |
+| [Test 11](#test-11) | None             | 16 NVMe, split 3          | Basic test                                   |
+| [Test 12](#test-12) | NumSharedBuffers | 16 NVMe, split 3          | Basic test                                   |
+| [Test 13](#test-13) | None             | 16 NVMe, split 3, 1 delay | Basic test                                   |
+| [Test 14](#test-14) | NumSharedBuffers | 16 NVMe, split 3, 1 delay | Basic test                                   |
+| [Test 15](#test-15) | None             | 16 NVMe, split 3, 2 delay | Basic test                                   |
+| [Test 16](#test-16) | NumSharedBuffers | 16 NVMe, split 3, 2 delay | Basic test                                   |
 
 ### Test 1
 
@@ -191,7 +197,7 @@ QD         | BW         | WIRE BW    | AVG LAT, us
 
 **IO pacing**: `Limit number of SPDK buffers to 96`
 
-**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_null_16_num_buffers.conf -m 0xFFFF`
+**Configuration**: `NUM_SHARED_BUFFERS=96 config_null_16`
 
 **Initiator**: `fio+SPDK`
 
@@ -209,11 +215,9 @@ QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
 
 **IO pacing**: `Limit number of SPDK buffers to 96`
 
-**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme_num_buffers.conf -m 0xFFFF`
+**Configuration**: `NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme`
 
 **Initiator**: `fio+SPDK`
-
-Buffer cache size 6.
 
 ~~~
 QD         | BW         | WIRE BW
@@ -356,7 +360,7 @@ Check performance effects of buffer cache size.
 
 **IO pacing**: `Limit number of SPDK buffers to 96`
 
-**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme_num_buffers.conf -m 0xFFFF`
+**Configuration**: `NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=$buf_cache_size config_nvme`
 
 **Initiator**: `fio+SPDK`
 
@@ -412,7 +416,7 @@ parameter.
 
 **IO pacing**: `Limit number of SPDK buffers to 96`
 
-**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme_num_buffers.conf -m 0xFFFF`
+**Configuration**: `NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/16)) config_nvme`
 
 **Initiator**: `fio+SPDK`
 
@@ -490,7 +494,7 @@ buffers are shared equally between all threads at start with
 
 **IO pacing**: `Limit number of SPDK buffers to 96`
 
-**Target cmd line**: `sudo ./install/bin/spdk_tgt -c nvmf_nvme_num_buffers.conf -m 0xF`
+**Configuration**: `NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/4)) config_nvme`
 
 **Initiator**: `fio+SPDK`
 
@@ -558,4 +562,204 @@ Number of buffers 16, buffer cache size 4.
 
 ~~~
 rdma.c:2419:spdk_nvmf_rdma_create: *ERROR*: The number of shared data buffers (16) is less thanthe minimum number required to guarantee that forward progress can be made (32)
+~~~
+
+### Test 11
+
+Split each NVMe disk into 3 partitions with SPDK split block device.
+
+**IO pacing**: `None`
+
+**Configuration**: `config_nvme_split3`
+
+**Initiator**: `fio+SPDK`
+
+Number of buffers 4095, buffer cache size 32.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 61.1       | 66.4308    | 273.7           | 3.2
+16         | 113.6      | 123.2159   | 294.6           | 5.3
+32         | 177.7      | 193.0578   | 376.9           | 8.0
+64         | 133.0      | 141.9838   | 1008.3          | 2.3
+128        | 110.6      | 119.4736   | 2426.0          | 2.2
+256        | 107.1      | 115.637    | 5011.1          | 2.1
+~~~
+
+### Test 12
+
+Split each NVMe disk into 3 partitions with SPDK split block device.
+
+**IO pacing**: `Limit number of SPDK buffers to 96`
+
+**Configuration**: `NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme_split3`
+
+**Initiator**: `fio+SPDK`
+
+Number of buffers 96, buffer cache size 6.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 61.3       | 66.8368    | 272.6           | 2.9
+16         | 113.7      | 123.0505   | 294.3           | 5.2
+32         | 177.7      | 192.5386   | 376.9           | 8.2
+64         | 175.4      | 189.4408   | 764.6           | 5.7
+128        | 177.8      | 191.7432   | 1508.5          | 7.3
+256        | 180.4      | 192.4776   | 2974.3          | 4.0
+~~~
+
+### Test 13
+
+Split each NVMe disk into 3 partitions with SPDK split block device.
+Delay block devices is added on top of one third of partitions. Delay
+time is 1 ms.
+
+**IO pacing**: `None`
+
+**Configuration**: `config_nvme_split3_delay1`
+
+**Initiator**: `fio+SPDK`
+
+CPU mask 0xFFFF, number of buffers 4095, buffer cache size 32.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 29.9       | 32.3077    | 562.7           | .9
+16         | 55.8       | 59.2461    | 600.3           | 1.8
+32         | 106.4      | 115.1262   | 629.6           | 3.6
+64         | 163.0      | 175.7864   | 822.6           | 4.9
+128        | 108.6      | 117.3446   | 2469.8          | 2.4
+256        | 106.7      | 113.3583   | 5030.5          | 1.1
+~~~
+
+CPU mask 0xF, number of buffers 4095, buffer cache size 32.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 31.0       | 32.9594    | 543.2           | 0
+16         | 57.2       | 60.8346    | 585.2           | 0
+32         | 109.1      | 115.7588   | 614.4           | .3
+64         | 176.3      | 188.0159   | 760.6           | .3
+128        | 106.0      | 112.8389   | 2529.4          | 1.5
+256        | 105.8      | 112.5577   | 5070.9          | 1.2
+~~~
+
+### Test 14
+
+Split each NVMe disk into 3 partitions with SPDK split block device.
+Delay block devices is added on top of one third of partitions. Delay
+time is 1 ms.
+
+**IO pacing**: `Limit number of SPDK buffers to 96`
+
+**Configuration**: `NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme_split3_delay1`
+
+**Initiator**: `fio+SPDK`
+
+CPU mask 0xFFFF, number of buffers 96, buffer cache size 6.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 30.0       | 32.4058    | 560.4           | 1.0
+16         | 55.8       | 60.3337    | 599.9           | 1.9
+32         | 106.0      | 114.6276   | 631.9           | 4.3
+64         | 139.4      | 148.3024   | 961.6           | 4.7
+128        | 148.6      | 162.305    | 1852.6          | 5.0
+256        | 152.9      | 163.8179   | 3592.3          | 3.1
+~~~
+
+CPU mask 0xF, number of buffers 96, buffer cache size 24.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 31.2       | 33.1593    | 540.1           | 0
+16         | 57.2       | 60.8607    | 585.5           | .1
+32         | 107.6      | 114.1957   | 622.8           | .3
+64         | 177.6      | 188.6887   | 754.7           | .1
+128        | 172.2      | 183.0255   | 1559.3          | .3
+256        | 163.8      | 178.055    | 3278.8          | 1.4
+~~~
+
+### Test 15
+
+Split each NVMe disk into 3 partitions with SPDK split block device.
+Delay block devices is added on top of two thirds of partitions. Delay
+time is 1 ms.
+
+**IO pacing**: `None`
+
+**Configuration**: `config_nvme_split3_delay2`
+
+**Initiator**: `fio+SPDK`
+
+CPU mask 0xFFFF, number of buffers 4095, buffer cache size 32.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 19.0       | 20.5105    | 883.2           | .5
+16         | 36.7       | 39.6856    | 913.0           | 1.1
+32         | 71.1       | 76.9438    | 942.6           | 2.1
+64         | 129.6      | 141.1166   | 1034.2          | 4.2
+128        | 107.9      | 115.2508   | 2487.1          | 2.6
+256        | 105.2      | 112.922    | 5102.1          | 2.1
+~~~
+
+CPU mask 0xF, number of buffers 4095, buffer cache size 32.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 19.5       | 20.7461    | 860.2           | 0
+16         | 37.6       | 39.9532    | 891.6           | 0
+32         | 73.0       | 77.5455    | 918.4           | .1
+64         | 133.5      | 141.8261   | 1004.3          | .2
+128        | 104.9      | 111.4933   | 2557.8          | 1.8
+256        | 103.8      | 110.1529   | 5171.4          | 1.2
+~~~
+
+### Test 16
+
+Split each NVMe disk into 3 partitions with SPDK split block device.
+Delay block devices is added on top of two thirds of partitions. Delay
+time is 1 ms.
+
+**IO pacing**: `Limit number of SPDK buffers to 96`
+
+**Configuration**: `NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme_split3_delay2`
+
+**Initiator**: `fio+SPDK`
+
+CPU mask 0xFFFF, number of buffers 96, buffer cache size 6.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 19.0       | 20.5155    | 882.1           | .5
+16         | 36.5       | 39.4101    | 917.6           | 1.2
+32         | 71.4       | 77.238     | 938.9           | 2.5
+64         | 98.2       | 105.1571   | 1365.2          | 2.6
+128        | 106.9      | 113.2529   | 2539.3          | 2.8
+256        | 98.7       | 106.593    | 5437.4          | 1.6
+~~~
+
+CPU mask 0xF, number of buffers 96, buffer cache size 24.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 19.5       | 20.7775    | 858.7           | 0
+16         | 37.5       | 39.9046    | 893.3           | 0
+32         | 73.4       | 78.0859    | 912.4           | 0
+64         | 116.3      | 123.5623   | 1153.7          | .3
+128        | 120.1      | 127.5434   | 2233.5          | .3
+256        | 116.1      | 123.2813   | 4626.8          | .3
+~~~
+
+CPU mask 0x3, number of buffers 96, buffer cache size 48.
+
+~~~
+QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
+8          | 19.7       | 20.9313    | 852.0           | 0
+16         | 37.9       | 40.4019    | 885.0           | 0
+32         | 72.8       | 77.3573    | 920.6           | .1
+64         | 115.4      | 122.5739   | 1161.6          | .2
+128        | 114.8      | 121.8916   | 2335.7          | .5
+256        | 113.4      | 120.6254   | 4730.3          | .3
 ~~~
