@@ -7,7 +7,9 @@ QD=${QD-32}
 IO_SIZE=${IO_SIZE-128k}
 HOSTS="r-dcs79 spdk03.swx.labs.mlnx"
 TARGET="ubuntu@spdk-tgt-bw-03"
+TARGET_ADDRS="1.1.103.1 2.2.103.1"
 FIO_JOB=${FIO_JOB-"fio-16ns"}
+KERNEL_DRIVER=${KERNEL_DRIVER-0}
 
 # Paths configuration
 FIO_PATH="$PWD/../../fio"
@@ -151,6 +153,35 @@ function stop_tgt()
 
     ssh $TARGET 'sudo kill -15 $(pidof spdk_tgt)' >> $OUT_PATH/rpc.log 2>&1
     sleep 5
+}
+
+function connect_hosts()
+{
+    local HOSTS=$@
+    NUM_QUEUES=${NUM_QUEUES-8}
+
+    for host in $HOSTS; do
+	local SSH=
+	[ "$host" != "$HOSTNAME" ] && SSH="ssh $host"
+
+	# Assuming that each host has path to only one listener and
+	# another one will fail to connect
+	for addr in $TARGET_ADDRS; do
+	    $SSH sudo nvme connect -t rdma -a $addr  -s 4420 -n nqn.2016-06.io.spdk:cnode1 -i $NUM_QUEUES >> $OUT_PATH/rpc.log 2>&1
+	done
+    done
+}
+
+function disconnect_hosts()
+{
+    local HOSTS=$@
+
+    for host in $HOSTS; do
+	local SSH=
+	[ "$host" != "$HOSTNAME" ] && SSH="ssh $host"
+
+	$SSH sudo nvme disconnect -n nqn.2016-06.io.spdk:cnode1 >> $OUT_PATH/rpc.log 2>&1
+    done
 }
 
 function rpc()
@@ -487,7 +518,13 @@ function test_2()
 {
     start_tgt 0xFFFF
     config_null_16
-    FIO_JOB=fio-16ns basic_test
+    if [ 0 -eq "$KERNEL_DRIVER" ]; then
+	FIO_JOB=fio-16ns basic_test
+    else
+	connect_hosts $HOSTS
+	QD_LIST="2 4 8 16 32" FIO_JOB=fio-kernel-16ns basic_test
+	disconnect_hosts $HOSTS
+    fi
     stop_tgt
 }
 
@@ -495,7 +532,13 @@ function test_3()
 {
     start_tgt 0xFFFF
     config_nvme
-    FIO_JOB=fio-16ns basic_test
+    if [ 0 -eq "$KERNEL_DRIVER" ]; then
+	FIO_JOB=fio-16ns basic_test
+    else
+	connect_hosts $HOSTS
+	QD_LIST="2 4 8 16 32" FIO_JOB=fio-kernel-16ns basic_test
+	disconnect_hosts $HOSTS
+    fi
     stop_tgt
 }
 
@@ -503,7 +546,13 @@ function test_4()
 {
     start_tgt 0xFFFF
     NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_null_16
-    FIO_JOB=fio-16ns basic_test
+    if [ 0 -eq "$KERNEL_DRIVER" ]; then
+	FIO_JOB=fio-16ns basic_test
+    else
+	connect_hosts $HOSTS
+	QD_LIST="2 4 8 16 32" FIO_JOB=fio-kernel-16ns basic_test
+	disconnect_hosts $HOSTS
+    fi
     stop_tgt
 }
 
@@ -511,7 +560,13 @@ function test_5()
 {
     start_tgt 0xFFFF
     NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme
-    FIO_JOB=fio-16ns basic_test
+    if [ 0 -eq "$KERNEL_DRIVER" ]; then
+	FIO_JOB=fio-16ns basic_test
+    else
+	connect_hosts $HOSTS
+	QD_LIST="2 4 8 16 32" FIO_JOB=fio-kernel-16ns basic_test
+	disconnect_hosts $HOSTS
+    fi
     stop_tgt
 }
 
