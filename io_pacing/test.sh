@@ -102,7 +102,10 @@ function run_fio()
     local SSH=
     [ "$HOST" != "$HOSTNAME" ] && SSH="ssh $HOST"
 
-    local FIO_PARAMS="--time_based=1 --runtime=$TEST_TIME --ramp_time=3 --readwrite=$RW --bs=$IO_SIZE --iodepth=$QD --output-format=json --output=$OUT_PATH/fio-$HOST.json"
+    local FIO_PARAMS="--stats=1 --group_reporting=1 --thread=1 --direct=1 --norandommap\
+    --output-format=json --output=$OUT_PATH/fio-$HOST.json \
+    --time_based=1 --runtime=$TEST_TIME --ramp_time=3 \
+    --readwrite=$RW --bs=$IO_SIZE --iodepth=$QD"
 
     $SSH sudo LD_PRELOAD=$SPDK_PATH/install-$HOST/lib/fio_plugin $FIO_PATH/install-$HOST/bin/fio $FIO_PARAMS $JOB
 }
@@ -213,9 +216,13 @@ function rpc_stop()
 
 function basic_test()
 {
-    QD_LIST=${QD_LIST-"8 16 32 64 128 256"}
+    if [ 0 -eq "$KERNEL_DRIVER" ]; then
+	QD_LIST=${QD_LIST-"8 16 32 64 128 256"}
+    else
+	QD_LIST=${QD_LIST-"2 4 8 16 32"}
+    fi
     REPEAT=${REPEAT-1}
-    local FORMAT="%-10s | %-10s | %-10s | %-15s | %-10s\n"
+    local FORMAT="| %-10s | %-10s | %-10s | %-15s | %-10s\n"
     printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV"
 
     for qd in $QD_LIST; do
@@ -522,7 +529,7 @@ function test_2()
 	FIO_JOB=fio-16ns basic_test
     else
 	connect_hosts $HOSTS
-	QD_LIST="2 4 8 16 32" FIO_JOB=fio-kernel-16ns basic_test
+	FIO_JOB=fio-kernel-16ns basic_test
 	disconnect_hosts $HOSTS
     fi
     stop_tgt
@@ -536,7 +543,7 @@ function test_3()
 	FIO_JOB=fio-16ns basic_test
     else
 	connect_hosts $HOSTS
-	QD_LIST="2 4 8 16 32" FIO_JOB=fio-kernel-16ns basic_test
+	FIO_JOB=fio-kernel-16ns basic_test
 	disconnect_hosts $HOSTS
     fi
     stop_tgt
@@ -550,7 +557,7 @@ function test_4()
 	FIO_JOB=fio-16ns basic_test
     else
 	connect_hosts $HOSTS
-	QD_LIST="2 4 8 16 32" FIO_JOB=fio-kernel-16ns basic_test
+	FIO_JOB=fio-kernel-16ns basic_test
 	disconnect_hosts $HOSTS
     fi
     stop_tgt
@@ -564,7 +571,7 @@ function test_5()
 	FIO_JOB=fio-16ns basic_test
     else
 	connect_hosts $HOSTS
-	QD_LIST="2 4 8 16 32" FIO_JOB=fio-kernel-16ns basic_test
+	FIO_JOB=fio-kernel-16ns basic_test
 	disconnect_hosts $HOSTS
     fi
     stop_tgt

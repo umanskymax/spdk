@@ -1,13 +1,7 @@
-[job1]
-stats=1
-group_reporting=1
+[global]
 ioengine=libaio
-thread=1
-#readwrite=randread
-#bs=128k
-#iodepth=16
-#time_based=1
-#runtime=10s
+
+[job1]
 numjobs=8
 cpus_allowed=0-7
 cpus_allowed_policy=split
