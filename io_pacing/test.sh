@@ -378,52 +378,6 @@ function config_nvme()
     sleep 1
 }
 
-function config_nvme_split3()
-{
-    NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
-    BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
-    local DISKS="05 06 07 08 09 0a 0b 0c 0f 10 11 12 13 14 15 16"
-    rpc_start
-    rpc_send nvmf_set_config --conn-sched transport
-    rpc_send framework_start_init
-    sleep 3
-    local i=0
-    rpc_send nvmf_create_transport --trtype RDMA \
-	     --max-queue-depth 128 \
-	     --max-qpairs-per-ctrlr 64 \
-	     --in-capsule-data-size 4096 \
-	     --max-io-size 131072 \
-	     --io-unit-size 131072 \
-	     --num-shared-buffers $NUM_SHARED_BUFFERS \
-	     --buf-cache-size $BUF_CACHE_SIZE \
-	     --max-srq-depth 4096
-    rpc_send nvmf_create_subsystem --allow-any-host \
-	     --max-namespaces 48 \
-	     nqn.2016-06.io.spdk:cnode1
-    rpc_send nvmf_subsystem_add_listener --trtype rdma \
-	     --traddr 1.1.103.1 \
-	     --adrfam ipv4 \
-	     --trsvcid 4420 \
-	     nqn.2016-06.io.spdk:cnode1
-    rpc_send nvmf_subsystem_add_listener --trtype rdma \
-	     --traddr 2.2.103.1 \
-	     --adrfam ipv4 \
-	     --trsvcid 4420 \
-	     nqn.2016-06.io.spdk:cnode1
-    for pci in $DISKS; do
-	rpc_send bdev_nvme_attach_controller --name Nvme$i \
-		 --trtype pcie \
-		 --traddr 0000:$pci:00.0
-	rpc_send bdev_split_create Nvme${i}n1 3
-	rpc_send nvmf_subsystem_add_ns nqn.2016-06.io.spdk:cnode1 Nvme${i}n1p0
-	rpc_send nvmf_subsystem_add_ns nqn.2016-06.io.spdk:cnode1 Nvme${i}n1p1
-	rpc_send nvmf_subsystem_add_ns nqn.2016-06.io.spdk:cnode1 Nvme${i}n1p2
-	((i+=1))
-    done
-    rpc_stop
-    sleep 1
-}
-
 function config_nvme_split3_delay()
 {
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
@@ -628,68 +582,95 @@ function test_10()
 
 function test_11()
 {
-    start_tgt 0xFFFF
-    config_nvme_split3
-    FIO_JOB=fio-48ns basic_test
-    stop_tgt
+    local CPU_MASK=0xF
+    local NUM_CORES=4
+
+    for num_buffers in 96 48; do
+	for num_delay in 0 16 32; do
+	    echo "| $CPU_MASK | $num_buffers | $num_delay"
+	    start_tgt $CPU_MASK
+	    NUM_DELAY_BDEVS=$num_delay NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme_split3_delay
+	    if [ 0 -eq "$KERNEL_DRIVER" ]; then
+		QD_LIST="85" FIO_JOB=fio-48ns basic_test
+	    else
+		connect_hosts $HOSTS
+		QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
+		disconnect_hosts $HOSTS
+	    fi
+	    stop_tgt
+	done
+    done
 }
 
 function test_12()
 {
-    start_tgt 0xFFFF
-    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme_split3
-    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	FIO_JOB=fio-48ns basic_test
-    else
-	connect_hosts $HOSTS
-	QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
-	disconnect_hosts $HOSTS
-    fi
-    stop_tgt
+    local CPU_MASK=0xF
+    local NUM_CORES=4
+
+    for num_buffers in 48; do
+	for num_delay in 16; do
+	    echo "| $CPU_MASK | $num_buffers | $num_delay"
+	    start_tgt $CPU_MASK
+	    NUM_DELAY_BDEVS=$num_delay NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme_split3_delay
+	    if [ 0 -eq "$KERNEL_DRIVER" ]; then
+		QD_LIST="1 2 4 8 16 32" FIO_JOB=fio-48ns basic_test
+	    else
+		connect_hosts $HOSTS
+		QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
+		disconnect_hosts $HOSTS
+	    fi
+	    stop_tgt
+	done
+    done
 }
 
+# Test latencies
 function test_13()
 {
-    start_tgt 0xFFFF
-    NUM_DELAY_BDEVS=16 config_nvme_split3_delay
-    FIO_JOB=fio-48ns basic_test
-    stop_tgt
-}
+    local CPU_MASK=0xF
+    local NUM_CORES=4
 
-function test_14()
-{
-    start_tgt 0xFFFF
-    NUM_DELAY_BDEVS=16 NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme_split3_delay
-    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	FIO_JOB=fio-48ns basic_test
-    else
-	connect_hosts $HOSTS
-	QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
-	disconnect_hosts $HOSTS
-    fi
-    stop_tgt
-}
+    for num_buffers in 48; do
 
-function test_15()
-{
-    start_tgt 0xFFFF
-    NUM_DELAY_BDEVS=32 config_nvme_split3_delay
-    FIO_JOB=fio-48ns basic_test
-    stop_tgt
-}
+	# # 16 Null disks
+	# start_tgt $CPU_MASK
+	# NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_null_16
+	# if [ 0 -eq "$KERNEL_DRIVER" ]; then
+	#     QD_LIST="1" FIO_JOB=fio-16ns basic_test
+	# else
+	#     connect_hosts $HOSTS
+	#     QD_LIST="1" FIO_JOB=fio-kernel-16ns basic_test
+	#     disconnect_hosts $HOSTS
+	# fi
+	# stop_tgt
 
-function test_16()
-{
-    start_tgt 0xFFFF
-    NUM_DELAY_BDEVS=32 NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme_split3_delay
-    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	FIO_JOB=fio-48ns basic_test
-    else
-	connect_hosts $HOSTS
-	QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
-	disconnect_hosts $HOSTS
-    fi
-    stop_tgt
+	# # 16 NVMe disks
+	# start_tgt $CPU_MASK
+	# NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme
+	# if [ 0 -eq "$KERNEL_DRIVER" ]; then
+	#     QD_LIST="1" FIO_JOB=fio-16ns basic_test
+	# else
+	#     connect_hosts $HOSTS
+	#     QD_LIST="1" FIO_JOB=fio-kernel-16ns basic_test
+	#     disconnect_hosts $HOSTS
+	# fi
+	# stop_tgt
+
+	# 48 split and delay disks
+	for num_delay in 0 48; do
+	    echo "| $CPU_MASK | $num_buffers | $num_delay"
+	    start_tgt $CPU_MASK
+	    NUM_DELAY_BDEVS=$num_delay NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme_split3_delay
+	    if [ 0 -eq "$KERNEL_DRIVER" ]; then
+		QD_LIST="1" FIO_JOB=fio-48ns basic_test
+	    else
+		connect_hosts $HOSTS
+		QD_LIST="1" FIO_JOB=fio-kernel-48ns basic_test
+		disconnect_hosts $HOSTS
+	    fi
+	    stop_tgt
+	done
+    done
 }
 
 if [ -z "$1" ]; then

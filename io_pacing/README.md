@@ -120,12 +120,9 @@ caching mechanism but we disable it in this PoC.
 | [Test 8](#test-8)   | NumSharedBuffers | 16 NVMe                   | Different buffer cache size                  |
 | [Test 9](#test-9)   | NumSharedBuffers | 16 NVMe                   | Different number of buffers, 16 target cores |
 | [Test 10](#test-10) | NumSharedBuffers | 16 NVMe                   | Different number of buffers, 4 target cores  |
-| [Test 11](#test-11) | None             | 16 NVMe, split 3          | Basic test                                   |
-| [Test 12](#test-12) | NumSharedBuffers | 16 NVMe, split 3          | Basic test                                   |
-| [Test 13](#test-13) | None             | 16 NVMe, split 3, 1 delay | Basic test                                   |
-| [Test 14](#test-14) | NumSharedBuffers | 16 NVMe, split 3, 1 delay | Basic test                                   |
-| [Test 15](#test-15) | None             | 16 NVMe, split 3, 2 delay | Basic test                                   |
-| [Test 16](#test-16) | NumSharedBuffers | 16 NVMe, split 3, 2 delay | Basic test                                   |
+| [Test 11](#test-11) | NumSharedBuffers | 16 NVMe, split 3, delay   | No limit of IO depth for delay devices       |
+| [Test 12](#test-12) | NumSharedBuffers | 16 NVMe, split 3, delay   | Control IO depthfor delay devices            |
+| [Test 13](#test-13) | N/A              | 16 NVMe, split 3, delay   | Test disk latencies                          |
 
 ### Test 1
 
@@ -510,159 +507,109 @@ buffers are shared equally between all threads at start with
 
 ### Test 11
 
-Split each NVMe disk into 3 partitions with SPDK split block device.
+Split each NVMe disk into 3 partitions with SPDK split block device
+and build delay block device on top of some partitions.
 
-**IO pacing**: `None`
+IO depth is shared equally between all disks. FIO runs 3 jobs with
+queue depth of 85 each. This gives us total IO depth of 255 per
+initiator.
 
-**Configuration**: `config_nvme_split3`
+**IO pacing**: `Number of buffers`
+
+**Configuration**: `config_nvme_split3_delay`
 
 **Initiator**: `fio+SPDK`
 
-Number of buffers 4095, buffer cache size 32.
+**CPU mask**: 0xF
 
-~~~
-QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
-8          | 61.1       | 66.4308    | 273.7           | 3.2
-16         | 113.6      | 123.2159   | 294.6           | 5.3
-32         | 177.7      | 193.0578   | 376.9           | 8.0
-64         | 133.0      | 141.9838   | 1008.3          | 2.3
-128        | 110.6      | 119.4736   | 2426.0          | 2.2
-256        | 107.1      | 115.637    | 5011.1          | 2.1
-~~~
+| Num buffers | Num delay bdevs | QD | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate |
+|-------------|-----------------|----|-------|----------|-------------|-----------|-------------|
+| 96          | 0               | 85 | 182.1 | 193.3071 | 3022.7      | .2        | 93.5        |
+| 96          | 16              | 85 | 184.3 | 195.8785 | 2900.2      | 0         | 93.3        |
+| 96          | 32              | 85 | 128.1 | 133.3879 | 4297.4      | 2.0       | 87.5        |
+| 48          | 0               | 85 | 184.7 | 196.2756 | 2893.4      | 0         | 99.5        |
+| 48          | 16              | 85 | 108.9 | 116.9105 | 4907.7      | 1.5       | 99.4        |
+| 48          | 32              | 85 | 64.5  | 67.2054  | 8287.5      | 1.4       | 99.2        |
+
 
 ### Test 12
 
-Split each NVMe disk into 3 partitions with SPDK split block device.
+Split each NVMe disk into 3 partitions with SPDK split block device
+and build delay block device on top of some partitions.
 
-**IO pacing**: `Limit number of SPDK buffers to 96`
+FIO runs 3 jobs with 16 disks each. Job 1 is always delay devices, job
+2 may be good (16 delay bdevs) or delay (32 dely bdevs), job 3 is
+always good. IO depth is fixed to 256 for job 3. For jobs 1 and 2 it
+is set to value in QD column in the table below. For 32 delay bdevs
+effective IO depth is twice the QD since we have 2 jobs each with it's
+own IO depth.
 
-**Configuration**: `NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme_split3`
+**IO pacing**: `Number of buffers`
+
+**Configuration**: `config_nvme_split3_delay`
 
 **Initiator**: `fio+SPDK`
 
-Number of buffers 96, buffer cache size 6.
+**CPU mask**: 0xF
 
-| QD  | BW    | WIRE BW  | AVG LAT, us | BW STDDEV |
-|-----|-------|----------|-------------|-----------|
-| 8   | 180.2 | 193.8022 | 278.8       | 2.4       |
-| 16  | 178.0 | 191.901  | 564.7       | 2.2       |
-| 32  | 179.3 | 193.484  | 1122.1      | 2.3       |
-| 64  | 178.3 | 190.4941 | 2258.1      | 1.6       |
-| 128 | 181.9 | 193.2196 | 4558.9      | 1.1       |
-| 256 | 182.4 | 193.44   | 9354.5      | 2.6       |
+| Num buffers | Num delay bdevs | QD | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate |
+|-------------|-----------------|----|-------|----------|-------------|-----------|-------------|
+| 48          | 16              | 1  | 184.6 | 196.2039 | 2929.3      | .1        | 99.5        |
+| 48          | 16              | 2  | 184.5 | 196.1547 | 2954.4      | .2        | 99.5        |
+| 48          | 16              | 4  | 184.4 | 195.9771 | 3000.7      | 0         | 99.5        |
+| 48          | 16              | 8  | 183.8 | 195.504  | 3102.0      | .1        | 99.5        |
+| 48          | 16              | 16 | 181.5 | 193.2384 | 3326.9      | .1        | 99.5        |
+| 48          | 16              | 32 | 171.7 | 181.3755 | 4023.0      | .8        | 99.5        |
+| 48          | 32              | 1  | 184.6 | 196.0657 | 2930.6      | .1        | 99.5        |
+| 48          | 32              | 2  | 184.5 | 196.0089 | 2954.2      | .1        | 99.5        |
+| 48          | 32              | 4  | 184.1 | 195.4684 | 3006.6      | 0         | 99.5        |
+| 48          | 32              | 8  | 181.5 | 192.3983 | 3142.1      | .1        | 99.5        |
+| 48          | 32              | 16 | 171.0 | 181.6819 | 3531.1      | .5        | 99.5        |
 
 ### Test 13
 
-Split each NVMe disk into 3 partitions with SPDK split block device.
-Delay block devices is added on top of one third of partitions. Delay
-time is 1 ms.
+Test latencies with different configurations.
 
-**IO pacing**: `None`
+**IO pacing**: `N/A`
 
-**Configuration**: `config_nvme_split3_delay1`
+**Configuration**: `config_null_16`, `config_nvme`, `config_nvme_split3_delay`
 
 **Initiator**: `fio+SPDK`
 
-CPU mask 0xFFFF, number of buffers 4095, buffer cache size 32.
+**CPU mask**: 0xF
 
-~~~
-QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
-8          | 29.9       | 32.3077    | 562.7           | .9
-16         | 55.8       | 59.2461    | 600.3           | 1.8
-32         | 106.4      | 115.1262   | 629.6           | 3.6
-64         | 163.0      | 175.7864   | 822.6           | 4.9
-128        | 108.6      | 117.3446   | 2469.8          | 2.4
-256        | 106.7      | 113.3583   | 5030.5          | 1.1
-~~~
+16 Null disks
 
-CPU mask 0xF, number of buffers 4095, buffer cache size 32.
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate
+| 1          | 71.6       | 75.7205    | 33.8            | .2         | 99.0
+| 1          | 71.6       | 75.9995    | 33.8            | .2         | 99.0
+| 1          | 71.5       | 75.3912    | 33.9            | .2         | 99.0
+| 1          | 71.8       | 76.22      | 33.8            | .2         | 99.1
+| 1          | 71.4       | 75.3232    | 34.0            | .2         | 99.1
 
-~~~
-QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
-8          | 31.0       | 32.9594    | 543.2           | 0
-16         | 57.2       | 60.8346    | 585.2           | 0
-32         | 109.1      | 115.7588   | 614.4           | .3
-64         | 176.3      | 188.0159   | 760.6           | .3
-128        | 106.0      | 112.8389   | 2529.4          | 1.5
-256        | 105.8      | 112.5577   | 5070.9          | 1.2
-~~~
+16 NVMe disks
 
-### Test 14
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate
+| 1          | 13.2       | 13.9669    | 158.1           | .1         | 99.0
+| 1          | 13.1       | 13.972     | 158.4           | .1         | 99.0
+| 1          | 13.2       | 13.9672    | 157.9           | .1         | 98.9
+| 1          | 13.2       | 14.0219    | 157.7           | .1         | 99.0
+| 1          | 13.1       | 13.9356    | 158.6           | .1         | 98.8
 
-Split each NVMe disk into 3 partitions with SPDK split block device.
-Delay block devices is added on top of one third of partitions. Delay
-time is 1 ms.
+48 split disks
 
-**IO pacing**: `Limit number of SPDK buffers to 96`
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate
+| 1          | 37.6       | 39.8285    | 166.7           | .1         | 99.3
+| 1          | 37.5       | 39.7433    | 166.9           | .1         | 99.3
+| 1          | 37.5       | 39.8247    | 166.8           | 0          | 99.3
+| 1          | 37.6       | 39.79      | 166.7           | .1         | 99.2
+| 1          | 37.5       | 39.8147    | 166.8           | .1         | 99.3
 
-**Configuration**: `NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme_split3_delay1`
+48 split+delay disks
 
-**Initiator**: `fio+SPDK`
-
-CPU mask 0xFFFF, number of buffers 96, buffer cache size 6.
-
-| QD  | BW    | WIRE BW  | AVG LAT, us | BW STDDEV |
-|-----|-------|----------|-------------|-----------|
-| 8   | 180.2 | 193.8022 | 278.8       | 2.4       |
-| 16  | 178.0 | 191.901  | 564.7       | 2.2       |
-| 32  | 179.3 | 193.484  | 1122.1      | 2.3       |
-| 64  | 178.3 | 190.4941 | 2258.1      | 1.6       |
-| 128 | 181.9 | 193.2196 | 4558.9      | 1.1       |
-| 256 | 182.4 | 193.44   | 9354.5      | 2.6       |
-
-### Test 15
-
-Split each NVMe disk into 3 partitions with SPDK split block device.
-Delay block devices is added on top of two thirds of partitions. Delay
-time is 1 ms.
-
-**IO pacing**: `None`
-
-**Configuration**: `config_nvme_split3_delay2`
-
-**Initiator**: `fio+SPDK`
-
-CPU mask 0xFFFF, number of buffers 4095, buffer cache size 32.
-
-~~~
-QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
-8          | 19.0       | 20.5105    | 883.2           | .5
-16         | 36.7       | 39.6856    | 913.0           | 1.1
-32         | 71.1       | 76.9438    | 942.6           | 2.1
-64         | 129.6      | 141.1166   | 1034.2          | 4.2
-128        | 107.9      | 115.2508   | 2487.1          | 2.6
-256        | 105.2      | 112.922    | 5102.1          | 2.1
-~~~
-
-CPU mask 0xF, number of buffers 4095, buffer cache size 32.
-
-~~~
-QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV
-8          | 19.5       | 20.7461    | 860.2           | 0
-16         | 37.6       | 39.9532    | 891.6           | 0
-32         | 73.0       | 77.5455    | 918.4           | .1
-64         | 133.5      | 141.8261   | 1004.3          | .2
-128        | 104.9      | 111.4933   | 2557.8          | 1.8
-256        | 103.8      | 110.1529   | 5171.4          | 1.2
-~~~
-
-### Test 16
-
-Split each NVMe disk into 3 partitions with SPDK split block device.
-Delay block devices is added on top of two thirds of partitions. Delay
-time is 1 ms.
-
-**IO pacing**: `Limit number of SPDK buffers to 96`
-
-**Configuration**: `NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme_split3_delay2`
-
-**Initiator**: `fio+SPDK`
-
-| QD  | BW    | WIRE BW  | AVG LAT, us | BW STDDEV |
-|-----|-------|----------|-------------|-----------|
-| 8   | 119.1 | 129.7133 | 422.0       | 2.5       |
-| 16  | 167.4 | 178.8634 | 600.6       | 4.7       |
-| 32  | 152.8 | 162.3213 | 1360.9      | 2.8       |
-| 64  | 138.9 | 148.3271 | 2898.5      | 1.8       |
-| 128 | 142.1 | 149.9065 | 6100.5      | 2.2       |
-| 256 | 141.0 | 149.944  | 12418.3     | 3.1       |
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate
+| 1          | 5.3        | 5.6853     | 1179.0          | 0          | 98.2
+| 1          | 5.3        | 5.6539     | 1179.7          | 0          | 98.1
+| 1          | 5.3        | 5.6705     | 1178.6          | 0          | 98.0
+| 1          | 5.3        | 5.6788     | 1180.5          | 0          | 97.8
+| 1          | 5.3        | 5.6622     | 1180.1          | 0          | 97.7
