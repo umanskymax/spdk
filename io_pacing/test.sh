@@ -452,7 +452,7 @@ function test_1()
 
 function test_2()
 {
-    start_tgt 0xFFFF
+    start_tgt 0xF
     config_null_16
     if [ 0 -eq "$KERNEL_DRIVER" ]; then
 	FIO_JOB=fio-16ns basic_test
@@ -480,8 +480,8 @@ function test_3()
 
 function test_4()
 {
-    start_tgt 0xFFFF
-    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_null_16
+    start_tgt 0xF
+    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=24 config_null_16
     if [ 0 -eq "$KERNEL_DRIVER" ]; then
 	FIO_JOB=fio-16ns basic_test
     else
@@ -494,8 +494,8 @@ function test_4()
 
 function test_5()
 {
-    start_tgt 0xFFFF
-    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme
+    start_tgt 0xF
+    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=24 config_nvme
     if [ 0 -eq "$KERNEL_DRIVER" ]; then
 	FIO_JOB=fio-16ns basic_test
     else
