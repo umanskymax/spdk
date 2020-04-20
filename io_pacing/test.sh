@@ -34,6 +34,11 @@ function get_device_counters()
     ssh $TARGET sudo python /opt/neohost/sdk/get_device_performance_counters.py --dev-uid=0000:17:00.0 --output-format=JSON > $OUT_PATH/device-counters.json
 }
 
+function get_bf_counters()
+{
+    ssh $TARGET sudo python /home/evgeniik/bf_counters.py > $OUT_PATH/bf_counters.log
+}
+
 function parse_fio()
 {
     local LOG=$1; shift
@@ -66,8 +71,8 @@ function print_report()
     echo ""
 
     echo Results
-    local FORMAT="%-30s | %-10s | %-10s | %-15s | %-15s | %-15s\n"
-    printf "$FORMAT" "Host" "kIOPS" "BW,Gb/s" "AVG_LAT,us" "Wire BW,Gb/s" "BW STDDEV"
+    local FORMAT="%-30s | %-10s | %-10s | %-15s | %-15s | %-15s | %-15s\n"
+    printf "$FORMAT" "Host" "kIOPS" "BW,Gb/s" "AVG_LAT,us" "Wire BW,Gb/s" "BW STDDEV" "L3 Hit Rate, %"
     printf "$FORMAT" | tr " " "-"
 
     local count=0
@@ -88,8 +93,21 @@ function print_report()
 
     if [ "1" == "$ENABLE_DEVICE_COUNTERS" ]; then
 	local TX_BW_WIRE=$(jq '.analysis[].analysisAttribute | select(.name=="TX BandWidth") | .value' $OUT_PATH/device-counters.json 2>/dev/null)
+	local L3_HIT_RATE=0
+	for l3hr in $(grep -Po "(?<=Hit Rate: )[0-9]*\.[0-9]*(?=%)" $OUT_PATH/bf_counters.log); do
+	    L3_HIT_RATE=$(m $L3_HIT_RATE + $l3hr)
+	done
+	L3_HIT_RATE=$(m $L3_HIT_RATE/4)
     fi
-    printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE" "$(m $SUM_BW_STDDEV_R*8/1000^2)"
+    printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE" "$(m $SUM_BW_STDDEV_R*8/1000^2)" "$L3_HIT_RATE"
+}
+
+function set_fio_params()
+{
+    FIO_PARAMS="--stats=1 --group_reporting=1 --output-format=json --thread=1 \
+    --numjobs=1 --cpus_allowed=1 --cpus_allowed_policy=split \
+    --time_based=1 --runtime=$TEST_TIME --ramp_time=3 \
+    --readwrite=$RW --bs=$IO_SIZE --iodepth=$QD"
 }
 
 function run_fio()
@@ -127,15 +145,17 @@ function run_test()
     for host in $HOSTS; do
 	run_fio $host > $OUT_PATH/fio-$host.log 2>&1 &
 	PIDS="$PIDS $!"
+	sleep 1
     done
 
     # Wait 1/3, get counters, wait 2/3
     progress_bar $((TEST_TIME/3))
     if [ "1" == "$ENABLE_DEVICE_COUNTERS" ]; then
 	get_device_counters
+	get_bf_counters
 	echo -n "-"
     fi
-    progress_bar $((TEST_TIME*2/3-2))
+    progress_bar $((TEST_TIME*2/3-4))
     echo "!"
     wait $PIDS
 }
@@ -223,8 +243,8 @@ function basic_test()
 	QD_LIST=${QD_LIST-"2 4 8 16 32"}
     fi
     REPEAT=${REPEAT-1}
-    local FORMAT="| %-10s | %-10s | %-10s | %-15s | %-10s\n"
-    printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV"
+    local FORMAT="| %-10s | %-10s | %-10s | %-15s | %-10s | %-15s\n"
+    printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV" "L3 Hit Rate"
 
     for qd in $QD_LIST; do
 	for rep in $(seq $REPEAT); do
@@ -234,7 +254,8 @@ function basic_test()
 	    LAT_AVG="$(echo "$OUT" | grep Total | awk '{print $7}')"
 	    WIRE_BW="$(echo "$OUT" | grep Total | awk '{print $9}')"
 	    BW_STDDEV="$(echo "$OUT" | grep Total | awk '{print $11}')"
-	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV"
+	    L3_HIT_RATE="$(echo "$OUT" | grep Total | awk '{print $13}')"
+	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE"
 	done
     done
 }
