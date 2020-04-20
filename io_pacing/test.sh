@@ -512,7 +512,7 @@ function test_2()
 
 function test_3()
 {
-    start_tgt 0xFFFF
+    start_tgt 0xF
     config_nvme
     if [ 0 -eq "$KERNEL_DRIVER" ]; then
 	FIO_JOB=fio-16ns basic_test
