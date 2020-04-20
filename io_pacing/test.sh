@@ -632,29 +632,29 @@ function test_13()
 
     for num_buffers in 48; do
 
-	# # 16 Null disks
-	# start_tgt $CPU_MASK
-	# NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_null_16
-	# if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	#     QD_LIST="1" FIO_JOB=fio-16ns basic_test
-	# else
-	#     connect_hosts $HOSTS
-	#     QD_LIST="1" FIO_JOB=fio-kernel-16ns basic_test
-	#     disconnect_hosts $HOSTS
-	# fi
-	# stop_tgt
+	# 16 Null disks
+	start_tgt $CPU_MASK
+	NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_null_16
+	if [ 0 -eq "$KERNEL_DRIVER" ]; then
+	    QD_LIST="1" FIO_JOB=fio-16ns basic_test
+	else
+	    connect_hosts $HOSTS
+	    QD_LIST="1" FIO_JOB=fio-kernel-16ns basic_test
+	    disconnect_hosts $HOSTS
+	fi
+	stop_tgt
 
-	# # 16 NVMe disks
-	# start_tgt $CPU_MASK
-	# NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme
-	# if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	#     QD_LIST="1" FIO_JOB=fio-16ns basic_test
-	# else
-	#     connect_hosts $HOSTS
-	#     QD_LIST="1" FIO_JOB=fio-kernel-16ns basic_test
-	#     disconnect_hosts $HOSTS
-	# fi
-	# stop_tgt
+	# 16 NVMe disks
+	start_tgt $CPU_MASK
+	NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme
+	if [ 0 -eq "$KERNEL_DRIVER" ]; then
+	    QD_LIST="1" FIO_JOB=fio-16ns basic_test
+	else
+	    connect_hosts $HOSTS
+	    QD_LIST="1" FIO_JOB=fio-kernel-16ns basic_test
+	    disconnect_hosts $HOSTS
+	fi
+	stop_tgt
 
 	# 48 split and delay disks
 	for num_delay in 0 48; do
