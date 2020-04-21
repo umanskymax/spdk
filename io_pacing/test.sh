@@ -629,6 +629,7 @@ function test_13()
 {
     local CPU_MASK=0xF
     local NUM_CORES=4
+    HOSTS="spdk03.swx.labs.mlnx"
 
     for num_buffers in 48; do
 
