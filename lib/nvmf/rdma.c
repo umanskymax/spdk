@@ -2406,7 +2406,7 @@ spdk_nvmf_rdma_create(struct spdk_nvmf_transport_opts *opts)
 		opts->io_unit_size = opts->max_io_size;
 	}
 
-	if (opts->num_shared_buffers < (SPDK_NVMF_MAX_SGL_ENTRIES * 2)) {
+	if (opts->num_shared_buffers < (opts->max_io_size / opts->io_unit_size * 2)) {
 		SPDK_ERRLOG("The number of shared data buffers (%d) is less than"
 			    "the minimum number required to guarantee that forward progress can be made (%d)\n",
 			    opts->num_shared_buffers, (SPDK_NVMF_MAX_SGL_ENTRIES * 2));
