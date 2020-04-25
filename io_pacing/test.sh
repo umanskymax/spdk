@@ -238,7 +238,7 @@ function rpc_stop()
 function basic_test()
 {
     if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	QD_LIST=${QD_LIST-"8 16 32 64 128 256"}
+	QD_LIST=${QD_LIST-"32 64 128 256 1024 2048"}
     else
 	QD_LIST=${QD_LIST-"2 4 8 16 32"}
     fi
@@ -469,7 +469,7 @@ function test_3()
     start_tgt 0xF
     config_nvme
     if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	FIO_JOB=fio-16ns basic_test
+	QD_LIST="32 36 40 44 48 64 128 256 1024 2048" FIO_JOB=fio-16ns basic_test
     else
 	connect_hosts $HOSTS
 	FIO_JOB=fio-kernel-16ns basic_test
@@ -508,9 +508,9 @@ function test_5()
 
 function test_6()
 {
-    start_tgt 0xFFFF
-    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=6 config_nvme
-    FIO_JOB=fio-16ns QD_LIST="32 64 128 256" REPEAT=10 basic_test
+    start_tgt 0xF
+    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=24 config_nvme
+    FIO_JOB=fio-16ns QD_LIST="32 256 1024 2048" REPEAT=10 basic_test
     stop_tgt
 }
 
@@ -569,7 +569,7 @@ function test_10()
 	start_tgt 0xF
 	NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$cache_size config_nvme
 	if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	    QD_LIST=256 FIO_JOB=fio-16ns basic_test
+	    QD_LIST="256 1024" FIO_JOB=fio-16ns basic_test
 	else
 	    connect_hosts $HOSTS
 	    QD_LIST=32 FIO_JOB=fio-kernel-16ns basic_test
@@ -591,7 +591,7 @@ function test_11()
 	    start_tgt $CPU_MASK
 	    NUM_DELAY_BDEVS=$num_delay NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme_split3_delay
 	    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-		QD_LIST="85" FIO_JOB=fio-48ns basic_test
+		QD_LIST="85 341" FIO_JOB=fio-48ns basic_test
 	    else
 		connect_hosts $HOSTS
 		QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
@@ -608,12 +608,12 @@ function test_12()
     local NUM_CORES=4
 
     for num_buffers in 48; do
-	for num_delay in 16; do
+	for num_delay in 16 32; do
 	    echo "| $CPU_MASK | $num_buffers | $num_delay"
 	    start_tgt $CPU_MASK
 	    NUM_DELAY_BDEVS=$num_delay NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme_split3_delay
 	    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-		QD_LIST="1 2 4 8 16 32" FIO_JOB=fio-48ns basic_test
+		QD_LIST="1 2 4 8 16 32 64" FIO_JOB=fio-48ns basic_test
 	    else
 		connect_hosts $HOSTS
 		QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
