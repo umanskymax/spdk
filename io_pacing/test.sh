@@ -26,7 +26,8 @@ ENABLE_DEVICE_COUNTERS=1
 
 function m()
 {
-    bc 2>/dev/null <<< "scale=1; $@"
+    M_SCALE=${M_SCALE-1}
+    bc 2>/dev/null <<< "scale=$M_SCALE; $@"
 }
 
 function get_device_counters()
@@ -264,6 +265,7 @@ function config_null_1()
 {
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
+    IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
     rpc_send framework_start_init
@@ -276,7 +278,8 @@ function config_null_1()
 	     --io-unit-size 131072 \
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
-	     --max-srq-depth 4096
+	     --max-srq-depth 4096 \
+	     --io-pacer-period $IO_PACER_PERIOD
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
@@ -300,6 +303,7 @@ function config_null_16()
 {
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
+    IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
     rpc_send framework_start_init
@@ -312,7 +316,8 @@ function config_null_16()
 	     --io-unit-size 131072 \
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
-	     --max-srq-depth 4096
+	     --max-srq-depth 4096 \
+	     --io-pacer-period $IO_PACER_PERIOD
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
@@ -337,7 +342,8 @@ function config_null_16()
 function config_nvme()
 {
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
-    BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
+    BUF_CACHE_SIZE=${BUF_CACHE_SIZE-128}
+    IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
     local DISKS="05 06 07 08 09 0a 0b 0c 0f 10 11 12 13 14 15 16"
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
@@ -351,7 +357,8 @@ function config_nvme()
 	     --io-unit-size 131072 \
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
-	     --max-srq-depth 4096
+	     --max-srq-depth 4096 \
+	     --io-pacer-period $IO_PACER_PERIOD
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
@@ -381,8 +388,9 @@ function config_nvme()
 function config_nvme_split3_delay()
 {
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
-    BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
+    BUF_CACHE_SIZE=${BUF_CACHE_SIZE-128}
     NUM_DELAY_BDEVS=${NUM_DELAY_BDEVS-0}
+    IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
     local DISKS="05 06 07 08 09 0a 0b 0c 0f 10 11 12 13 14 15 16"
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
@@ -396,7 +404,8 @@ function config_nvme_split3_delay()
 	     --io-unit-size 131072 \
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
-	     --max-srq-depth 4096
+	     --max-srq-depth 4096 \
+	     --io-pacer-period $IO_PACER_PERIOD
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
@@ -671,6 +680,27 @@ function test_13()
 	    fi
 	    stop_tgt
 	done
+    done
+}
+
+
+function test_14()
+{
+    local CPU_MASK=0xFF
+    local NUM_CORES=8
+
+    for io_pacer in 0 3 3.5 4 4.5 5 5.5 6 7; do
+	echo "CPU mask $CPU_MASK, num cores $NUM_CORES, IO pacer period $io_pacer"
+	start_tgt $CPU_MASK
+	IO_PACER_PERIOD="$(M_SCALE=0 m $io_pacer \* $NUM_CORES / 1)" config_nvme
+	if [ 0 -eq "$KERNEL_DRIVER" ]; then
+	    QD_LIST="32 256 1024 2048" FIO_JOB=fio-16ns basic_test
+	else
+	    connect_hosts $HOSTS
+	    FIO_JOB=fio-kernel-16ns basic_test
+	    disconnect_hosts $HOSTS
+	fi
+	stop_tgt
     done
 }
 
