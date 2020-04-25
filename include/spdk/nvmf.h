@@ -84,6 +84,7 @@ struct spdk_nvmf_transport_opts {
 	bool		c2h_success;
 	bool		dif_insert_or_strip;
 	uint32_t	sock_priority;
+	uint32_t        io_pacer_period;
 };
 
 struct spdk_nvmf_poll_group_stat {

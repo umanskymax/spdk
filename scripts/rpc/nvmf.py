@@ -106,7 +106,8 @@ def nvmf_create_transport(client,
                           no_srq=False,
                           c2h_success=True,
                           dif_insert_or_strip=None,
-                          sock_priority=None):
+                          sock_priority=None,
+                          io_pacer_period=None):
     """NVMf Transport Create options.
 
     Args:
@@ -123,6 +124,7 @@ def nvmf_create_transport(client,
         no_srq: Boolean flag to disable SRQ even for devices that support it - RDMA specific (optional)
         c2h_success: Boolean flag to disable the C2H success optimization - TCP specific (optional)
         dif_insert_or_strip: Boolean flag to enable DIF insert/strip for I/O - TCP specific (optional)
+        io_pacer_period: IO pacer period - RDMA specific (optional)
 
     Returns:
         True or False
@@ -158,6 +160,8 @@ def nvmf_create_transport(client,
         params['dif_insert_or_strip'] = dif_insert_or_strip
     if sock_priority:
         params['sock_priority'] = sock_priority
+    if io_pacer_period is not None:
+        params['io_pacer_period'] = io_pacer_period
     return client.call('nvmf_create_transport', params)
 
 

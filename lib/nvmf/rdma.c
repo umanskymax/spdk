@@ -44,6 +44,8 @@
 #include "spdk/string.h"
 #include "spdk/trace.h"
 #include "spdk/util.h"
+#include "nvmf_internal.h"
+#include "io_pacer.h"
 
 #include "spdk_internal/assert.h"
 #include "spdk_internal/log.h"
@@ -88,6 +90,9 @@ enum spdk_nvmf_rdma_request_state {
 
 	/* Initial state when request first received */
 	RDMA_REQUEST_STATE_NEW,
+
+	/* The request is queued by IO pacing mechanism */
+	RDMA_REQUEST_STATE_IO_PACING,
 
 	/* The request is queued until a data buffer is available. */
 	RDMA_REQUEST_STATE_NEED_BUFFER,
@@ -463,6 +468,7 @@ struct spdk_nvmf_rdma_poll_group {
 	struct spdk_nvmf_rdma_poll_group_stat		stat;
 	TAILQ_HEAD(, spdk_nvmf_rdma_poller)		pollers;
 	TAILQ_ENTRY(spdk_nvmf_rdma_poll_group)		link;
+	struct spdk_io_pacer				*pacer;
 	/*
 	 * buffers which are split across multiple RDMA
 	 * memory regions cannot be used by this transport.
@@ -2015,6 +2021,25 @@ nvmf_rdma_request_free(struct spdk_nvmf_rdma_request *rdma_req,
 	rdma_req->state = RDMA_REQUEST_STATE_FREE;
 }
 
+static void
+nvmf_rdma_io_pacer_pop_cb(void *io)
+{
+	struct spdk_nvmf_rdma_request *rdma_req;
+	struct spdk_nvmf_rdma_qpair *rqpair;
+	struct spdk_nvmf_rdma_transport *rtransport;
+
+	rdma_req = SPDK_CONTAINEROF(io, struct spdk_nvmf_rdma_request, state_link);
+	rqpair = SPDK_CONTAINEROF(rdma_req->req.qpair, struct spdk_nvmf_rdma_qpair, qpair);
+	rtransport = SPDK_CONTAINEROF(rqpair->qpair.transport,
+				      struct spdk_nvmf_rdma_transport,
+				      transport);
+	rdma_req->state = RDMA_REQUEST_STATE_NEED_BUFFER;
+	STAILQ_INSERT_TAIL(&rqpair->poller->group->group.pending_buf_queue,
+			   &rdma_req->req,
+			   buf_link);
+	spdk_nvmf_rdma_request_process(rtransport, rdma_req);
+}
+
 bool
 spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			       struct spdk_nvmf_rdma_request *rdma_req)
@@ -2092,9 +2117,24 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 				break;
 			}
 
-			rdma_req->state = RDMA_REQUEST_STATE_NEED_BUFFER;
-			STAILQ_INSERT_TAIL(&rgroup->group.pending_buf_queue, &rdma_req->req, buf_link);
+			rdma_req->state = RDMA_REQUEST_STATE_IO_PACING;
 			break;
+
+		case RDMA_REQUEST_STATE_IO_PACING:
+			if ((rgroup->pacer == NULL) ||
+			    spdk_unlikely(spdk_nvmf_qpair_is_admin_queue(&rqpair->qpair)) ||
+			    spdk_unlikely(rdma_req->req.cmd->nvmf_cmd.opcode == SPDK_NVME_OPC_FABRIC)) {
+				rdma_req->state = RDMA_REQUEST_STATE_NEED_BUFFER;
+				STAILQ_INSERT_TAIL(&rgroup->group.pending_buf_queue, &rdma_req->req, buf_link);
+				break;
+			}
+
+			spdk_io_pacer_push(rgroup->pacer,
+					   ((uint64_t)rqpair->qpair.ctrlr->subsys->id << 32) +
+					   rdma_req->req.cmd->nvme_cmd.nsid,
+					   &rdma_req->state_link);
+			break;
+
 		case RDMA_REQUEST_STATE_NEED_BUFFER:
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_NEED_BUFFER, 0, 0,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
@@ -3403,6 +3443,37 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 		poller->num_cqe = num_cqe;
 	}
 
+	if (0 != transport->opts.io_pacer_period) {
+		rgroup->pacer = spdk_io_pacer_create(transport->opts.io_pacer_period,
+						     nvmf_rdma_io_pacer_pop_cb);
+		if (!rgroup->pacer) {
+			SPDK_ERRLOG("Failed to create IO pacer\n");
+			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
+			pthread_mutex_unlock(&rtransport->lock);
+			return NULL;
+		}
+	}
+
+	/* @todo: there is no good place to create queues. */
+#if 0
+	for (uint32_t subsysid = 0; subsysid < rgroup->group.group->num_sgroups; ++subsysid) {
+		struct spdk_nvmf_subsystem_poll_group *sgroup = &rgroup->group.group->sgroups[subsysid];
+		uint32_t nsid;
+		int rc;
+
+		for (nsid = 1; nsid <= sgroup->num_ns; ++nsid) {
+			rc = spdk_io_pacer_create_queue(rgroup->pacer, ((uint64_t)subsysid << 32) + nsid);
+			if (rc != 0) {
+				SPDK_ERRLOG("Failed to create IO pacer queue: rc %d, subsys %u, ns %u\n",
+					    rc, subsysid, nsid);
+				spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
+				pthread_mutex_unlock(&rtransport->lock);
+				return NULL;
+			}
+		}
+	}
+#endif
+
 	TAILQ_INSERT_TAIL(&rtransport->poll_groups, rgroup, link);
 	if (rtransport->conn_sched.next_admin_pg == NULL) {
 		rtransport->conn_sched.next_admin_pg = rgroup;
@@ -3497,6 +3568,10 @@ spdk_nvmf_rdma_poll_group_destroy(struct spdk_nvmf_transport_poll_group *group)
 		 * calls this function directly in a failure path. */
 		free(rgroup);
 		return;
+	}
+
+	if (rgroup->pacer) {
+		spdk_io_pacer_destroy(rgroup->pacer);
 	}
 
 	rtransport = SPDK_CONTAINEROF(rgroup->group.transport, struct spdk_nvmf_rdma_transport, transport);
