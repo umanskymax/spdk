@@ -106,6 +106,7 @@ struct spdk_nvmf_rdma_device_stat {
 
 struct spdk_nvmf_transport_poll_group_stat {
 	spdk_nvme_transport_type_t trtype;
+	uint32_t buffers_allocated;
 	union {
 		struct {
 			uint64_t pending_data_buffer;

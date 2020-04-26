@@ -462,6 +462,7 @@ spdk_nvmf_request_free_buffers(struct spdk_nvmf_request *req,
 		req->buffers[i] = NULL;
 		req->iov[i].iov_len = 0;
 	}
+	group->buffers_allocated -= req->iovcnt;
 	req->data_from_pool = false;
 }
 
@@ -501,6 +502,7 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 	while (i < num_buffers) {
 		if (!(STAILQ_EMPTY(&group->buf_cache))) {
 			group->buf_cache_count--;
+			group->buffers_allocated++;
 			buffer = STAILQ_FIRST(&group->buf_cache);
 			STAILQ_REMOVE_HEAD(&group->buf_cache, link);
 			assert(buffer != NULL);
@@ -515,6 +517,8 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 			for (j = 0; j < num_buffers - i; j++) {
 				length = nvmf_request_set_buffer(req, buffers[j], length, io_unit_size);
 			}
+
+			group->buffers_allocated += num_buffers - i;
 			i += num_buffers - i;
 		}
 	}

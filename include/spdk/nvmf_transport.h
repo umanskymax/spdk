@@ -138,6 +138,7 @@ struct spdk_nvmf_transport_poll_group {
 	STAILQ_HEAD(, spdk_nvmf_transport_pg_cache_buf)			buf_cache;
 	uint32_t							buf_cache_count;
 	uint32_t							buf_cache_size;
+	uint32_t							buffers_allocated;
 	struct spdk_nvmf_poll_group					*group;
 	TAILQ_ENTRY(spdk_nvmf_transport_poll_group)			link;
 };

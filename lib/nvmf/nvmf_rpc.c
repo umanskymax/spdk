@@ -1861,6 +1861,7 @@ write_nvmf_transport_stats(struct spdk_json_write_ctx *w,
 	spdk_json_write_object_begin(w);
 	spdk_json_write_named_string(w, "trtype",
 				     spdk_nvme_transport_id_trtype_str(stat->trtype));
+	spdk_json_write_named_uint64(w, "buffers_allocated", stat->buffers_allocated);
 	switch (stat->trtype) {
 	case SPDK_NVME_TRANSPORT_RDMA:
 		spdk_json_write_named_uint64(w, "pending_data_buffer", stat->rdma.pending_data_buffer);

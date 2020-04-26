@@ -2071,6 +2071,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 		} else if (rdma_req->state == RDMA_REQUEST_STATE_DATA_TRANSFER_TO_HOST_PENDING) {
 			STAILQ_REMOVE(&rqpair->pending_rdma_write_queue, rdma_req, spdk_nvmf_rdma_request, state_link);
 		}
+		/* @todo: handle IO_PACING state */
 		rdma_req->state = RDMA_REQUEST_STATE_COMPLETED;
 	}
 
@@ -4198,6 +4199,7 @@ spdk_nvmf_rdma_poll_group_get_stat(struct spdk_nvmf_tgt *tgt,
 				return -ENOMEM;
 			}
 			(*stat)->trtype = SPDK_NVME_TRANSPORT_RDMA;
+			(*stat)->buffers_allocated = tgroup->buffers_allocated;
 
 			rgroup = SPDK_CONTAINEROF(tgroup, struct spdk_nvmf_rdma_poll_group, group);
 			/* Count devices to allocate enough memory */
