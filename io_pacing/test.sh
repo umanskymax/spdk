@@ -72,8 +72,8 @@ function print_report()
     echo ""
 
     echo Results
-    local FORMAT="%-30s | %-10s | %-10s | %-15s | %-15s | %-15s | %-15s\n"
-    printf "$FORMAT" "Host" "kIOPS" "BW,Gb/s" "AVG_LAT,us" "Wire BW,Gb/s" "BW STDDEV" "L3 Hit Rate, %"
+    local FORMAT="%-30s | %-10s | %-10s | %-15s | %-15s | %-15s | %-15s | %-15s\n"
+    printf "$FORMAT" "Host" "kIOPS" "BW,Gb/s" "AVG_LAT,us" "Wire BW,Gb/s" "BW STDDEV" "L3 Hit Rate, %" "Bufs in-flight"
     printf "$FORMAT" | tr " " "-"
 
     local count=0
@@ -99,8 +99,13 @@ function print_report()
 	    L3_HIT_RATE=$(m $L3_HIT_RATE + $l3hr)
 	done
 	L3_HIT_RATE=$(m $L3_HIT_RATE/4)
+
+	local BUFFERS_ALLOCATED=0
+	for ba in $(jq .poll_groups[].transports[].buffers_allocated $OUT_PATH/nvmf_stats.log); do
+	    BUFFERS_ALLOCATED=$((BUFFERS_ALLOCATED + ba))
+	done
     fi
-    printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE" "$(m $SUM_BW_STDDEV_R*8/1000^2)" "$L3_HIT_RATE"
+    printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE" "$(m $SUM_BW_STDDEV_R*8/1000^2)" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED"
 }
 
 function set_fio_params()
@@ -142,6 +147,8 @@ function run_test()
 {
     local HOSTS=$@
 
+    echo "" > $OUT_PATH/nvmf_stats.log
+
     local PIDS=
     for host in $HOSTS; do
 	run_fio $host > $OUT_PATH/fio-$host.log 2>&1 &
@@ -154,6 +161,7 @@ function run_test()
     if [ "1" == "$ENABLE_DEVICE_COUNTERS" ]; then
 	get_device_counters
 	get_bf_counters
+	RPC_OUT=$OUT_PATH/nvmf_stats.log rpc nvmf_get_stats
 	echo -n "-"
     fi
     progress_bar $((TEST_TIME*2/3-4))
@@ -211,7 +219,8 @@ function disconnect_hosts()
 
 function rpc()
 {
-    ssh $TARGET sudo $TARGET_SPDK_PATH/scripts/rpc.py $@ >> $OUT_PATH/rpc.log 2>&1
+    RPC_OUT=${RPC_OUT-"$OUT_PATH/rpc.log"}
+    ssh $TARGET sudo $TARGET_SPDK_PATH/scripts/rpc.py $@ >> $RPC_OUT 2>&1
 }
 
 function rpc_start()
@@ -244,8 +253,8 @@ function basic_test()
 	QD_LIST=${QD_LIST-"2 4 8 16 32"}
     fi
     REPEAT=${REPEAT-1}
-    local FORMAT="| %-10s | %-10s | %-10s | %-15s | %-10s | %-15s\n"
-    printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV" "L3 Hit Rate"
+    local FORMAT="| %-10s | %-10s | %-10s | %-15s | %-10s | %-15s | %-25s\n"
+    printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV" "L3 Hit Rate" "Bufs in-flight (MiB)"
 
     for qd in $QD_LIST; do
 	for rep in $(seq $REPEAT); do
@@ -256,7 +265,8 @@ function basic_test()
 	    WIRE_BW="$(echo "$OUT" | grep Total | awk '{print $9}')"
 	    BW_STDDEV="$(echo "$OUT" | grep Total | awk '{print $11}')"
 	    L3_HIT_RATE="$(echo "$OUT" | grep Total | awk '{print $13}')"
-	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE"
+	    BUFFERS_ALLOCATED="$(echo "$OUT" | grep Total | awk '{print $15}')"
+	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED ($(m $BUFFERS_ALLOCATED*128/1024))"
 	done
     done
 }
