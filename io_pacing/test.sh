@@ -104,6 +104,7 @@ function print_report()
 	for ba in $(jq .poll_groups[].transports[].buffers_allocated $OUT_PATH/nvmf_stats.log); do
 	    BUFFERS_ALLOCATED=$((BUFFERS_ALLOCATED + ba))
 	done
+	BUFFERS_ALLOCATED=$(m $BUFFERS_ALLOCATED/3)
     fi
     printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE" "$(m $SUM_BW_STDDEV_R*8/1000^2)" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED"
 }
@@ -156,15 +157,20 @@ function run_test()
 	sleep 1
     done
 
-    # Wait 1/3, get counters, wait 2/3
-    progress_bar $((TEST_TIME/3))
     if [ "1" == "$ENABLE_DEVICE_COUNTERS" ]; then
+	# Get nvmf stats 3 times and other stats one time
+	progress_bar $((TEST_TIME/5))
+	RPC_OUT=$OUT_PATH/nvmf_stats.log rpc nvmf_get_stats
+	progress_bar $((TEST_TIME/5))
 	get_device_counters
 	get_bf_counters
 	RPC_OUT=$OUT_PATH/nvmf_stats.log rpc nvmf_get_stats
 	echo -n "-"
+	progress_bar $((TEST_TIME/5))
+	RPC_OUT=$OUT_PATH/nvmf_stats.log rpc nvmf_get_stats
+    else
+	progress_bar $((TEST_TIME))
     fi
-    progress_bar $((TEST_TIME*2/3-4))
     echo "!"
     wait $PIDS
 }
