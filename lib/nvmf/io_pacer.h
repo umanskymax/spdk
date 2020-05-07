@@ -29,6 +29,8 @@
  *   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef IO_PACER_H
+#define IO_PACER_H
 
 #include "spdk/stdinc.h"
 
@@ -40,3 +42,5 @@ void spdk_io_pacer_destroy(struct spdk_io_pacer *pacer);
 int spdk_io_pacer_create_queue(struct spdk_io_pacer *pacer, uint64_t key);
 int spdk_io_pacer_destroy_queue(struct spdk_io_pacer *pacer, uint64_t key);
 int spdk_io_pacer_push(struct spdk_io_pacer *pacer, uint64_t key, void *io);
+
+#endif /* IO_PACER_H */

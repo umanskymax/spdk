@@ -49,12 +49,13 @@ struct io_pacer_queue {
 };
 
 struct spdk_io_pacer {
-	uint32_t period_us;
+	uint64_t period_ticks;
 	uint32_t max_queues;
 	spdk_io_pacer_pop_cb pop_cb;
 	uint32_t num_queues;
 	uint32_t next_queue;
 	uint64_t num_ios;
+	uint64_t last_tick;
 	struct io_pacer_queue *queues;
 	struct spdk_poller *poller;
 };
@@ -87,6 +88,13 @@ io_pacer_poll(void *arg)
 	struct io_pacer_queue_entry *entry;
 	uint32_t next_queue = pacer->next_queue;
 
+	const uint64_t cur_tick = spdk_get_ticks();
+	const uint64_t ticks_diff = cur_tick - pacer->last_tick;
+
+	if (ticks_diff < pacer->period_ticks) {
+		return 0;
+	}
+	pacer->last_tick = cur_tick - ticks_diff % pacer->period_ticks;
 	if (pacer->num_ios == 0) {
 		return 0;
 	}
@@ -120,17 +128,19 @@ spdk_io_pacer_create(uint32_t period_us, spdk_io_pacer_pop_cb pop_cb)
 		return NULL;
 	}
 
-	pacer->period_us = period_us;
+	/* @todo: may overflow? */
+	pacer->period_ticks = period_us * spdk_get_ticks_hz() / SPDK_SEC_TO_USEC;
 	pacer->pop_cb = pop_cb;
-	pacer->poller = SPDK_POLLER_REGISTER(io_pacer_poll, (void *)pacer, pacer->period_us);
+	pacer->last_tick = spdk_get_ticks();
+	pacer->poller = SPDK_POLLER_REGISTER(io_pacer_poll, (void *)pacer, 0);
 	if (!pacer->poller) {
 		SPDK_ERRLOG("Failed to create poller for IO pacer\n");
 		spdk_io_pacer_destroy(pacer);
 		return NULL;
 	}
 
-	SPDK_NOTICELOG("Created IO pacer %p: period %u, max_queues %u\n",
-		       pacer, period_us, pacer->max_queues);
+	SPDK_NOTICELOG("Created IO pacer %p: period_us %u, period_ticks %lu, max_queues %u\n",
+		       pacer, period_us, pacer->period_ticks, pacer->max_queues);
 
 	return pacer;
 }
