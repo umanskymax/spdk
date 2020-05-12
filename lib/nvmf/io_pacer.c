@@ -124,7 +124,7 @@ io_pacer_poll(void *arg)
 }
 
 struct spdk_io_pacer *
-spdk_io_pacer_create(uint32_t period_us, spdk_io_pacer_pop_cb pop_cb)
+spdk_io_pacer_create(uint32_t period_ns, spdk_io_pacer_pop_cb pop_cb)
 {
 	struct spdk_io_pacer *pacer;
 
@@ -137,7 +137,7 @@ spdk_io_pacer_create(uint32_t period_us, spdk_io_pacer_pop_cb pop_cb)
 	}
 
 	/* @todo: may overflow? */
-	pacer->period_ticks = period_us * spdk_get_ticks_hz() / SPDK_SEC_TO_USEC;
+	pacer->period_ticks = (period_ns * spdk_get_ticks_hz()) / SPDK_SEC_TO_NSEC;
 	pacer->pop_cb = pop_cb;
 	pacer->first_tick = spdk_get_ticks();
 	pacer->last_tick = spdk_get_ticks();
@@ -148,8 +148,8 @@ spdk_io_pacer_create(uint32_t period_us, spdk_io_pacer_pop_cb pop_cb)
 		return NULL;
 	}
 
-	SPDK_NOTICELOG("Created IO pacer %p: period_us %u, period_ticks %lu, max_queues %u\n",
-		       pacer, period_us, pacer->period_ticks, pacer->max_queues);
+	SPDK_NOTICELOG("Created IO pacer %p: period_ns %u, period_ticks %lu, max_queues %u\n",
+		       pacer, period_ns, pacer->period_ticks, pacer->max_queues);
 
 	return pacer;
 }
