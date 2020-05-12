@@ -9,6 +9,7 @@ HOSTS="r-dcs79 spdk03.swx.labs.mlnx"
 TARGET="ubuntu@spdk-tgt-bw-03"
 TARGET_ADDRS="1.1.103.1 2.2.103.1"
 FIO_JOB=${FIO_JOB-"fio-16ns"}
+FIO_RAMP_TIME=${FIO_RAMP_TIME-5}
 KERNEL_DRIVER=${KERNEL_DRIVER-0}
 
 # Paths configuration
@@ -139,11 +140,15 @@ function run_fio()
     local SSH=
     [ "$HOST" != "$HOSTNAME" ] && SSH="ssh $HOST"
 
-    local FIO_PARAMS="--stats=1 --group_reporting=1 --thread=1 --direct=1 --norandommap\
-    --output-format=json --output=$OUT_PATH/fio-$HOST.json \
-    --time_based=1 --runtime=$TEST_TIME --ramp_time=3 \
+    local FIO_PARAMS="--stats=1 --group_reporting=1 --thread=1 --direct=1 --norandommap \
+    --time_based=1 --runtime=$TEST_TIME --ramp_time=$FIO_RAMP_TIME --file_service_type=roundrobin:1 \
     --readwrite=$RW --bs=$IO_SIZE --iodepth=$QD"
 
+    [ -z "$FIO_NO_JSON" ] && FIO_PARAMS="--output-format=json --output=$OUT_PATH/fio-$HOST.json $FIO_PARAMS"
+
+    echo "$HOST"
+    echo "$JOB"
+    echo "$FIO_PARAMS"
     $SSH sudo LD_PRELOAD=$SPDK_PATH/install-$HOST/lib/fio_plugin $FIO_PATH/install-$HOST/bin/fio $FIO_PARAMS $JOB
 }
 
@@ -168,6 +173,8 @@ function run_test()
 	PIDS="$PIDS $!"
 	sleep 1
     done
+
+    progress_bar $FIO_RAMP_TIME
 
     if [ "1" == "$ENABLE_DEVICE_COUNTERS" ]; then
 	# Get nvmf stats 3 times and other stats one time
@@ -736,6 +743,25 @@ function test_14()
 	fi
 	stop_tgt
     done
+}
+
+function test_tgt()
+{
+    local CPU_MASK=0xF0
+    local NUM_CORES=4
+    local IO_PACER="6000"
+
+    start_tgt $CPU_MASK
+    IO_PACER_PERIOD="$(M_SCALE=0 m $IO_PACER \* $NUM_CORES / 1)" config_nvme
+    echo "Running"
+    progress_bar $TEST_TIME
+    echo "Stopping"
+    stop_tgt
+}
+
+function test_fio()
+{
+    QD=2048 FIO_NO_JSON=1 FIO_JOB=fio-16ns run_fio $HOSTNAME
 }
 
 if [ -z "$1" ]; then
