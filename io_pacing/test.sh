@@ -727,15 +727,16 @@ function test_13()
 
 function test_14()
 {
-    local CPU_MASK=0xFF
-    local NUM_CORES=8
+    local CPU_MASK=0xF0
+    local NUM_CORES=4
 
-    for io_pacer in 0 3 3.5 4 4.5 5 5.5 6 7; do
-	echo "CPU mask $CPU_MASK, num cores $NUM_CORES, IO pacer period $io_pacer"
+    for io_pacer in 5600 5650 5700 5750 5800 6000; do
+	ADJUSTED_PERIOD="$(M_SCALE=0 m $io_pacer*$NUM_CORES/1)"
+	echo "CPU mask $CPU_MASK, num cores $NUM_CORES, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD"
 	start_tgt $CPU_MASK
-	IO_PACER_PERIOD="$(M_SCALE=0 m $io_pacer \* $NUM_CORES / 1)" config_nvme
+	IO_PACER_PERIOD=$ADJUSTED_PERIOD config_nvme
 	if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	    QD_LIST="32 256 1024 2048" FIO_JOB=fio-16ns basic_test
+	    QD_LIST="256 1024 2048" FIO_JOB=fio-16ns basic_test
 	else
 	    connect_hosts $HOSTS
 	    FIO_JOB=fio-kernel-16ns basic_test
