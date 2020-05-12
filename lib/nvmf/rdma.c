@@ -3648,10 +3648,13 @@ spdk_nvmf_rdma_poll_group_add(struct spdk_nvmf_transport_poll_group *group,
 
 	spdk_nvmf_rdma_update_ibv_state(rqpair);
 
-	SPDK_NOTICELOG("Added QP to poll group: QID %u, device %s, core %d\n",
+	SPDK_NOTICELOG("Added QP to poll group: QID %u, device %s, core %d, queue_depth %u, send_depth %u, read_depth %u\n",
 		       rqpair->qpair.qid,
 		       ibv_get_device_name(rqpair->device->context->device),
-		       spdk_env_get_current_core());
+		       spdk_env_get_current_core(),
+		       rqpair->max_queue_depth,
+		       rqpair->max_send_depth,
+		       rqpair->max_read_depth);
 
 	return 0;
 }

@@ -1671,6 +1671,8 @@ nvme_pcie_ctrlr_create_io_qpair(struct spdk_nvme_ctrlr *ctrlr, uint16_t qid,
 		return NULL;
 	}
 
+	SPDK_NOTICELOG("Created NVMe PCIe QP: QID %u, queue depth %u, num requests %u, num_entries %u\n",
+		       qid, opts->io_queue_size, opts->io_queue_requests, pqpair->num_entries);
 	return qpair;
 }
 
