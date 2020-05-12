@@ -72,8 +72,8 @@ function print_report()
     echo ""
 
     echo Results
-    local FORMAT="%-30s | %-10s | %-10s | %-15s | %-15s | %-15s | %-15s | %-15s\n"
-    printf "$FORMAT" "Host" "kIOPS" "BW,Gb/s" "AVG_LAT,us" "Wire BW,Gb/s" "BW STDDEV" "L3 Hit Rate, %" "Bufs in-flight"
+    local FORMAT="%-30s | %-10s | %-10s | %-15s | %-15s | %-15s | %-15s | %-15s | %-15s\n"
+    printf "$FORMAT" "Host" "kIOPS" "BW,Gb/s" "AVG_LAT,us" "Wire BW,Gb/s" "BW STDDEV" "L3 Hit Rate, %" "Bufs in-flight" "Pacer period, us"
     printf "$FORMAT" | tr " " "-"
 
     local count=0
@@ -105,8 +105,20 @@ function print_report()
 	    BUFFERS_ALLOCATED=$((BUFFERS_ALLOCATED + ba))
 	done
 	BUFFERS_ALLOCATED=$(m $BUFFERS_ALLOCATED/3)
+
+	local TOTAL_TICKS=0
+	for tt in $(jq .poll_groups[].transports[].io_pacer.total_ticks $OUT_PATH/nvmf_stats_final.log); do
+	    TOTAL_TICKS=$((TOTAL_TICKS + tt))
+	done
+	local TOTAL_POLLS=0
+	for tp in $(jq .poll_groups[].transports[].io_pacer.polls $OUT_PATH/nvmf_stats_final.log); do
+	    TOTAL_POLLS=$((TOTAL_POLLS + tp))
+	done
+	local TICK_RATE=$(jq .tick_rate $OUT_PATH/nvmf_stats_final.log)
+	local PACER_PERIOD=$(m 10^6*$TOTAL_TICKS/$TICK_RATE/$TOTAL_POLLS)
+
     fi
-    printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE" "$(m $SUM_BW_STDDEV_R*8/1000^2)" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED"
+    printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE" "$(m $SUM_BW_STDDEV_R*8/1000^2)" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED" "$PACER_PERIOD"
 }
 
 function set_fio_params()
@@ -173,6 +185,15 @@ function run_test()
     fi
     echo "!"
     wait $PIDS
+
+    # Collect some stats
+    echo "" > $OUT_PATH/thread_stats_final.log
+    echo "" > $OUT_PATH/nvmf_stats_final.log
+    echo "" > $OUT_PATH/bdev_stats_final.log
+
+    RPC_OUT=$OUT_PATH/thread_stats_final.log rpc thread_get_stats
+    RPC_OUT=$OUT_PATH/nvmf_stats_final.log rpc nvmf_get_stats
+    RPC_OUT=$OUT_PATH/bdev_stats_final.log rpc bdev_get_iostat
 }
 
 function start_tgt()
@@ -185,11 +206,6 @@ function start_tgt()
 
 function stop_tgt()
 {
-    # Collect some stats
-    rpc thread_get_stats
-    rpc nvmf_get_stats
-    rpc bdev_get_iostat
-
     ssh $TARGET 'sudo kill -15 $(pidof spdk_tgt)' >> $OUT_PATH/rpc.log 2>&1
     sleep 5
 }
@@ -259,8 +275,8 @@ function basic_test()
 	QD_LIST=${QD_LIST-"2 4 8 16 32"}
     fi
     REPEAT=${REPEAT-1}
-    local FORMAT="| %-10s | %-10s | %-10s | %-15s | %-10s | %-15s | %-25s\n"
-    printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV" "L3 Hit Rate" "Bufs in-flight (MiB)"
+    local FORMAT="| %-10s | %-10s | %-10s | %-15s | %-10s | %-15s | %-25s | %-15s\n"
+    printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV" "L3 Hit Rate" "Bufs in-flight (MiB)" "Pacer period, us"
 
     for qd in $QD_LIST; do
 	for rep in $(seq $REPEAT); do
@@ -272,7 +288,8 @@ function basic_test()
 	    BW_STDDEV="$(echo "$OUT" | grep Total | awk '{print $11}')"
 	    L3_HIT_RATE="$(echo "$OUT" | grep Total | awk '{print $13}')"
 	    BUFFERS_ALLOCATED="$(echo "$OUT" | grep Total | awk '{print $15}')"
-	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED ($(m $BUFFERS_ALLOCATED*128/1024))"
+	    PACER_PERIOD="$(echo "$OUT" | grep Total | awk '{print $17}')"
+	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED ($(m $BUFFERS_ALLOCATED*128/1024))" "$PACER_PERIOD"
 	done
     done
 }
