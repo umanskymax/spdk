@@ -33,6 +33,7 @@
 #define IO_PACER_H
 
 #include "spdk/stdinc.h"
+#include "spdk/nvmf.h"
 
 struct spdk_io_pacer;
 typedef void (*spdk_io_pacer_pop_cb)(void *io);
@@ -42,5 +43,7 @@ void spdk_io_pacer_destroy(struct spdk_io_pacer *pacer);
 int spdk_io_pacer_create_queue(struct spdk_io_pacer *pacer, uint64_t key);
 int spdk_io_pacer_destroy_queue(struct spdk_io_pacer *pacer, uint64_t key);
 int spdk_io_pacer_push(struct spdk_io_pacer *pacer, uint64_t key, void *io);
+void spdk_io_pacer_get_stat(const struct spdk_io_pacer *pacer,
+			    struct spdk_nvmf_transport_poll_group_stat *stat);
 
 #endif /* IO_PACER_H */

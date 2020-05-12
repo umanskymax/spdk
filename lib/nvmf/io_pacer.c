@@ -55,7 +55,9 @@ struct spdk_io_pacer {
 	uint32_t num_queues;
 	uint32_t next_queue;
 	uint64_t num_ios;
+	uint64_t first_tick;
 	uint64_t last_tick;
+	struct spdk_nvmf_io_pacer_stat stat;
 	struct io_pacer_queue *queues;
 	struct spdk_poller *poller;
 };
@@ -91,11 +93,16 @@ io_pacer_poll(void *arg)
 	const uint64_t cur_tick = spdk_get_ticks();
 	const uint64_t ticks_diff = cur_tick - pacer->last_tick;
 
+	pacer->stat.calls++;
 	if (ticks_diff < pacer->period_ticks) {
 		return 0;
 	}
+	pacer->stat.total_ticks = cur_tick - pacer->first_tick;
 	pacer->last_tick = cur_tick - ticks_diff % pacer->period_ticks;
+	pacer->stat.polls++;
+
 	if (pacer->num_ios == 0) {
+		pacer->stat.no_ios++;
 		return 0;
 	}
 
@@ -112,6 +119,7 @@ io_pacer_poll(void *arg)
 	pacer->num_ios--;
 	pacer->next_queue = next_queue;
 	pacer->pop_cb(entry);
+	pacer->stat.ios++;
 	return 1;
 }
 
@@ -131,6 +139,7 @@ spdk_io_pacer_create(uint32_t period_us, spdk_io_pacer_pop_cb pop_cb)
 	/* @todo: may overflow? */
 	pacer->period_ticks = period_us * spdk_get_ticks_hz() / SPDK_SEC_TO_USEC;
 	pacer->pop_cb = pop_cb;
+	pacer->first_tick = spdk_get_ticks();
 	pacer->last_tick = spdk_get_ticks();
 	pacer->poller = SPDK_POLLER_REGISTER(io_pacer_poll, (void *)pacer, 0);
 	if (!pacer->poller) {
@@ -242,4 +251,17 @@ spdk_io_pacer_push(struct spdk_io_pacer *pacer, uint64_t key, void *io)
 	STAILQ_INSERT_TAIL(&queue->queue, entry, link);
 	pacer->num_ios++;
 	return 0;
+}
+
+void
+spdk_io_pacer_get_stat(const struct spdk_io_pacer *pacer,
+		       struct spdk_nvmf_transport_poll_group_stat *stat)
+{
+	if (pacer && stat) {
+		stat->io_pacer.total_ticks = pacer->stat.total_ticks;
+		stat->io_pacer.polls = pacer->stat.polls;
+		stat->io_pacer.ios = pacer->stat.ios;
+		stat->io_pacer.calls = pacer->stat.calls;
+		stat->io_pacer.no_ios = pacer->stat.no_ios;
+	}
 }

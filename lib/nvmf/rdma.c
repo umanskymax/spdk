@@ -4202,6 +4202,8 @@ spdk_nvmf_rdma_poll_group_get_stat(struct spdk_nvmf_tgt *tgt,
 			(*stat)->buffers_allocated = tgroup->buffers_allocated;
 
 			rgroup = SPDK_CONTAINEROF(tgroup, struct spdk_nvmf_rdma_poll_group, group);
+			spdk_io_pacer_get_stat(rgroup->pacer, *stat);
+
 			/* Count devices to allocate enough memory */
 			TAILQ_FOREACH(rpoller, &rgroup->pollers, link) {
 				++num_devices;

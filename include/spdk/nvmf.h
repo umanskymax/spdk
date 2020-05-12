@@ -102,11 +102,19 @@ struct spdk_nvmf_rdma_device_stat {
 	uint64_t pending_free_request;
 	uint64_t pending_rdma_read;
 	uint64_t pending_rdma_write;
+
+struct spdk_nvmf_io_pacer_stat {
+	uint64_t total_ticks;
+	uint64_t polls;
+	uint64_t ios;
+	uint64_t calls;
+	uint64_t no_ios;
 };
 
 struct spdk_nvmf_transport_poll_group_stat {
 	spdk_nvme_transport_type_t trtype;
 	uint32_t buffers_allocated;
+	struct spdk_nvmf_io_pacer_stat io_pacer;
 	union {
 		struct {
 			uint64_t pending_data_buffer;
