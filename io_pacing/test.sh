@@ -290,6 +290,7 @@ function basic_test()
 	    BUFFERS_ALLOCATED="$(echo "$OUT" | grep Total | awk '{print $15}')"
 	    PACER_PERIOD="$(echo "$OUT" | grep Total | awk '{print $17}')"
 	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED ($(m $BUFFERS_ALLOCATED*128/1024))" "$PACER_PERIOD"
+	    ./parse_stats.sh
 	done
     done
 }
