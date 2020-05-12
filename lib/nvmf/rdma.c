@@ -2037,6 +2037,7 @@ nvmf_rdma_io_pacer_pop_cb(void *io)
 	STAILQ_INSERT_TAIL(&rqpair->poller->group->group.pending_buf_queue,
 			   &rdma_req->req,
 			   buf_link);
+	rdma_req->receive_tsc = spdk_get_ticks();
 	spdk_nvmf_rdma_request_process(rtransport, rdma_req);
 }
 
