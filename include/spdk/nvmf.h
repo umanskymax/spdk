@@ -102,6 +102,8 @@ struct spdk_nvmf_rdma_device_stat {
 	uint64_t pending_free_request;
 	uint64_t pending_rdma_read;
 	uint64_t pending_rdma_write;
+	uint64_t req_state_count[14];
+};
 
 struct spdk_nvmf_io_pacer_stat {
 	uint64_t total_ticks;

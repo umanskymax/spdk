@@ -4228,6 +4228,9 @@ spdk_nvmf_rdma_poll_group_get_stat(struct spdk_nvmf_tgt *tgt,
 				device_stat->pending_free_request = rpoller->stat.pending_free_request;
 				device_stat->pending_rdma_read = rpoller->stat.pending_rdma_read;
 				device_stat->pending_rdma_write = rpoller->stat.pending_rdma_write;
+				for (int i = 0; i < rpoller->max_srq_depth; i++) {
+					device_stat->req_state_count[rpoller->resources->reqs[i].state]++;
+				}
 			}
 			return 0;
 		}

@@ -1888,6 +1888,11 @@ write_nvmf_transport_stats(struct spdk_json_write_ctx *w,
 						     stat->rdma.devices[i].pending_rdma_read);
 			spdk_json_write_named_uint64(w, "pending_rdma_write",
 						     stat->rdma.devices[i].pending_rdma_write);
+			spdk_json_write_named_array_begin(w, "req_state_count");
+			for (int j = 0; j < 14; ++j) {
+				spdk_json_write_uint64(w, stat->rdma.devices[i].req_state_count[j]);
+			}
+			spdk_json_write_array_end(w);
 			spdk_json_write_object_end(w);
 		}
 		spdk_json_write_array_end(w);
