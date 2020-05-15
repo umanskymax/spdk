@@ -19,9 +19,11 @@ FIO_JOBS_PATH="$PWD/jobs"
 OUT_PATH="$PWD/out"
 mkdir -p $OUT_PATH
 TARGET_SPDK_PATH="/home/evgeniik/spdk"
+TARGET_BF_COUNTERS="/home/evgeniik/bf_counters.py"
 
 # Other configurations
 ENABLE_DEVICE_COUNTERS=1
+ENABLE_DETAILED_STATS=1
 
 # Internal variables
 
@@ -38,7 +40,7 @@ function get_device_counters()
 
 function get_bf_counters()
 {
-    ssh $TARGET sudo python /home/evgeniik/bf_counters.py > $OUT_PATH/bf_counters.log
+    ssh $TARGET sudo python $TARGET_BF_COUNTERS > $OUT_PATH/bf_counters.log
 }
 
 function parse_fio()
@@ -297,7 +299,9 @@ function basic_test()
 	    BUFFERS_ALLOCATED="$(echo "$OUT" | grep Total | awk '{print $15}')"
 	    PACER_PERIOD="$(echo "$OUT" | grep Total | awk '{print $17}')"
 	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED ($(m $BUFFERS_ALLOCATED*128/1024))" "$PACER_PERIOD"
-	    ./parse_stats.sh
+	    if [ -n "$ENABLE_DETAILED_STATS" ]; then
+		./parse_stats.sh
+	    fi
 	done
     done
 }
