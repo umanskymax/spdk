@@ -59,7 +59,7 @@ Test script is `test.sh`. You will also need job files for fio and target config
 sudo ./scripts/setup.sh
 sudo hugeadm --pool-pages-min DEFAULT:4G
 sudo neohost &
-sudo ./install-$HOSTNAME/bin/spdk_tgt -c configs/nvmf_nvme.conf -m 0xFFFF
+sudo ./install-$HOSTNAME/bin/spdk_tgt -c ./io_pacing/configs/nvmf_nvme.conf -m 0xFFFF
 ~~~
 
 2. Run test script on one of the initiator hosts
