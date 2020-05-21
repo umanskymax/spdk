@@ -1207,6 +1207,10 @@ request_transfer_in(struct spdk_nvmf_request *req)
 	return 0;
 }
 
+static void
+_poller_submit_sends(struct spdk_nvmf_rdma_transport *rtransport,
+		     struct spdk_nvmf_rdma_poller *rpoller);
+
 static int
 request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 {
@@ -1216,7 +1220,9 @@ request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 	struct spdk_nvmf_rdma_qpair	*rqpair;
 	struct spdk_nvme_cpl		*rsp;
 	struct ibv_send_wr		*first = NULL;
-
+#ifdef DISABLE_SEND_WR_BATCHING
+	struct spdk_nvmf_rdma_transport *rtransport;
+#endif
 	*data_posted = 0;
 	qpair = req->qpair;
 	rsp = &req->rsp->nvme_cpl;
@@ -1255,6 +1261,12 @@ request_transfer_out(struct spdk_nvmf_request *req, int *data_posted)
 	nvmf_rdma_qpair_queue_send_wrs(rqpair, first);
 	/* +1 for the rsp wr */
 	rqpair->current_send_depth += num_outstanding_data_wr + 1;
+#ifdef DISABLE_SEND_WR_BATCHING
+	rtransport = SPDK_CONTAINEROF(qpair->transport,
+				      struct spdk_nvmf_rdma_transport,
+				      transport);
+	_poller_submit_sends(rtransport, rqpair->poller);
+#endif
 
 	return 0;
 }
