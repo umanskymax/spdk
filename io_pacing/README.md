@@ -707,401 +707,275 @@ Basic test with rate based IO pacing.
 
 **CPU mask**: 0xF0 (4 cores)
 
-| Pacer period, us | QD   | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us | Pacer IO period, us | NVMf req lat, us |
-|------------------|------|-------|----------|-------------|-----------|-------------|----------------------|------------------|---------------------|------------------|
-| 4.5 (18)         | 32   | 184.7 | 196.3387 | 362.7       | .2        | 99.4        | 24.6 (3.0)           | 18.0             | 22.691              | 310.632          |
-| 4.5 (18)         | 256  | 158.7 | 171.543  | 3381.4      | 4.6       | 73.5        | 284.3 (35.5)         | 18.0             | 27.017              | 2869.352         |
-| 4.5 (18)         | 1024 | 144.7 | 164.9834 | 11724.2     | 8.0       | 68.1        | 442.0 (55.2)         | 18.1             | 29.591              | 5279.924         |
-| 4.5 (18)         | 2048 | 146.0 | 166.1827 | 11700.8     | 8.2       | 68.8        | 684.3 (85.5)         | 18.1             | 28.525              | 4899.519         |
-| 5 (20)           | 32   | 184.7 | 196.3264 | 362.6       | .3        | 99.4        | 22.6 (2.8)           | 20.0             | 22.694              | 302.823          |
-| 5 (20)           | 256  | 159.9 | 178.1602 | 3355.9      | 4.6       | 75.9        | 271.6 (33.9)         | 20.0             | 26.621              | 2635.266         |
-| 5 (20)           | 1024 | 147.1 | 142.1386 | 10929.3     | 8.6       | 65.2        | 653.0 (81.6)         | 20.1             | 29.631              | 5892.605         |
-| 5 (20)           | 2048 | 151.0 | 167.1647 | 9959.2      | 9.0       | 73.7        | 400.6 (50.0)         | 20.1             | 28.604              | 4471.030         |
-| 5.5 (22)         | 32   | 184.8 | 196.3183 | 362.6       | .2        | 99.5        | 19.3 (2.4)           | 22.0             | 22.688              | 289.424          |
-| 5.5 (22)         | 256  | 161.6 | 155.467  | 3322.2      | 4.1       | 73.9        | 301.0 (37.6)         | 22.0             | 26.372              | 2598.139         |
-| 5.5 (22)         | 1024 | 154.1 | 165.7173 | 10177.7     | 7.3       | 73.7        | 531.0 (66.3)         | 22.1             | 27.548              | 4322.050         |
-| 5.5 (22)         | 2048 | 142.8 | 98.1636  | 16278.4     | 8.9       | 64.4        | 867.6 (108.4)        | 22.1             | 30.647              | 7747.638         |
-| 6 (24)           | 32   | 174.3 | 185.1482 | 384.4       | .4        | 99.5        | 12.6 (1.5)           | 24.0             | 24.073              | 149.504          |
-| 6 (24)           | 256  | 174.1 | 184.9713 | 3083.0      | .5        | 99.5        | 13.3 (1.6)           | 24.0             | 24.098              | 150.923          |
-| 6 (24)           | 1024 | 157.6 | 184.4075 | 12587.9     | 11.3      | 99.0        | 255.6 (31.9)         | 24.0             | 24.963              | 931.933          |
-| 6 (24)           | 2048 | 123.2 | 125.8955 | 13124.2     | 6.3       | 56.2        | 774.6 (96.8)         | 24.1             | 34.703              | 6288.830         |
-| 6.5 (26)         | 32   | 161.2 | 171.1174 | 415.8       | .9        | 99.6        | 12.0 (1.5)           | 26.0             | 26.056              | 140.132          |
-| 6.5 (26)         | 256  | 161.1 | 170.8906 | 3331.4      | 1.1       | 99.5        | 11.0 (1.3)           | 26.0             | 26.062              | 140.794          |
-| 6.5 (26)         | 1024 | 161.0 | 170.962  | 13342.4     | 1.2       | 99.5        | 12.6 (1.5)           | 26.0             | 26.074              | 144.894          |
-| 6.5 (26)         | 2048 | 117.5 | 111.616  | 19409.7     | 7.0       | 48.5        | 824.3 (103.0)        | 26.0             | 36.217              | 11293.054        |
+FIO with 8 jobs.
 
-**CPU mask**: 0xFF0 (8 cores)
-
-| Pacer period, us | QD   | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us | Pacer IO period, us | NVMf req lat, us |
-|------------------|------|-------|----------|-------------|-----------|-------------|----------------------|------------------|---------------------|------------------|
-| 4.5 (18)         | 32   | 184.6 | 196.3181 | 362.9       | .5        | 99.0        | 24.0 (3.0)           | 36.0             | 45.420              | 307.145          |
-| 4.5 (18)         | 256  | 153.2 | 170.6894 | 3503.7      | 4.1       | 74.6        | 269.0 (33.6)         | 36.0             | 55.737              | 2574.694         |
-| 4.5 (18)         | 1024 | 145.4 | 98.1667  | 11031.4     | 6.5       | 65.4        | 630.0 (78.7)         | 36.0             | 59.482              | 5479.082         |
-| 4.5 (18)         | 2048 | 157.7 | 160.9478 | 7760.4      | 4.9       | 71.9        | 516.0 (64.5)         | 36.0             | 53.589              | 2521.242         |
-| 5 (20)           | 32   | 184.7 | 196.3309 | 362.8       | .4        | 99.5        | 22.0 (2.7)           | 40.0             | 45.399              | 293.140          |
-| 5 (20)           | 256  | 155.6 | 168.4966 | 3449.7      | 4.0       | 70.8        | 265.0 (33.1)         | 40.0             | 54.595              | 2587.999         |
-| 5 (20)           | 1024 | 157.0 | 174.8313 | 9742.5      | 4.3       | 71.3        | 539.6 (67.4)         | 40.0             | 53.839              | 3415.488         |
-| 5 (20)           | 2048 | 146.8 | 162.5777 | 12454.0     | 5.5       | 70.3        | 672.3 (84.0)         | 40.0             | 56.351              | 4996.025         |
-| 5.5 (22)         | 32   | 184.6 | 196.3294 | 362.9       | .5        | 99.5        | 23.3 (2.9)           | 44.0             | 45.419              | 279.225          |
-| 5.5 (22)         | 256  | 158.4 | 173.4521 | 3388.0      | 3.5       | 72.4        | 262.0 (32.7)         | 44.0             | 53.826              | 2481.968         |
-| 5.5 (22)         | 1024 | 154.4 | 138.8956 | 9887.7      | 5.7       | 73.3        | 501.3 (62.6)         | 44.0             | 55.068              | 3676.868         |
-| 5.5 (22)         | 2048 | 148.6 | 154.6103 | 15041.1     | 5.3       | 70.9        | 771.6 (96.4)         | 44.0             | 55.647              | 5046.112         |
-| 6 (24)           | 32   | 174.6 | 185.4689 | 383.7       | .5        | 99.6        | 15.3 (1.9)           | 48.0             | 48.067              | 149.963          |
-| 6 (24)           | 256  | 174.6 | 185.5436 | 3072.8      | .5        | 99.5        | 18.3 (2.2)           | 48.0             | 48.033              | 152.571          |
-| 6 (24)           | 1024 | 148.5 | 135.355  | 13745.9     | 11.8      | 89.4        | 383.3 (47.9)         | 48.0             | 55.054              | 3718.257         |
-| 6 (24)           | 2048 | 120.8 | 122.6952 | 13456.2     | 8.2       | 59.3        | 302.0 (37.7)         | 48.0             | 70.746              | 6635.210         |
-| 6.5 (26)         | 32   | 161.4 | 171.2713 | 415.2       | .8        | 99.6        | 16.0 (2.0)           | 52.0             | 52.042              | 140.908          |
-| 6.5 (26)         | 256  | 161.4 | 171.2786 | 3324.2      | 1.1       | 99.5        | 18.0 (2.2)           | 52.0             | 52.020              | 143.101          |
-| 6.5 (26)         | 1024 | 161.3 | 171.2789 | 13311.1     | 1.0       | 99.5        | 19.3 (2.4)           | 52.0             | 52.022              | 150.868          |
-| 6.5 (26)         | 2048 | 116.7 | 114.534  | 17227.4     | 5.6       | 56.2        | 379.3 (47.4)         | 52.0             | 74.097              | 10018.004        |
-
-**Sweet spot search**
-**CPU mask**: 0xF0 (4 cores)
-
-| Pacer period, us | QD   | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
-|------------------|------|-------|----------|-------------|-----------|-------------|----------------------|------------------|
-| 5.6 (22.4)       | 256  | 160.0 | 180.231  | 3357.1      | 6.7       | 74.0        | 367.0 (45.8)         | 22.5             |
-| 5.65 (22.6)      | 256  | 178.1 | 195.7152 | 3013.5      | 4.3       | 99.5        | 129.6 (16.2)         | 22.7             |
-| 5.675 (22.7)     | 256  | 183.5 | 195.0755 | 2924.5      | .1        | 99.5        | 25.0 (3.1)           | 22.7             |
-| 5.7 (22.8)       | 256  | 182.8 | 194.2888 | 2936.3      | .2        | 99.5        | 23.6 (2.9)           | 22.8             |
-| 5.725 (22.9)     | 256  | 181.9 | 193.3365 | 2949.9      | .2        | 99.5        | 24.3 (3.0)           | 22.9             |
-| 5.75 (23)        | 256  | 181.2 | 192.5431 | 2961.5      | .2        | 99.5        | 22.6 (2.8)           | 23.0             |
-| 5.8 (23.2)       | 256  | 179.7 | 190.9718 | 2986.4      | .3        | 99.5        | 22.6 (2.8)           | 23.2             |
-| 6 (24)           | 256  | 169.8 | 184.7295 | 3163.1      | 1.0       | 99.5        | 183.6 (22.9)         | 24.0             |
-| 5.6 (22.4)       | 1024 | 156.1 | 170.3481 | 11276.8     | 5.7       | 76.7        | 596.0 (74.5)         | 22.5             |
-| 5.65 (22.6)      | 1024 | 154.2 | 171.9468 | 11708.2     | 5.4       | 73.9        | 588.6 (73.5)         | 22.7             |
-| 5.675 (22.7)     | 1024 | 141.7 | 165.9734 | 10886.6     | 9.2       | 58.9        | 572.6 (71.5)         | 22.8             |
-| 5.7 (22.8)       | 1024 | 160.9 | 148.8915 | 12118.0     | 11.1      | 67.7        | 255.6 (31.9)         | 22.8             |
-| 5.725 (22.9)     | 1024 | 137.9 | 124.2786 | 11597.4     | 10.7      | 60.5        | 758.0 (94.7)         | 23.0             |
-| 5.75 (23)        | 1024 | 152.6 | 192.9411 | 11941.0     | 13.8      | 99.2        | 428.0 (53.5)         | 23.0             |
-| 5.8 (23.2)       | 1024 | 157.3 | 134.1641 | 12723.2     | 11.6      | 65.3        | 28.3 (3.5)           | 23.2             |
-| 6 (24)           | 1024 | 173.7 | 184.5522 | 12364.5     | .5        | 99.5        | 22.3 (2.7)           | 24.0             |
-
+| Pacer period, us | QD   | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
+|------------------|------|-------|----------|-------------|-----------|-------------|----------------------|
+| 5.6 (22.4)       | 256  | 129.0 | 118.9491 | 4159.1      | 1.2       | 87.6        | 257.3 (32.1)         |
+| 5.6 (22.4)       | 1024 | 116.7 | 126.7461 | 17978.0     | 1.2       | 99.4        | 1026.3 (128.2)       |
+| 5.6 (22.4)       | 2048 | 119.2 | 138.0614 | 35387.6     | 1.4       | 63.2        | 1037.0 (129.6)       |
+| 5.65 (22.6)      | 256  | 129.7 | 124.9634 | 4136.2      | 1.3       | 92.9        | 98.3 (12.2)          |
+| 5.65 (22.6)      | 1024 | 119.3 | 110.5019 | 17997.6     | 1.2       | 50.6        | 684.6 (85.5)         |
+| 5.65 (22.6)      | 2048 | 120.4 | 111.7765 | 34830.7     | 1.5       | 50.8        | 1088.6 (136.0)       |
+| 5.675 (22.7)     | 256  | 174.6 | 195.3761 | 3073.1      | 1.3       | 53.8        | 27.6 (3.4)           |
+| 5.675 (22.7)     | 1024 | 130.7 | 115.8018 | 16421.1     | 1.8       | 52.5        | 1025.0 (128.1)       |
+| 5.675 (22.7)     | 2048 | 156.5 | 195.073  | 27471.3     | 1.9       | 99.3        | 27.3 (3.4)           |
+| 5.7 (22.8)       | 256  | 183.0 | 194.6647 | 2932.2      | 0         | 99.5        | 25.6 (3.2)           |
+| 5.7 (22.8)       | 1024 | 159.8 | 185.5446 | 13439.6     | 2.0       | 99.4        | 36.0 (4.5)           |
+| 5.7 (22.8)       | 2048 | 182.7 | 194.1884 | 23501.3     | 0         | 99.3        | 27.0 (3.3)           |
+| 5.725 (22.9)     | 256  | 182.3 | 193.7391 | 2944.4      | 0         | 99.5        | 25.6 (3.2)           |
+| 5.725 (22.9)     | 1024 | 182.1 | 193.4434 | 11791.5     | 0         | 99.4        | 25.6 (3.2)           |
+| 5.725 (22.9)     | 2048 | 169.2 | 193.2842 | 25395.9     | 1.3       | 99.1        | 32.3 (4.0)           |
+| 5.75 (23)        | 256  | 181.5 | 192.9044 | 2957.2      | 0         | 99.5        | 24.3 (3.0)           |
+| 5.75 (23)        | 1024 | 181.3 | 192.6004 | 11839.8     | 0         | 99.4        | 26.6 (3.3)           |
+| 5.75 (23)        | 2048 | 173.6 | 192.5688 | 24150.8     | .7        | 99.0        | 30.0 (3.7)           |
+| 5.775 (23.1)     | 256  | 180.7 | 192.1829 | 2969.0      | 0         | 99.5        | 25.0 (3.1)           |
+| 5.775 (23.1)     | 1024 | 171.1 | 191.9538 | 12370.6     | .8        | 66.7        | 26.3 (3.2)           |
+| 5.775 (23.1)     | 2048 | 176.6 | 191.7225 | 23859.1     | 0         | 99.3        | 32.0 (4.0)           |
+| 5.8 (23.2)       | 256  | 179.9 | 191.2576 | 2982.5      | 0         | 99.5        | 24.3 (3.0)           |
+| 5.8 (23.2)       | 1024 | 179.8 | 191.0265 | 11943.7     | 0         | 99.4        | 24.0 (3.0)           |
+| 5.8 (23.2)       | 2048 | 179.7 | 190.9277 | 23895.5     | 0         | 99.4        | 28.0 (3.5)           |
+| 6 (24)           | 256  | 174.2 | 185.1402 | 3081.3      | .1        | 99.5        | 23.0 (2.8)           |
+| 6 (24)           | 1024 | 174.0 | 184.9201 | 12338.7     | 0         | 99.5        | 22.3 (2.7)           |
+| 6 (24)           | 2048 | 174.0 | 184.6929 | 24680.9     | .1        | 99.4        | 22.3 (2.7)           |
 
 **Detailed NVMf target statistics**
 
 **CPU mask**: 0xF0 (4 cores)
 
-| Pacer period, us | QD  | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
-|------------------|-----|-------|----------|-------------|-----------|-------------|----------------------|------------------|
-| 6.0 (24)         | 256 | 173.2 | 184.7075 | 3098.6      | 1.9       | 99.5        | 12.0 (1.5)           | 24.0             |
+| Pacer period, us | QD  | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
+|------------------|-----|-------|----------|-------------|-----------|-------------|----------------------|
+| 5.7 (22.8)       | 256 | 166.1 | 194.3685 | 25902.5     | 1.7       | 99.3        | 27.3 (3.4)           |
 
 ~~~
-Bdev avg read lat, us: 103.604404
+CPU mask 0xF0, num cores 4, IO pacer period 5700, adjusted period 22800
+Bdev avg read lat, us: 247.819538
 Poll group: "nvmf_tgt_poll_group_4"
-  Pacer calls, polls, ios: 4872836, 2044828, 2044828
-  Pacer poll, io period, us: 24.135 24.135
+  Pacer calls, polls, ios: 5158146, 1674906, 1643446
+  Pacer poll, io period, us: 25.026 25.505
+  Pacer period 1, us: 22.796
+  Pacer period 2, us: 22.796
+  Pacer period 3, us: 22.796
   Device: "mlx5_0"
-    Polls, comps, reqs: 4872836, 2044652, 1022326
-    Comps/poll: .419
-    Req lat, us: 142.556
-    Req lat (total), us: 557.300
-    Req states 1: [3854,0,239,0,0,0,0,2,0,0,0,1,0,0]
-    Req states 2: [3854,0,239,0,0,0,0,3,0,0,0,0,0,0]
-    Req states 3: [3854,0,239,0,0,0,0,2,0,0,0,1,0,0]
-    Req lat 1, us: 1625.323
-    Req lat 2, us: 790.442
-    Req lat 3, us: 620.226
+    Polls, comps, reqs: 5158146, 1715921, 857960
+    Comps/poll: .332
+    Req lat, us: 4130.835
+    Req lat (total), us: 3728.752
+    Req states 1: [3584,0,509,0,0,0,0,2,0,0,0,1,0,0]
+    Req states 2: [3585,0,509,0,0,0,0,0,0,0,0,2,0,0]
+    Req states 3: [3585,0,508,0,0,0,0,1,0,0,0,2,0,0]
+    Req lat 1, us: 3291.641
+    Req lat 2, us: 5243.603
+    Req lat 3, us: 3867.714
   Device: "mlx5_1"
-    Polls, comps, reqs: 4872836, 2045004, 1022502
-    Comps/poll: .419
-    Req lat, us: 143.145
-    Req lat (total), us: 654.536
-    Req states 1: [3853,0,240,0,0,0,0,2,0,0,0,1,0,0]
-    Req states 2: [3854,0,240,0,0,0,0,1,0,0,0,1,0,0]
-    Req states 3: [3853,0,240,0,0,0,0,2,0,0,0,1,0,0]
-    Req lat 1, us: 1767.925
-    Req lat 2, us: 825.473
-    Req lat 3, us: 642.204
+    Polls, comps, reqs: 5158146, 1570970, 785485
+    Comps/poll: .304
+    Req lat, us: 3997.106
+    Req lat (total), us: 3762.826
+    Req states 1: [3584,0,508,0,0,0,0,2,0,0,0,2,0,0]
+    Req states 2: [3584,0,505,0,0,0,0,4,0,0,0,3,0,0]
+    Req states 3: [3584,0,508,0,0,0,0,3,0,0,0,1,0,0]
+    Req lat 1, us: 2260.442
+    Req lat 2, us: 4880.427
+    Req lat 3, us: 3465.314
 Poll group: "nvmf_tgt_poll_group_5"
-  Pacer calls, polls, ios: 6452670, 2053886, 2044828
-  Pacer poll, io period, us: 24.029 24.135
+  Pacer calls, polls, ios: 4612768, 1685853, 1643446
+  Pacer poll, io period, us: 24.863 25.505
+  Pacer period 1, us: 22.796
+  Pacer period 2, us: 22.796
+  Pacer period 3, us: 22.796
   Device: "mlx5_0"
-    Polls, comps, reqs: 6452670, 2044672, 1022336
-    Comps/poll: .316
-    Req lat, us: 139.123
-    Req lat (total), us: 445.583
-    Req states 1: [4094,0,0,0,0,0,0,2,0,0,0,0,0,0]
-    Req states 2: [4094,0,0,0,0,0,0,2,0,0,0,0,0,0]
-    Req states 3: [4094,0,0,0,0,0,0,1,0,0,0,1,0,0]
-    Req lat 1, us: 1234.318
-    Req lat 2, us: 617.627
-    Req lat 3, us: 491.995
+    Polls, comps, reqs: 4612768, 1715941, 857970
+    Comps/poll: .371
+    Req lat, us: 342.025
+    Req lat (total), us: 592.427
+    Req states 1: [4090,0,1,0,0,0,0,5,0,0,0,0,0,0]
+    Req states 2: [4091,0,2,0,0,0,0,2,0,0,0,1,0,0]
+    Req states 3: [4091,0,1,0,0,0,0,4,0,0,0,0,0,0]
+    Req lat 1, us: 1202.860
+    Req lat 2, us: 801.954
+    Req lat 3, us: 612.220
   Device: "mlx5_1"
-    Polls, comps, reqs: 6452670, 2045004, 1022502
-    Comps/poll: .316
-    Req lat, us: 144.824
-    Req lat (total), us: 421.538
-    Req states 1: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
-    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
-    Req states 3: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
-    Req lat 1, us: 1068.842
-    Req lat 2, us: 532.813
-    Req lat 3, us: 428.650
+    Polls, comps, reqs: 4612768, 1570968, 785484
+    Comps/poll: .340
+    Req lat, us: 642.176
+    Req lat (total), us: 476.522
+    Req states 1: [4092,0,2,0,0,0,0,1,0,0,0,1,0,0]
+    Req states 2: [4092,0,0,0,0,0,0,3,0,0,0,1,0,0]
+    Req states 3: [4092,0,1,0,0,0,0,3,0,0,0,0,0,0]
+    Req lat 1, us: 110.647
+    Req lat 2, us: 644.583
+    Req lat 3, us: 479.246
 Poll group: "nvmf_tgt_poll_group_6"
-  Pacer calls, polls, ios: 3795250, 2053408, 2044828
-  Pacer poll, io period, us: 24.034 24.135
+  Pacer calls, polls, ios: 2967952, 1688370, 1654105
+  Pacer poll, io period, us: 24.826 25.340
+  Pacer period 1, us: 22.796
+  Pacer period 2, us: 22.796
+  Pacer period 3, us: 22.796
   Device: "mlx5_0"
-    Polls, comps, reqs: 3795250, 2044653, 1022327
-    Comps/poll: .538
-    Req lat, us: 145.408
-    Req lat (total), us: 395.993
-    Req states 1: [4095,0,0,0,0,0,0,1,0,0,0,0,0,0]
-    Req states 2: [4095,0,0,0,0,0,0,1,0,0,0,0,0,0]
-    Req states 3: [4094,0,1,0,0,0,0,1,0,0,0,0,0,0]
-    Req lat 1, us: 1041.210
-    Req lat 2, us: 536.749
-    Req lat 3, us: 433.996
+    Polls, comps, reqs: 2967952, 1726312, 863156
+    Comps/poll: .581
+    Req lat, us: 4122.330
+    Req lat (total), us: 3984.763
+    Req states 1: [3584,0,510,0,0,0,0,2,0,0,0,0,0,0]
+    Req states 2: [3584,0,508,0,0,0,0,4,0,0,0,0,0,0]
+    Req states 3: [3584,0,509,0,0,0,0,3,0,0,0,0,0,0]
+    Req lat 1, us: 4169.757
+    Req lat 2, us: 5629.531
+    Req lat 3, us: 4136.811
   Device: "mlx5_1"
-    Polls, comps, reqs: 3795250, 2045025, 1022512
-    Comps/poll: .538
-    Req lat, us: 150.907
-    Req lat (total), us: 364.664
-    Req states 1: [4093,0,0,0,0,0,0,2,0,0,0,1,0,0]
-    Req states 2: [4093,0,1,0,0,0,0,2,0,0,0,0,0,0]
-    Req states 3: [4094,0,0,0,0,0,0,2,0,0,0,0,0,0]
-    Req lat 1, us: 792.280
-    Req lat 2, us: 420.308
-    Req lat 3, us: 347.950
+    Polls, comps, reqs: 2967952, 1581914, 790957
+    Comps/poll: .532
+    Req lat, us: 3749.652
+    Req lat (total), us: 4127.519
+    Req states 1: [3583,0,508,0,0,0,0,4,0,0,0,1,0,0]
+    Req states 2: [3583,0,509,0,0,0,0,2,0,0,0,2,0,0]
+    Req states 3: [3583,0,509,0,0,0,0,3,0,0,0,1,0,0]
+    Req lat 1, us: 4129.940
+    Req lat 2, us: 5530.674
+    Req lat 3, us: 3853.771
 Poll group: "nvmf_tgt_poll_group_7"
-  Pacer calls, polls, ios: 3710633, 2053648, 2044829
-  Pacer poll, io period, us: 24.031 24.135
+  Pacer calls, polls, ios: 2884457, 1688553, 1653954
+  Pacer poll, io period, us: 24.824 25.343
+  Pacer period 1, us: 22.796
+  Pacer period 2, us: 22.796
+  Pacer period 3, us: 22.796
   Device: "mlx5_0"
-    Polls, comps, reqs: 3710633, 2044653, 1022327
-    Comps/poll: .551
-    Req lat, us: 145.735
-    Req lat (total), us: 316.307
-    Req states 1: [4095,0,0,0,0,0,0,1,0,0,0,0,0,0]
-    Req states 2: [4094,0,1,0,0,0,0,1,0,0,0,0,0,0]
-    Req states 3: [4094,0,0,0,0,0,0,2,0,0,0,0,0,0]
-    Req lat 1, us: 755.305
-    Req lat 2, us: 412.073
-    Req lat 3, us: 342.117
+    Polls, comps, reqs: 2884457, 1726190, 863115
+    Comps/poll: .598
+    Req lat, us: 2125.312
+    Req lat (total), us: 2818.057
+    Req states 1: [3817,0,276,0,0,0,0,1,0,0,0,2,0,0]
+    Req states 2: [3728,0,364,0,0,0,0,4,0,0,0,0,0,0]
+    Req states 3: [3777,0,316,0,0,0,0,3,0,0,0,0,0,0]
+    Req lat 1, us: 4743.063
+    Req lat 2, us: 3971.255
+    Req lat 3, us: 2924.934
   Device: "mlx5_1"
-    Polls, comps, reqs: 3710633, 2045004, 1022502
-    Comps/poll: .551
-    Req lat, us: 151.305
-    Req lat (total), us: 295.079
-    Req states 1: [4094,0,0,0,0,0,0,1,0,0,0,1,0,0]
-    Req states 2: [4095,0,0,0,0,0,0,1,0,0,0,0,0,0]
-    Req states 3: [4094,0,0,0,0,0,0,1,0,0,0,1,0,0]
-    Req lat 1, us: 573.404
-    Req lat 2, us: 328.635
-    Req lat 3, us: 280.964
-~~~
-
-| Pacer period, us | QD   | BW    | WIRE BW | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
-|------------------|------|-------|---------|-------------|-----------|-------------|----------------------|------------------|
-| 6.0 (24)         | 1024 | 166.7 | 184.442 | 12879.6     | 6.9       | 99.5        | 16.6 (2.0)           | 24.0             |
+    Polls, comps, reqs: 2884457, 1581793, 790914
+    Comps/poll: .548
+    Req lat, us: 2587.222
+    Req lat (total), us: 2906.083
+    Req states 1: [3825,0,267,0,0,0,0,4,0,0,0,0,0,0]
+    Req states 2: [3737,0,355,0,0,0,0,1,0,0,0,3,0,0]
+    Req states 3: [3790,0,302,0,0,0,0,2,0,0,0,2,0,0]
+    Req lat 1, us: 3580.901
+    Req lat 2, us: 4094.080
+    Req lat 3, us: 2859.373
 
 ~~~
-Bdev avg read lat, us: 104.128774
-Poll group: "nvmf_tgt_poll_group_4"
-  Pacer calls, polls, ios: 4794301, 2046593, 2046593
-  Pacer poll, io period, us: 24.166 24.166
-  Device: "mlx5_0"
-    Polls, comps, reqs: 4794301, 2046623, 1023344
-    Comps/poll: .426
-    Req lat, us: 150.220
-    Req lat (total), us: 1743.106
-    Req states 1: [3650,0,442,0,0,0,0,3,0,0,0,1,0,0]
-    Req states 2: [3586,0,507,0,0,0,0,2,0,0,0,1,0,0]
-    Req states 3: [3585,0,509,0,0,0,0,2,0,0,0,0,0,0]
-    Req lat 1, us: 2671.404
-    Req lat 2, us: 2101.214
-    Req lat 3, us: 1857.377
-  Device: "mlx5_1"
-    Polls, comps, reqs: 4794301, 2046717, 1023392
-    Comps/poll: .426
-    Req lat, us: 151.930
-    Req lat (total), us: 1883.873
-    Req states 1: [3650,0,442,0,0,0,0,3,0,0,0,1,0,0]
-    Req states 2: [3583,0,509,0,0,0,0,4,0,0,0,0,0,0]
-    Req states 3: [3583,0,508,0,0,0,0,3,0,0,0,2,0,0]
-    Req lat 1, us: 2648.813
-    Req lat 2, us: 2078.657
-    Req lat 3, us: 1835.856
-Poll group: "nvmf_tgt_poll_group_5"
-  Pacer calls, polls, ios: 6356892, 2058120, 2047501
-  Pacer poll, io period, us: 24.031 24.156
-  Device: "mlx5_0"
-    Polls, comps, reqs: 6356892, 2047320, 1023596
-    Comps/poll: .322
-    Req lat, us: 147.322
-    Req lat (total), us: 1450.289
-    Req states 1: [3967,0,125,0,0,0,0,4,0,0,0,0,0,0]
-    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
-    Req states 3: [4095,0,0,0,0,0,0,1,0,0,0,0,0,0]
-    Req lat 1, us: 2209.865
-    Req lat 2, us: 1743.572
-    Req lat 3, us: 1543.890
-  Device: "mlx5_1"
-    Polls, comps, reqs: 6356892, 2047434, 1023653
-    Comps/poll: .322
-    Req lat, us: 149.319
-    Req lat (total), us: 1402.036
-    Req states 1: [3967,0,127,0,0,0,0,2,0,0,0,0,0,0]
-    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
-    Req states 3: [4095,0,0,0,0,0,0,1,0,0,0,0,0,0]
-    Req lat 1, us: 2135.836
-    Req lat 2, us: 1682.407
-    Req lat 3, us: 1488.965
-Poll group: "nvmf_tgt_poll_group_6"
-  Pacer calls, polls, ios: 3750616, 2057643, 2047273
-  Pacer poll, io period, us: 24.037 24.158
-  Device: "mlx5_0"
-    Polls, comps, reqs: 3750616, 2047160, 1023545
-    Comps/poll: .545
-    Req lat, us: 152.233
-    Req lat (total), us: 1362.108
-    Req states 1: [4025,0,67,0,0,0,0,4,0,0,0,0,0,0]
-    Req states 2: [4094,0,0,0,0,0,0,1,0,0,0,1,0,0]
-    Req states 3: [4095,0,0,0,0,0,0,1,0,0,0,0,0,0]
-    Req lat 1, us: 2067.266
-    Req lat 2, us: 1634.155
-    Req lat 3, us: 1448.931
-  Device: "mlx5_1"
-    Polls, comps, reqs: 3750616, 2047254, 1023592
-    Comps/poll: .545
-    Req lat, us: 154.245
-    Req lat (total), us: 1262.596
-    Req states 1: [4025,0,69,0,0,0,0,1,0,0,0,1,0,0]
-    Req states 2: [4094,0,0,0,0,0,0,2,0,0,0,0,0,0]
-    Req states 3: [4095,0,0,0,0,0,0,1,0,0,0,0,0,0]
-    Req lat 1, us: 1908.742
-    Req lat 2, us: 1508.160
-    Req lat 3, us: 1337.482
-Poll group: "nvmf_tgt_poll_group_7"
-  Pacer calls, polls, ios: 3717748, 2057796, 2047146
-  Pacer poll, io period, us: 24.035 24.160
-  Device: "mlx5_0"
-    Polls, comps, reqs: 3717748, 2047109, 1023551
-    Comps/poll: .550
-    Req lat, us: 151.734
-    Req lat (total), us: 1122.128
-    Req states 1: [4086,0,6,0,0,0,0,3,0,0,0,1,0,0]
-    Req states 2: [4093,0,1,0,0,0,0,2,0,0,0,0,0,0]
-    Req states 3: [4093,0,0,0,0,0,0,3,0,0,0,0,0,0]
-    Req lat 1, us: 1687.666
-    Req lat 2, us: 1340.280
-    Req lat 3, us: 1191.754
-  Device: "mlx5_1"
-    Polls, comps, reqs: 3717748, 2047188, 1023589
-    Comps/poll: .550
-    Req lat, us: 153.754
-    Req lat (total), us: 1033.960
-    Req states 1: [4084,0,10,0,0,0,0,2,0,0,0,0,0,0]
-    Req states 2: [4094,0,1,0,0,0,0,1,0,0,0,0,0,0]
-    Req states 3: [4094,0,0,0,0,0,0,2,0,0,0,0,0,0]
-    Req lat 1, us: 1550.188
-    Req lat 2, us: 1231.314
-    Req lat 3, us: 1095.500
-~~~
 
-| Pacer period, us | QD   | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
-|------------------|------|-------|----------|-------------|-----------|-------------|----------------------|------------------|
-| 6.0 (24)         | 2048 | 124.1 | 130.1644 | 18674.8     | 6.4       | 60.4        | 983.3 (122.9)        | 24.1             |
+**IO pacer log**
 
 ~~~
-Bdev avg read lat, us: 103.782670
-Poll group: "nvmf_tgt_poll_group_4"
-  Pacer calls, polls, ios: 5759266, 2309737, 1656661
-  Pacer poll, io period, us: 24.457 34.098
-  Device: "mlx5_0"
-    Polls, comps, reqs: 5759266, 1656734, 828384
-    Comps/poll: .287
-    Req lat, us: 11248.549
-    Req lat (total), us: 5059.107
-    Req states 1: [3927,0,0,0,0,0,0,0,0,0,0,169,0,0]
-    Req states 2: [3919,0,4,0,0,0,0,0,0,0,0,173,0,0]
-    Req states 3: [3893,0,3,0,0,0,0,1,0,0,0,199,0,0]
-    Req lat 1, us: 3577.384
-    Req lat 2, us: 4364.561
-    Req lat 3, us: 4958.596
-  Device: "mlx5_1"
-    Polls, comps, reqs: 5759266, 1656520, 828278
-    Comps/poll: .287
-    Req lat, us: 11494.881
-    Req lat (total), us: 5204.904
-    Req states 1: [3931,0,2,0,0,0,0,0,0,0,0,163,0,0]
-    Req states 2: [3945,0,0,0,0,0,0,4,0,0,0,147,0,0]
-    Req states 3: [3895,0,0,0,0,0,0,3,0,0,0,198,0,0]
-    Req lat 1, us: 3671.092
-    Req lat 2, us: 4540.204
-    Req lat 3, us: 5086.540
-Poll group: "nvmf_tgt_poll_group_5"
-  Pacer calls, polls, ios: 7156952, 2343020, 1657086
-  Pacer poll, io period, us: 24.109 34.089
-  Device: "mlx5_0"
-    Polls, comps, reqs: 7156952, 1657279, 828605
-    Comps/poll: .231
-    Req lat, us: 7680.340
-    Req lat (total), us: 3946.078
-    Req states 1: [3931,0,2,0,0,0,0,2,0,0,0,161,0,0]
-    Req states 2: [4020,0,0,0,0,0,0,3,0,0,0,73,0,0]
-    Req states 3: [4000,0,1,0,0,0,0,4,0,0,0,91,0,0]
-    Req lat 1, us: 3129.554
-    Req lat 2, us: 3831.089
-    Req lat 3, us: 3949.036
-  Device: "mlx5_1"
-    Polls, comps, reqs: 7156952, 1656936, 828491
-    Comps/poll: .231
-    Req lat, us: 10868.115
-    Req lat (total), us: 4557.572
-    Req states 1: [3945,0,0,0,0,0,0,2,0,0,0,149,0,0]
-    Req states 2: [3953,0,1,0,0,0,0,2,0,0,0,140,0,0]
-    Req states 3: [3899,0,0,0,0,0,0,1,0,0,0,196,0,0]
-    Req lat 1, us: 3055.970
-    Req lat 2, us: 3939.255
-    Req lat 3, us: 4469.587
-Poll group: "nvmf_tgt_poll_group_6"
-  Pacer calls, polls, ios: 4333445, 2338364, 1656791
-  Pacer poll, io period, us: 24.157 34.095
-  Device: "mlx5_0"
-    Polls, comps, reqs: 4333445, 1656915, 828424
-    Comps/poll: .382
-    Req lat, us: 4363.234
-    Req lat (total), us: 3178.605
-    Req states 1: [3936,0,0,0,0,0,0,3,0,0,0,157,0,0]
-    Req states 2: [4042,0,0,0,0,0,0,3,0,0,0,51,0,0]
-    Req states 3: [4003,0,0,0,0,0,0,0,0,0,0,93,0,0]
-    Req lat 1, us: 2913.997
-    Req lat 2, us: 3051.705
-    Req lat 3, us: 3174.923
-  Device: "mlx5_1"
-    Polls, comps, reqs: 4333445, 1656807, 828375
-    Comps/poll: .382
-    Req lat, us: 6380.997
-    Req lat (total), us: 3406.706
-    Req states 1: [3944,0,4,0,0,0,0,1,0,0,0,147,0,0]
-    Req states 2: [4061,0,3,0,0,0,0,2,0,0,0,30,0,0]
-    Req states 3: [4001,0,0,0,0,0,0,5,0,0,0,90,0,0]
-    Req lat 1, us: 2752.034
-    Req lat 2, us: 3352.287
-    Req lat 3, us: 3408.564
-Poll group: "nvmf_tgt_poll_group_7"
-  Pacer calls, polls, ios: 4323935, 2339077, 1656652
-  Pacer poll, io period, us: 24.150 34.098
-  Device: "mlx5_0"
-    Polls, comps, reqs: 4323935, 1656757, 828376
-    Comps/poll: .383
-    Req lat, us: 3034.447
-    Req lat (total), us: 2657.651
-    Req states 1: [4001,0,1,0,0,0,0,2,0,0,0,92,0,0]
-    Req states 2: [4040,0,2,0,0,0,0,2,0,0,0,52,0,0]
-    Req states 3: [4006,0,0,0,0,0,0,3,0,0,0,87,0,0]
-    Req lat 1, us: 2571.604
-    Req lat 2, us: 2527.954
-    Req lat 3, us: 2654.929
-  Device: "mlx5_1"
-    Polls, comps, reqs: 4323935, 1656615, 828279
-    Comps/poll: .383
-    Req lat, us: 4064.823
-    Req lat (total), us: 2704.602
-    Req states 1: [3949,0,0,0,0,0,0,2,0,0,0,145,0,0]
-    Req states 2: [4074,0,0,0,0,0,0,0,0,0,0,22,0,0]
-    Req states 3: [4006,0,4,0,0,0,0,0,0,0,0,86,0,0]
-    Req lat 1, us: 2396.637
-    Req lat 2, us: 2635.818
-    Req lat 3, us: 2698.415
+io_pacer.c: 213:spdk_io_pacer_create: *NOTICE*: Created IO pacer 0xaaaae1ee2490: period_ns 22800, period_ticks 3562, max_queues 0
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 23796 ns, new period 3718 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 33780 ns, new period 5278 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 43764 ns, new period 6838 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 260:spdk_io_pacer_create_queue: *NOTICE*: Allocated more queues for IO pacer 0xaaaae1ee2490: max_queues 32
+io_pacer.c: 267:spdk_io_pacer_create_queue: *NOTICE*: Created IO pacer queue: pacer 0xaaaae1ee2490, key 0000000100000009
+io_pacer.c: 267:spdk_io_pacer_create_queue: *NOTICE*: Created IO pacer queue: pacer 0xaaaae1ee2490, key 000000010000000d
+io_pacer.c: 267:spdk_io_pacer_create_queue: *NOTICE*: Created IO pacer queue: pacer 0xaaaae1ee2490, key 0000000100000005
+io_pacer.c: 267:spdk_io_pacer_create_queue: *NOTICE*: Created IO pacer queue: pacer 0xaaaae1ee2490, key 0000000100000001
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2287, io period 43725 ns, new period 42676 ns, new period 6668 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2433, io period 41101 ns, new period 40101 ns, new period 6265 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 3171, io period 31535 ns, new period 30535 ns, new period 4771 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4286, io period 23331 ns, new period 22331 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4347, io period 23004 ns, new period 22004 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4353, io period 22972 ns, new period 21972 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4357, io period 22951 ns, new period 21951 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4358, io period 22946 ns, new period 21946 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4352, io period 22977 ns, new period 21977 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4355, io period 22962 ns, new period 21962 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4360, io period 22935 ns, new period 21935 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4355, io period 22962 ns, new period 21962 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 3576, io period 27964 ns, new period 26964 ns, new period 4213 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 3565, io period 28050 ns, new period 27050 ns, new period 4226 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 3135, io period 31897 ns, new period 28155 ns, new period 4399 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4278, io period 23375 ns, new period 22375 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4354, io period 22967 ns, new period 21967 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4333, io period 23078 ns, new period 22078 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4334, io period 23073 ns, new period 22073 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4356, io period 22956 ns, new period 21956 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2189, io period 45682 ns, new period 26792 ns, new period 4186 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2175, io period 45977 ns, new period 36776 ns, new period 5746 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2179, io period 45892 ns, new period 44892 ns, new period 7014 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2390, io period 41841 ns, new period 40841 ns, new period 6381 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 3101, io period 32247 ns, new period 31247 ns, new period 4882 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4279, io period 23369 ns, new period 22369 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2840, io period 35211 ns, new period 26792 ns, new period 4186 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2927, io period 34164 ns, new period 33164 ns, new period 5181 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2975, io period 33613 ns, new period 28699 ns, new period 4484 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2693, io period 37133 ns, new period 36133 ns, new period 5645 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2542, io period 39339 ns, new period 38339 ns, new period 5990 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 3326, io period 30066 ns, new period 29066 ns, new period 4541 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4328, io period 23105 ns, new period 22105 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4332, io period 23084 ns, new period 22084 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4347, io period 23004 ns, new period 22004 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4339, io period 23046 ns, new period 22046 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4341, io period 23036 ns, new period 22036 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4345, io period 23014 ns, new period 22014 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4321, io period 23142 ns, new period 22142 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4342, io period 23030 ns, new period 22030 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4348, io period 22999 ns, new period 21999 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4352, io period 22977 ns, new period 21977 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4344, io period 23020 ns, new period 22020 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4339, io period 23046 ns, new period 22046 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4348, io period 22999 ns, new period 21999 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4353, io period 22972 ns, new period 21972 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4358, io period 22946 ns, new period 21946 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4354, io period 22967 ns, new period 21967 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4335, io period 23068 ns, new period 22068 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4325, io period 23121 ns, new period 22121 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4357, io period 22951 ns, new period 21951 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4354, io period 22967 ns, new period 21967 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4355, io period 22962 ns, new period 21962 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4328, io period 23105 ns, new period 22105 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4335, io period 23068 ns, new period 22068 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4354, io period 22967 ns, new period 21967 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4357, io period 22951 ns, new period 21951 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4318, io period 23158 ns, new period 22158 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4347, io period 23004 ns, new period 22004 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4335, io period 23068 ns, new period 22068 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4353, io period 22972 ns, new period 21972 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4334, io period 23073 ns, new period 22073 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 4355, io period 22962 ns, new period 21962 ns, new period 3562 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 2204, io period 45372 ns, new period 28788 ns, new period 4498 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 38772 ns, new period 6058 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
+io_pacer.c: 237:spdk_io_pacer_destroy: *NOTICE*: Destroyed IO pacer 0xaaaae1ee2490
 ~~~
