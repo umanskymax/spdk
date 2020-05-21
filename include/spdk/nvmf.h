@@ -111,6 +111,7 @@ struct spdk_nvmf_io_pacer_stat {
 	uint64_t ios;
 	uint64_t calls;
 	uint64_t no_ios;
+	uint64_t period_ticks;
 };
 
 struct spdk_nvmf_transport_poll_group_stat {
