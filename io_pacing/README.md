@@ -106,6 +106,28 @@ i.e. has length `BufCacheSize`, buffer is returned to common pool.
 Data buffer pool is built on top of DPDK mempool API. It has its own
 caching mechanism but we disable it in this PoC.
 
+## Test setups
+
+### Setup 1 - spdk-tgt-bw-03
+
+**Target**: `spdk-tgt-bw-03` connected with 2 ports to switch sw-ceph02
+
+**Disks**: 16 `INTEL SSDPE21D280GA`
+
+**Initiator 1**: `r-dcs79` connected to switch sw-ceph02
+
+**Initiator 2**: `spdk03` connected to switch sw-spdk01
+
+### Setup 2 - swx-bw-07
+
+**Target**: `swx-bw-07` connected with 2 ports to switch sw-spdk01
+
+**Disks**: 16 `SAMSUNG MZWLL1T6HAJQ-00005`
+
+**Initiator 1**: `spdk04` connected to switch sw-spdk01
+
+**Initiator 2**: `spdk05` connected to switch sw-spdk01
+
 ## Results
 
 | Test #              | IO pacing        | Disks                   | Description                                  |
