@@ -53,6 +53,13 @@ for pg in $(seq 0 $((PG_COUNT-1))); do
     TICKS=$(jq_diff .poll_groups[$pg].transports[].io_pacer.total_ticks $OUT_PATH/nvmf_stats.log)
     echo "  Pacer calls, polls, ios: $CALLS, $POLLS, $IOS"
     echo "  Pacer poll, io period, us: $(m 10^6*$TICKS/$POLLS/$TICK_RATE) $(m 10^6*$TICKS/$IOS/$TICK_RATE)"
+    PACER_TICKS1=$(jq .poll_groups[$pg].transports[].io_pacer.period_ticks $OUT_PATH/nvmf_stats.log | head -1)
+    PACER_TICKS2=$(jq .poll_groups[$pg].transports[].io_pacer.period_ticks $OUT_PATH/nvmf_stats.log | head -2 | tail -1)
+    PACER_TICKS3=$(jq .poll_groups[$pg].transports[].io_pacer.period_ticks $OUT_PATH/nvmf_stats.log | tail -1)
+    echo "  Pacer period 1, us: $(m 10^6*$PACER_TICKS1/$TICK_RATE)"
+    echo "  Pacer period 2, us: $(m 10^6*$PACER_TICKS2/$TICK_RATE)"
+    echo "  Pacer period 3, us: $(m 10^6*$PACER_TICKS3/$TICK_RATE)"
+
     for dev in $(seq 0 $((DEV_COUNT-1))); do
 	DEV_NAME=$(jq .poll_groups[$pg].transports[].devices[$dev].name $OUT_PATH/nvmf_stats_final.log)
 	echo "  Device: $DEV_NAME"

@@ -328,16 +328,15 @@ function config_null_1()
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
-    rpc_send nvmf_subsystem_add_listener --trtype rdma \
-	     --traddr 1.1.103.1 \
-	     --adrfam ipv4 \
-	     --trsvcid 4420 \
-	     nqn.2016-06.io.spdk:cnode1
-    rpc_send nvmf_subsystem_add_listener --trtype rdma \
-	     --traddr 2.2.103.1 \
-	     --adrfam ipv4 \
-	     --trsvcid 4420 \
-	     nqn.2016-06.io.spdk:cnode1
+
+    for addr in $TARGET_ADDRS; do
+	rpc_send nvmf_subsystem_add_listener --trtype rdma \
+		 --traddr "$addr" \
+		 --adrfam ipv4 \
+		 --trsvcid 4420 \
+		 nqn.2016-06.io.spdk:cnode1
+    done
+
     rpc_send bdev_null_create Null0 8192 4096
     rpc_send nvmf_subsystem_add_ns nqn.2016-06.io.spdk:cnode1 Null0
     rpc_stop
@@ -366,16 +365,15 @@ function config_null_16()
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
-    rpc_send nvmf_subsystem_add_listener --trtype rdma \
-	     --traddr 1.1.103.1 \
-	     --adrfam ipv4 \
-	     --trsvcid 4420 \
-	     nqn.2016-06.io.spdk:cnode1
-    rpc_send nvmf_subsystem_add_listener --trtype rdma \
-	     --traddr 2.2.103.1 \
-	     --adrfam ipv4 \
-	     --trsvcid 4420 \
-	     nqn.2016-06.io.spdk:cnode1
+
+    for addr in $TARGET_ADDRS; do
+	rpc_send nvmf_subsystem_add_listener --trtype rdma \
+		 --traddr "$addr" \
+		 --adrfam ipv4 \
+		 --trsvcid 4420 \
+		 nqn.2016-06.io.spdk:cnode1
+    done
+
     for i in $(seq 16); do
 	rpc_send bdev_null_create Null$i 8192 4096
 	rpc_send nvmf_subsystem_add_ns nqn.2016-06.io.spdk:cnode1 Null$i
@@ -407,16 +405,14 @@ function config_nvme()
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
-    rpc_send nvmf_subsystem_add_listener --trtype rdma \
-	     --traddr 1.1.103.1 \
-	     --adrfam ipv4 \
-	     --trsvcid 4420 \
-	     nqn.2016-06.io.spdk:cnode1
-    rpc_send nvmf_subsystem_add_listener --trtype rdma \
-	     --traddr 2.2.103.1 \
-	     --adrfam ipv4 \
-	     --trsvcid 4420 \
-	     nqn.2016-06.io.spdk:cnode1
+
+    for addr in $TARGET_ADDRS; do
+	rpc_send nvmf_subsystem_add_listener --trtype rdma \
+		 --traddr "$addr" \
+		 --adrfam ipv4 \
+		 --trsvcid 4420 \
+		 nqn.2016-06.io.spdk:cnode1
+    done
 
     local i=0
     for pci in $DISKS; do
@@ -454,16 +450,14 @@ function config_nvme_split3_delay()
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
-    rpc_send nvmf_subsystem_add_listener --trtype rdma \
-	     --traddr 1.1.103.1 \
-	     --adrfam ipv4 \
-	     --trsvcid 4420 \
-	     nqn.2016-06.io.spdk:cnode1
-    rpc_send nvmf_subsystem_add_listener --trtype rdma \
-	     --traddr 2.2.103.1 \
-	     --adrfam ipv4 \
-	     --trsvcid 4420 \
-	     nqn.2016-06.io.spdk:cnode1
+
+    for addr in $TARGET_ADDRS; do
+	rpc_send nvmf_subsystem_add_listener --trtype rdma \
+		 --traddr "$addr" \
+		 --adrfam ipv4 \
+		 --trsvcid 4420 \
+		 nqn.2016-06.io.spdk:cnode1
+    done
 
     local i=0
     for pci in $DISKS; do
@@ -498,7 +492,7 @@ function config_nvme_split3_delay()
 
 function test_1()
 {
-    start_tgt 0xFFFF
+    start_tgt 0xF
     config_null_1
     FIO_JOB=fio-1ns basic_test
     stop_tgt
