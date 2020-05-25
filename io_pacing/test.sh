@@ -311,6 +311,8 @@ function config_null_1()
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
+    IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
+    IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
     rpc_send framework_start_init
@@ -324,7 +326,9 @@ function config_null_1()
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
 	     --max-srq-depth 4096 \
-	     --io-pacer-period $IO_PACER_PERIOD
+	     --io-pacer-period $IO_PACER_PERIOD \
+	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
+	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
@@ -348,6 +352,8 @@ function config_null_16()
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
+    IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
+    IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
     rpc_send framework_start_init
@@ -361,7 +367,9 @@ function config_null_16()
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
 	     --max-srq-depth 4096 \
-	     --io-pacer-period $IO_PACER_PERIOD
+	     --io-pacer-period $IO_PACER_PERIOD \
+	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
+	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
@@ -387,6 +395,8 @@ function config_nvme()
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-128}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
+    IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
+    IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
     local DISKS="05 06 07 08 09 0a 0b 0c 0f 10 11 12 13 14 15 16"
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
@@ -401,7 +411,9 @@ function config_nvme()
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
 	     --max-srq-depth 4096 \
-	     --io-pacer-period $IO_PACER_PERIOD
+	     --io-pacer-period $IO_PACER_PERIOD \
+	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
+	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
@@ -432,6 +444,8 @@ function config_nvme_split3_delay()
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-128}
     NUM_DELAY_BDEVS=${NUM_DELAY_BDEVS-0}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
+    IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
+    IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
     local DISKS="05 06 07 08 09 0a 0b 0c 0f 10 11 12 13 14 15 16"
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
@@ -446,7 +460,9 @@ function config_nvme_split3_delay()
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
 	     --max-srq-depth 4096 \
-	     --io-pacer-period $IO_PACER_PERIOD
+	     --io-pacer-period $IO_PACER_PERIOD \
+	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
+	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1
