@@ -294,14 +294,18 @@ One initiator: spdk04
 | QD | BW   | WIRE BW | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
 |----|------|---------|-------------|-----------|-------------|----------------------|
 | 1  | 52.0 | 52.0158 | 19.9        | 1.7       | 99.0        | 0 (0)                |
+
+16 NVMe disks
+| QD | BW   | WIRE BW | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
+|----|------|---------|-------------|-----------|-------------|----------------------|
 | 1  | 4.4  | 4.7265  | 235.6       | 0         | 98.3        | .3 (0)               |
 
-48  0
+48 split disks (1 job)
 | QD | BW   | WIRE BW | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
 |----|------|---------|-------------|-----------|-------------|----------------------|
 | 1  | 12.8 | 13.7532 | 243.6       | 0         | 99.0        | 0 (0)                |
 
-48  48
+48 split+delay disks (1 job)
 | QD | BW  | WIRE BW | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
 |----|-----|---------|-------------|-----------|-------------|----------------------|
 | 1  | 2.4 | 2.6561  | 1258.5      | 0         | 97.9        | 1.0 (.1)             |
