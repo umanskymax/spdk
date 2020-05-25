@@ -223,7 +223,6 @@ buffers are shared equally between all threads at start with
 
 | QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      |
 |------------|------------|------------|-----------------|------------|-----------------|---------------------------|
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      |
 | 256        | 139.2      | 146.5161   | 3854.6          | 3.2        | 65.1            | 89.3 (11.1)               |
 | 1024       | 137.0      | 149.9497   | 15668.3         | 3.3        | 65.5            | 90.0 (11.2)               |
 | 256        | 182.0      | 196.1142   | 2949.3          | 4.1        | 89.5            | 63.0 (7.8)                |
