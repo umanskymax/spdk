@@ -38,7 +38,11 @@
 struct spdk_io_pacer;
 typedef void (*spdk_io_pacer_pop_cb)(void *io);
 
-struct spdk_io_pacer *spdk_io_pacer_create(uint32_t period_ns, spdk_io_pacer_pop_cb pop_cb);
+struct spdk_io_pacer *spdk_io_pacer_create(uint32_t period_ns,
+					   uint32_t tuner_period_us,
+					   uint32_t tuner_step_ns,
+					   spdk_io_pacer_pop_cb pop_cb,
+					   void *ctx);
 void spdk_io_pacer_destroy(struct spdk_io_pacer *pacer);
 int spdk_io_pacer_create_queue(struct spdk_io_pacer *pacer, uint64_t key);
 int spdk_io_pacer_destroy_queue(struct spdk_io_pacer *pacer, uint64_t key);

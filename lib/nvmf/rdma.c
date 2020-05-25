@@ -431,6 +431,8 @@ struct spdk_nvmf_rdma_poller_stat {
 	uint64_t				pending_free_request;
 	uint64_t				pending_rdma_read;
 	uint64_t				pending_rdma_write;
+	uint64_t last_reqs;
+	uint64_t last_req_lat;
 };
 
 struct spdk_nvmf_rdma_poller {
@@ -2385,6 +2387,9 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 #define SPDK_NVMF_RDMA_DEFAULT_BUFFER_CACHE_SIZE 32
 #define SPDK_NVMF_RDMA_DEFAULT_NO_SRQ false
 #define SPDK_NVMF_RDMA_DIF_INSERT_OR_STRIP false
+#define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_PERIOD 0
+#define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_PERIOD 10000 /* us */
+#define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_STEP 1000 /* ns */
 
 static void
 spdk_nvmf_rdma_opts_init(struct spdk_nvmf_transport_opts *opts)
@@ -2400,6 +2405,9 @@ spdk_nvmf_rdma_opts_init(struct spdk_nvmf_transport_opts *opts)
 	opts->max_srq_depth =		SPDK_NVMF_RDMA_DEFAULT_SRQ_DEPTH;
 	opts->no_srq =			SPDK_NVMF_RDMA_DEFAULT_NO_SRQ;
 	opts->dif_insert_or_strip =	SPDK_NVMF_RDMA_DIF_INSERT_OR_STRIP;
+	opts->io_pacer_period = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_PERIOD;
+	opts->io_pacer_tuner_period = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_PERIOD;
+	opts->io_pacer_tuner_step = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_STEP;
 }
 
 const struct spdk_mem_map_ops g_nvmf_rdma_map_ops = {
@@ -3484,7 +3492,10 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 
 	if (0 != transport->opts.io_pacer_period) {
 		rgroup->pacer = spdk_io_pacer_create(transport->opts.io_pacer_period,
-						     nvmf_rdma_io_pacer_pop_cb);
+						     transport->opts.io_pacer_tuner_period,
+						     transport->opts.io_pacer_tuner_step,
+						     nvmf_rdma_io_pacer_pop_cb,
+						     rgroup);
 		if (!rgroup->pacer) {
 			SPDK_ERRLOG("Failed to create IO pacer\n");
 			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);

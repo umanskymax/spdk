@@ -38,8 +38,6 @@
 #include "spdk_internal/log.h"
 
 #define IO_PACER_DEFAULT_MAX_QUEUES 32
-#define IO_PACER_TUNER_PERIOD_US 10000
-#define IO_PACER_TUNE_STEP_US 1
 
 struct io_pacer_queue_entry {
 	STAILQ_ENTRY(io_pacer_queue_entry) link;
@@ -63,10 +61,13 @@ struct spdk_io_pacer {
 	struct io_pacer_queue *queues;
 	struct spdk_poller *poller;
 
+	uint64_t tuner_period_ns;
+	uint64_t tuner_step_ns;
 	uint64_t min_period_ticks;
 	uint64_t max_period_ticks;
 	uint64_t tuner_last_ios;
 	struct spdk_poller *tuner;
+	void *ctx;
 };
 
 
@@ -136,18 +137,17 @@ io_pacer_tune(void *arg)
 	struct spdk_io_pacer *pacer = arg;
 	const uint64_t ticks_hz = spdk_get_ticks_hz();
 	const uint64_t ios = pacer->stat.ios - pacer->tuner_last_ios;
-	const uint64_t io_period_ns = (1000 * IO_PACER_TUNER_PERIOD_US) / ((ios != 0) ? ios : 1);
+	const uint64_t io_period_ns = pacer->tuner_period_ns / ((ios != 0) ? ios : 1);
 
 	const uint64_t cur_period_ns = (pacer->period_ticks * SPDK_SEC_TO_NSEC) / ticks_hz;
 	/* We always want to set pacer period one step shorter than measured IO period.
 	 * But we limit changes to one step at a time in any direction.
 	 */
-	const uint64_t tune_step_ns = 1000 * IO_PACER_TUNE_STEP_US;
-	uint64_t new_period_ns = io_period_ns - tune_step_ns;
-	if (new_period_ns > cur_period_ns + tune_step_ns) {
-		new_period_ns = cur_period_ns + tune_step_ns;
-	} else if (new_period_ns < cur_period_ns - tune_step_ns) {
-		new_period_ns = cur_period_ns - tune_step_ns;
+	uint64_t new_period_ns = io_period_ns - pacer->tuner_step_ns;
+	if (new_period_ns > cur_period_ns + pacer->tuner_step_ns) {
+		new_period_ns = cur_period_ns + pacer->tuner_step_ns;
+	} else if (new_period_ns < cur_period_ns - pacer->tuner_step_ns) {
+		new_period_ns = cur_period_ns - pacer->tuner_step_ns;
 	}
 
 	uint64_t new_period_ticks = (new_period_ns * ticks_hz) / SPDK_SEC_TO_NSEC;
@@ -156,7 +156,7 @@ io_pacer_tune(void *arg)
 
 	static __thread uint32_t log_counter = 0;
 	/* Try to log once per second */
-	if (log_counter % (SPDK_SEC_TO_USEC / IO_PACER_TUNER_PERIOD_US) == 0) {
+	if (log_counter % (SPDK_SEC_TO_NSEC / pacer->tuner_period_ns) == 0) {
 		SPDK_NOTICELOG("IO pacer tuner: pacer %p, ios %lu, io period %lu ns, new period %lu ns, new period %lu ticks, min %lu, max %lu\n",
 			       pacer,
 			       pacer->stat.ios - pacer->tuner_last_ios,
@@ -175,7 +175,8 @@ io_pacer_tune(void *arg)
 }
 
 struct spdk_io_pacer *
-spdk_io_pacer_create(uint32_t period_ns, spdk_io_pacer_pop_cb pop_cb)
+spdk_io_pacer_create(uint32_t period_ns, uint32_t tuner_period_us, uint32_t tuner_step_ns,
+		     spdk_io_pacer_pop_cb pop_cb, void *ctx)
 {
 	struct spdk_io_pacer *pacer;
 
@@ -201,15 +202,23 @@ spdk_io_pacer_create(uint32_t period_ns, spdk_io_pacer_pop_cb pop_cb)
 		return NULL;
 	}
 
-	pacer->tuner = SPDK_POLLER_REGISTER(io_pacer_tune, (void *)pacer, IO_PACER_TUNER_PERIOD_US);
+	pacer->tuner_period_ns = 1000ULL * tuner_period_us;
+	pacer->tuner_step_ns = tuner_step_ns;
+	pacer->tuner = SPDK_POLLER_REGISTER(io_pacer_tune, (void *)pacer, tuner_period_us);
 	if (!pacer->tuner) {
 		SPDK_ERRLOG("Failed to create tuner poller for IO pacer\n");
 		spdk_io_pacer_destroy(pacer);
 		return NULL;
 	}
 
-	SPDK_NOTICELOG("Created IO pacer %p: period_ns %u, period_ticks %lu, max_queues %u\n",
-		       pacer, period_ns, pacer->period_ticks, pacer->max_queues);
+	pacer->ctx = ctx;
+	SPDK_NOTICELOG("Created IO pacer %p: period_ns %u, period_ticks %lu, max_queues %u, tuner_period_ns %lu, tuner_step_ns %lu\n",
+		       pacer,
+		       period_ns,
+		       pacer->period_ticks,
+		       pacer->max_queues,
+		       pacer->tuner_period_ns,
+		       pacer->tuner_step_ns);
 
 	return pacer;
 }

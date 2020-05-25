@@ -1700,7 +1700,9 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
                                        c2h_success=args.c2h_success,
                                        dif_insert_or_strip=args.dif_insert_or_strip,
                                        sock_priority=args.sock_priority,
-                                       io_pacer_period=args.io_pacer_period)
+                                       io_pacer_period=args.io_pacer_period,
+                                       io_pacer_tuner_period=args.io_pacer_tuner_period,
+                                       io_pacer_tuner_step=args.io_pacer_tuner_step)
 
     p = subparsers.add_parser('nvmf_create_transport', help='Create NVMf transport')
     p.add_argument('-t', '--trtype', help='Transport type (ex. RDMA)', type=str, required=True)
@@ -1718,7 +1720,9 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
     p.add_argument('-o', '--c2h-success', action='store_false', help='Disable C2H success optimization. Relevant only for TCP transport')
     p.add_argument('-f', '--dif-insert-or-strip', action='store_true', help='Enable DIF insert/strip. Relevant only for TCP transport')
     p.add_argument('-y', '--sock-priority', help='The sock priority of the tcp connection. Relevant only for TCP transport', type=int)
-    p.add_argument('-d', '--io-pacer-period', help='IO pacer period. (0 - no IO pacing). RDMA transport only.', type=int)
+    p.add_argument('-d', '--io-pacer-period', help='IO pacer period, ns. (0 - no IO pacing). RDMA transport only.', type=int)
+    p.add_argument('--io-pacer-tuner-period', help='IO pacer tuner period, us. . RDMA transport only.', type=int)
+    p.add_argument('--io-pacer-tuner-step', help='IO pacer tuner step,ns. RDMA transport only.', type=int)
     p.set_defaults(func=nvmf_create_transport)
 
     def nvmf_get_transports(args):
