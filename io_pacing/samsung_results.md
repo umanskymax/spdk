@@ -244,3 +244,34 @@ buffers are shared equally between all threads at start with
 | 16          | 4         | 256        | 65.6       | 69.5475    | 8182.5          | 1.4        | 99.4            | 13.6 (1.7)                |
 | 16          | 4         | 1024       | 65.1       | 68.7459    | 32963.8         | 1.7        | 99.4            | 11.6 (1.4)                |
 
+### Test 11
+
+Split each NVMe disk into 3 partitions with SPDK split block device
+and build delay block device on top of some partitions.
+
+IO depth is shared equally between all disks. FIO runs 3 jobs with
+queue depth of 85 or 341 each. This gives us total IO depth of 255 and
+1023 per initiator respectively.
+
+**IO pacing**: `Number of buffers`
+
+**Configuration**: `config_nvme_split3_delay`
+
+**Initiator**: `fio+SPDK`
+
+**CPU mask**: 0xF
+
+| Num buffers | Num delay bdevs | QD  | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
+|-------------|-----------------|-----|-------|----------|-------------|-----------|-------------|----------------------|
+| 96          | 0               | 85  | 182.4 | 196.2003 | 2931.2      | 1.4       | 94.4        | 57.6 (7.2)           |
+| 96          | 0               | 341 | 172.7 | 196.2555 | 12424.5     | 2.7       | 93.8        | 44.6 (5.5)           |
+| 96          | 16              | 85  | 157.4 | 171.0941 | 3398.7      | .4        | 93.6        | 75.0 (9.3)           |
+| 96          | 16              | 341 | 136.1 | 161.4393 | 16238.9     | 2.9       | 92.5        | 81.0 (10.1)          |
+| 96          | 32              | 85  | 109.4 | 116.0836 | 4886.2      | 1.5       | 88.2        | 75.0 (9.3)           |
+| 96          | 32              | 341 | 112.3 | 111.87   | 19210.5     | 4.3       | 87.0        | 84.3 (10.5)          |
+| 48          | 0               | 85  | 157.0 | 166.1663 | 3404.0      | .6        | 99.5        | 35.3 (4.4)           |
+| 48          | 0               | 341 | 129.4 | 166.1863 | 17297.6     | 3.9       | 99.4        | 39.3 (4.9)           |
+| 48          | 16              | 85  | 88.9  | 92.3295  | 6016.8      | 2.0       | 99.3        | 38.6 (4.8)           |
+| 48          | 16              | 341 | 89.7  | 89.1863  | 24470.7     | 3.3       | 99.1        | 46.0 (5.7)           |
+| 48          | 32              | 85  | 56.5  | 58.6304  | 9466.7      | 1.3       | 99.1        | 39.3 (4.9)           |
+| 48          | 32              | 341 | 59.5  | 57.3809  | 36071.5     | 2.6       | 98.9        | 48.0 (6.0)           |
