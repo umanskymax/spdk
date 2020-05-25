@@ -1,3 +1,7 @@
+Disks: Non-Volatile memory controller: Samsung Electronics Co Ltd NVMe SSD Controller 172Xa/172Xb (rev 01) (prog-if 02 [NVM Express])
+       Subsystem: Samsung Electronics Co Ltd NVMe SSD Controller 172Xa
+
+
 ### Test 1
 
 **IO pacing**: `none`
