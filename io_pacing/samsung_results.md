@@ -275,3 +275,33 @@ queue depth of 85 or 341 each. This gives us total IO depth of 255 and
 | 48          | 16              | 341 | 89.7  | 89.1863  | 24470.7     | 3.3       | 99.1        | 46.0 (5.7)           |
 | 48          | 32              | 85  | 56.5  | 58.6304  | 9466.7      | 1.3       | 99.1        | 39.3 (4.9)           |
 | 48          | 32              | 341 | 59.5  | 57.3809  | 36071.5     | 2.6       | 98.9        | 48.0 (6.0)           |
+
+### Test 13
+
+Test latencies with different configurations.
+
+**IO pacing**: `N/A`
+
+**Configuration**: `config_null_16`, `config_nvme`, `config_nvme_split3_delay`
+
+**Initiator**: `fio+SPDK`
+
+**CPU mask**: 0xF
+
+One initiator: spdk04
+
+16 Null disks
+| QD | BW   | WIRE BW | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
+|----|------|---------|-------------|-----------|-------------|----------------------|
+| 1  | 52.0 | 52.0158 | 19.9        | 1.7       | 99.0        | 0 (0)                |
+| 1  | 4.4  | 4.7265  | 235.6       | 0         | 98.3        | .3 (0)               |
+
+48  0
+| QD | BW   | WIRE BW | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
+|----|------|---------|-------------|-----------|-------------|----------------------|
+| 1  | 12.8 | 13.7532 | 243.6       | 0         | 99.0        | 0 (0)                |
+
+48  48
+| QD | BW  | WIRE BW | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
+|----|-----|---------|-------------|-----------|-------------|----------------------|
+| 1  | 2.4 | 2.6561  | 1258.5      | 0         | 97.9        | 1.0 (.1)             |
