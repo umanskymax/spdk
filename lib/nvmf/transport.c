@@ -47,24 +47,19 @@
 
 #ifdef SPDK_CONFIG_VTUNE
 #include <ittnotify.h>
-void* user_defined_malloc(size_t size);
-void user_defined_free(void *p);
-__itt_heap_function my_allocator;
-__itt_heap_function my_freer;
+#include "ittnotify_types.h"
+int __itt_init_ittlib(const char *, __itt_group_id);
 __itt_string_handle *buffer_get_task;
 __itt_string_handle *buffer_free_task;
+__itt_string_handle *counter_handle;
 __itt_domain *domain;
-__itt_counter buffers_allocated_counter;
 static inline void init_itt_calls(void)
 {
-	unsigned long long zero = 0;
-    domain = __itt_domain_create("mydomain" ); 
+    __itt_init_ittlib(NULL, 0);
+    domain = __itt_domain_create("NVMF transport" ); 
     buffer_get_task = __itt_string_handle_create("getting buffer");
     buffer_free_task = __itt_string_handle_create("freeing buffer");
-    my_allocator = __itt_heap_function_create("my_malloc", "mydomain");
-    my_freer = __itt_heap_function_create("my_free", "mydomain");
-    buffers_allocated_counter = __itt_counter_create("Buffers Allocated", "mydomain");
-    __itt_counter_set_value(buffers_allocated_counter, &zero);
+    counter_handle = __itt_string_handle_create("buffers_allocated");
 }
 
 #endif /* SPDK_CONFIG_VTUNE */
@@ -500,7 +495,7 @@ spdk_nvmf_request_free_buffers(struct spdk_nvmf_request *req,
 	req->data_from_pool = false;
 #ifdef SPDK_CONFIG_VTUNE
 	cnt_val = group->buffers_allocated;
-	__itt_counter_set_value(buffers_allocated_counter, &cnt_val);
+	__itt_metadata_add(domain, __itt_null, counter_handle, __itt_metadata_u64, 1, &cnt_val);
 	__itt_task_end(domain);
 #endif /*SPDK_CONFIG_VTUNE*/	
 }
@@ -550,7 +545,7 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 			group->buffers_allocated++;
 #ifdef SPDK_CONFIG_VTUNE
 			cnt_val = group->buffers_allocated;
-			__itt_counter_set_value(buffers_allocated_counter, &cnt_val);
+			__itt_metadata_add(domain, __itt_null, counter_handle, __itt_metadata_u64, 1, &cnt_val);
 #endif /* SPDK_CONFIG_VTUNE */
 
 			buffer = STAILQ_FIRST(&group->buf_cache);
@@ -571,7 +566,7 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 			group->buffers_allocated += num_buffers - i;
 #ifdef SPDK_CONFIG_VTUNE
 			cnt_val = group->buffers_allocated;
-			__itt_counter_set_value(buffers_allocated_counter, &cnt_val);
+			__itt_metadata_add(domain, __itt_null, counter_handle, __itt_metadata_u64, 1, &cnt_val);
 #endif /* SPDK_CONFIG_VTUNE */
 			i += num_buffers - i;
 		}
