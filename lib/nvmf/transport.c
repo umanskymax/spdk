@@ -45,6 +45,31 @@
 
 #define MAX_MEMPOOL_NAME_LENGTH 40
 
+#ifdef SPDK_CONFIG_VTUNE
+#include <ittnotify.h>
+void* user_defined_malloc(size_t size);
+void user_defined_free(void *p);
+__itt_heap_function my_allocator;
+__itt_heap_function my_freer;
+__itt_string_handle *buffer_get_task;
+__itt_string_handle *buffer_free_task;
+__itt_domain *domain;
+__itt_counter buffers_allocated_counter;
+static inline void init_itt_calls(void)
+{
+	unsigned long long zero = 0;
+    domain = __itt_domain_create("mydomain" ); 
+    buffer_get_task = __itt_string_handle_create("getting buffer");
+    buffer_free_task = __itt_string_handle_create("freeing buffer");
+    my_allocator = __itt_heap_function_create("my_malloc", "mydomain");
+    my_freer = __itt_heap_function_create("my_free", "mydomain");
+    buffers_allocated_counter = __itt_counter_create("Buffers Allocated", "mydomain");
+    __itt_counter_set_value(buffers_allocated_counter, &zero);
+}
+
+#endif /* SPDK_CONFIG_VTUNE */
+
+
 struct nvmf_transport_ops_list_element {
 	struct spdk_nvmf_transport_ops			ops;
 	TAILQ_ENTRY(nvmf_transport_ops_list_element)	link;
@@ -114,6 +139,10 @@ spdk_nvmf_transport_create(const char *transport_name, struct spdk_nvmf_transpor
 	char spdk_mempool_name[MAX_MEMPOOL_NAME_LENGTH];
 	int chars_written;
 
+#ifdef SPDK_CONFIG_VTUNE
+	init_itt_calls();
+#endif /* SPDK_CONFIG_VTUNE */
+	
 	ops = spdk_nvmf_get_transport_ops(transport_name);
 	if (!ops) {
 		SPDK_ERRLOG("Transport type '%s' unavailable.\n", transport_name);
@@ -448,8 +477,12 @@ spdk_nvmf_request_free_buffers(struct spdk_nvmf_request *req,
 			       struct spdk_nvmf_transport *transport)
 {
 	uint32_t i;
-
+	unsigned long long cnt_val = 0;
+#ifdef SPDK_CONFIG_VTUNE
+	 __itt_task_begin(domain, __itt_null, __itt_null, buffer_free_task);
+#endif /*SPDK_CONFIG_VTUNE*/	
 	for (i = 0; i < req->iovcnt; i++) {
+
 		if (group->buf_cache_count < group->buf_cache_size) {
 			STAILQ_INSERT_HEAD(&group->buf_cache,
 					   (struct spdk_nvmf_transport_pg_cache_buf *)req->buffers[i],
@@ -461,9 +494,15 @@ spdk_nvmf_request_free_buffers(struct spdk_nvmf_request *req,
 		req->iov[i].iov_base = NULL;
 		req->buffers[i] = NULL;
 		req->iov[i].iov_len = 0;
+
 	}
 	group->buffers_allocated -= req->iovcnt;
 	req->data_from_pool = false;
+#ifdef SPDK_CONFIG_VTUNE
+	cnt_val = group->buffers_allocated;
+	__itt_counter_set_value(buffers_allocated_counter, &cnt_val);
+	__itt_task_end(domain);
+#endif /*SPDK_CONFIG_VTUNE*/	
 }
 
 static inline int
@@ -490,10 +529,16 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 	uint32_t num_buffers;
 	uint32_t i = 0, j;
 	void *buffer, *buffers[NVMF_REQ_MAX_BUFFERS];
+	unsigned long long cnt_val = 0;
 
 	/* If the number of buffers is too large, then we know the I/O is larger than allowed.
 	 *  Fail it.
 	 */
+
+#ifdef SPDK_CONFIG_VTUNE
+	 __itt_task_begin(domain, __itt_null, __itt_null, buffer_get_task);
+#endif /* SPDK_CONFIG_VTUNE */
+    
 	num_buffers = SPDK_CEIL_DIV(length, io_unit_size);
 	if (num_buffers + req->iovcnt > NVMF_REQ_MAX_BUFFERS) {
 		return -EINVAL;
@@ -503,6 +548,11 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 		if (!(STAILQ_EMPTY(&group->buf_cache))) {
 			group->buf_cache_count--;
 			group->buffers_allocated++;
+#ifdef SPDK_CONFIG_VTUNE
+			cnt_val = group->buffers_allocated;
+			__itt_counter_set_value(buffers_allocated_counter, &cnt_val);
+#endif /* SPDK_CONFIG_VTUNE */
+
 			buffer = STAILQ_FIRST(&group->buf_cache);
 			STAILQ_REMOVE_HEAD(&group->buf_cache, link);
 			assert(buffer != NULL);
@@ -519,6 +569,10 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 			}
 
 			group->buffers_allocated += num_buffers - i;
+#ifdef SPDK_CONFIG_VTUNE
+			cnt_val = group->buffers_allocated;
+			__itt_counter_set_value(buffers_allocated_counter, &cnt_val);
+#endif /* SPDK_CONFIG_VTUNE */
 			i += num_buffers - i;
 		}
 	}
@@ -526,6 +580,9 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 	assert(length == 0);
 
 	req->data_from_pool = true;
+#ifdef  SPDK_CONFIG_VTUNE
+	__itt_task_end(domain);
+#endif /* SPDK_CONFIG_VTUNE */
 	return 0;
 }
 

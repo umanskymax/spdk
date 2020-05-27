@@ -38,13 +38,20 @@ SO_VER := 3
 SO_MINOR := 0
 SO_SUFFIX := $(SO_VER).$(SO_MINOR)
 
+ifeq ($(CONFIG_VTUNE),y)
+CFLAGS += -I$(CONFIG_VTUNE_DIR)/include -I$(CONFIG_VTUNE_DIR)/sdk/src/ittnotify -I$(CONFIG_VTUNE_DIR)/src/ittnotify
+endif
+
 C_SRCS = ctrlr.c ctrlr_discovery.c ctrlr_bdev.c \
 	 subsystem.c nvmf.c nvmf_rpc.c transport.c tcp.c \
 	 io_pacer.c
 
 C_SRCS-$(CONFIG_RDMA) += rdma.c
+
 LIBNAME = nvmf
 LOCAL_SYS_LIBS = -luuid
+
+
 ifeq ($(CONFIG_RDMA),y)
 LOCAL_SYS_LIBS += -libverbs -lrdmacm
 #Attach only if FreeBSD and RDMA is specified with configure
