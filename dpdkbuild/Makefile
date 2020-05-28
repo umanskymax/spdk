@@ -55,6 +55,7 @@ DPDK_OPTS += CONFIG_RTE_LIBRTE_PMD_ISAL=n
 ifeq ($(CONFIG_SHARED),y)
 DPDK_OPTS += CONFIG_RTE_BUILD_SHARED_LIB=y
 DPDK_LDFLAGS+= -rpath $(SPDK_ROOT_DIR)/dpdk/build/lib
+DPDK_LDFLAGS+= -rpath $(DESTDIR)$(libdir)
 endif
 
 ifeq ($(CONFIG_CRYPTO),y)
@@ -152,7 +153,11 @@ all: $(SPDK_ROOT_DIR)/dpdk/build
 clean:
 	$(Q)rm -rf $(SPDK_ROOT_DIR)/dpdk/build
 
+#copy all rte libraries to SPDK installation directory since DPDK `install` target also copies
+#headers and binaies
 install: all
+	$(Q)install -d -m 755 "$(DESTDIR)$(libdir)"
+	$(Q)cp -P $(SPDK_ROOT_DIR)/dpdk/build/lib/librte* $(DESTDIR)$(libdir)/
 
 uninstall:
 	@:
