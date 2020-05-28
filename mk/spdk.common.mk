@@ -220,6 +220,10 @@ endif
 COMMON_CFLAGS += -pthread
 LDFLAGS += -pthread
 
+ifeq ($(CONFIG_SHARED),y)
+LDFLAGS += -Wl,-rpath,$(DESTDIR)$(libdir)
+endif
+
 CFLAGS   += $(COMMON_CFLAGS) -Wno-pointer-sign -Wstrict-prototypes -Wold-style-definition -std=gnu99
 CXXFLAGS += $(COMMON_CFLAGS)
 
