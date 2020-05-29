@@ -38,12 +38,17 @@
 #ifndef SPDK_NVMF_TRANSPORT_H_
 #define SPDK_NVMF_TRANSPORT_H_
 
+#include "spdk/config.h"
 #include "spdk/bdev.h"
 #include "spdk/nvme_spec.h"
 #include "spdk/nvmf.h"
 #include "spdk/nvmf_cmd.h"
 #include "spdk/nvmf_spec.h"
 #include "spdk/memory.h"
+
+#ifdef SPDK_CONFIG_VTUNE
+#include <ittnotify.h>
+#endif 
 
 #define SPDK_NVMF_MAX_SGL_ENTRIES	16
 
@@ -139,6 +144,9 @@ struct spdk_nvmf_transport_poll_group {
 	uint32_t							buf_cache_count;
 	uint32_t							buf_cache_size;
 	uint32_t							buffers_allocated;
+#ifdef SPDK_CONFIG_VTUNE
+	__itt_string_handle                             *buffers_allocated_counter_handle;
+#endif 
 	struct spdk_nvmf_poll_group					*group;
 	TAILQ_ENTRY(spdk_nvmf_transport_poll_group)			link;
 };

@@ -31,6 +31,13 @@
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <unistd.h>
+#include <sys/syscall.h>
+
+#ifndef SYS_gettid
+#error "SYS_gettid unavailable on this system"
+#endif
+
 #include "spdk/stdinc.h"
 
 #include "nvmf_internal.h"
@@ -42,6 +49,7 @@
 #include "spdk/nvmf_transport.h"
 #include "spdk/queue.h"
 #include "spdk/util.h"
+#include "spdk/string.h"
 
 #define MAX_MEMPOOL_NAME_LENGTH 40
 
@@ -51,15 +59,14 @@
 int __itt_init_ittlib(const char *, __itt_group_id);
 __itt_string_handle *buffer_get_task;
 __itt_string_handle *buffer_free_task;
-__itt_string_handle *counter_handle;
 __itt_domain *domain;
 static inline void init_itt_calls(void)
 {
     __itt_init_ittlib(NULL, 0);
+    
     domain = __itt_domain_create("NVMF transport" ); 
     buffer_get_task = __itt_string_handle_create("getting buffer");
     buffer_free_task = __itt_string_handle_create("freeing buffer");
-    counter_handle = __itt_string_handle_create("buffers_allocated");
 }
 
 #endif /* SPDK_CONFIG_VTUNE */
@@ -300,6 +307,10 @@ spdk_nvmf_transport_poll_group_create(struct spdk_nvmf_transport *transport)
 	if (!group) {
 		return NULL;
 	}
+#ifdef SPDK_CONFIG_VTUNE
+	group->buffers_allocated_counter_handle = 
+	__itt_string_handle_create(spdk_sprintf_alloc("buffers_allocated_%ld", (long) syscall(SYS_gettid)));
+#endif
 	group->transport = transport;
 
 	STAILQ_INIT(&group->pending_buf_queue);
@@ -495,7 +506,7 @@ spdk_nvmf_request_free_buffers(struct spdk_nvmf_request *req,
 	req->data_from_pool = false;
 #ifdef SPDK_CONFIG_VTUNE
 	cnt_val = group->buffers_allocated;
-	__itt_metadata_add(domain, __itt_null, counter_handle, __itt_metadata_u64, 1, &cnt_val);
+	__itt_metadata_add(domain, __itt_null, group->buffers_allocated_counter_handle, __itt_metadata_u64, 1, &cnt_val);
 	__itt_task_end(domain);
 #endif /*SPDK_CONFIG_VTUNE*/	
 }
@@ -545,7 +556,7 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 			group->buffers_allocated++;
 #ifdef SPDK_CONFIG_VTUNE
 			cnt_val = group->buffers_allocated;
-			__itt_metadata_add(domain, __itt_null, counter_handle, __itt_metadata_u64, 1, &cnt_val);
+			__itt_metadata_add(domain, __itt_null, group->buffers_allocated_counter_handle, __itt_metadata_u64, 1, &cnt_val);
 #endif /* SPDK_CONFIG_VTUNE */
 
 			buffer = STAILQ_FIRST(&group->buf_cache);
@@ -566,7 +577,7 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 			group->buffers_allocated += num_buffers - i;
 #ifdef SPDK_CONFIG_VTUNE
 			cnt_val = group->buffers_allocated;
-			__itt_metadata_add(domain, __itt_null, counter_handle, __itt_metadata_u64, 1, &cnt_val);
+			__itt_metadata_add(domain, __itt_null, group->buffers_allocated_counter_handle, __itt_metadata_u64, 1, &cnt_val);
 #endif /* SPDK_CONFIG_VTUNE */
 			i += num_buffers - i;
 		}

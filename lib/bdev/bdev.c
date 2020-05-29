@@ -53,7 +53,7 @@
 #include "spdk/string.h"
 
 #include "bdev_internal.h"
-
+#undef SPDK_CONFIG_VTUNE
 #ifdef SPDK_CONFIG_VTUNE
 #include "ittnotify.h"
 #include "ittnotify_types.h"

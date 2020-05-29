@@ -36,6 +36,10 @@ include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
 
 HEADERS := $(wildcard $(SPDK_ROOT_DIR)/include/spdk/*.h)
 
+ifeq ($(CONFIG_VTUNE),y)
+CXXFLAGS += -I$(CONFIG_VTUNE_DIR)/include -I$(CONFIG_VTUNE_DIR)/src/ittnotify -I$(CONFIG_VTUNE_DIR)/sdk/src/ittnotify
+endif
+
 # On Linux, queue_extras.h is pulled in with queue.h,
 # on FreeBSD, we want to ignore queue_extras.h entirely.
 HEADERS := $(filter-out $(SPDK_ROOT_DIR)/include/spdk/queue_extras.h,$(HEADERS))
