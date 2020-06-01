@@ -405,3 +405,115 @@ CPU mask 0xF0, num cores 4, IO pacer period 6000, adjusted period 24000
 | 1024 | 168.4 | 184.8581 | 12453.8     | 7.1       | 98.4        | 37.3 (4.6)           | 30.2             |
 | 2048 | 171.6 | 184.7987 | 25037.8     | 3.5       | 99.3        | 38.6 (4.8)           | 29.4             |
 
+Pacer activity instrumentation:
+
+![Pacer activity Samsung QD=2048, IO pacer period 5700](./pacer_activity_samsung_test_14_5700_2048.png)
+~~~
+$TEST_TIME=10 ./test.sh  test_14
+test_14
+CPU mask 0xF0, num cores 4, IO pacer period 5700, adjusted period 22800
+./test.sh: line 279: 78921 Terminated              tail -f > rpc_pipe
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
+| 2048       | 160.7      | 0          | 26840.1         | 14.6       | 96.2            | 16.3 (2.0)                | 42.0
+Bdev avg read lat, us: 281.920987
+Poll group: "nvmf_tgt_poll_group_4"
+  Pacer calls, polls, ios: 3472681, 545721, 228280
+  Pacer poll, io period, us: 37.856 90.498
+  Device: "mlx5_0"
+    Polls, comps, reqs: 3472681, 188647, 94197
+    Comps/poll: .054
+    Req lat, us: 349.787
+    Req lat (total), us: 7033.646
+    Req states 1: [3843,0,246,0,0,0,0,6,0,0,0,1,0,0]
+    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req states 3: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req lat 1, us: 10967.438
+    Req lat 2, us: 7033.646
+    Req lat 3, us: 7033.646
+  Device: "mlx5_1"
+    Polls, comps, reqs: 3472681, 267440, 133594
+    Comps/poll: .077
+    Req lat, us: 1240.831
+    Req lat (total), us: 4967.426
+    Req states 1: [3844,0,243,0,0,0,0,6,0,0,0,3,0,0]
+    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req states 3: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req lat 1, us: 9082.609
+    Req lat 2, us: 4967.426
+    Req lat 3, us: 4967.426
+Poll group: "nvmf_tgt_poll_group_5"
+  Pacer calls, polls, ios: 3235203, 549271, 228619
+  Pacer poll, io period, us: 37.611 90.364
+  Device: "mlx5_0"
+    Polls, comps, reqs: 3235203, 188790, 94171
+    Comps/poll: .058
+    Req lat, us: 342.736
+    Req lat (total), us: 7059.066
+    Req states 1: [3647,0,442,0,0,0,0,7,0,0,0,0,0,0]
+    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req states 3: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req lat 1, us: 11007.622
+    Req lat 2, us: 7059.066
+    Req lat 3, us: 7059.066
+  Device: "mlx5_1"
+    Polls, comps, reqs: 3235203, 267579, 133566
+    Comps/poll: .082
+    Req lat, us: 1247.849
+    Req lat (total), us: 5095.573
+    Req states 1: [3649,0,441,0,0,0,0,5,0,0,0,1,0,0]
+    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req states 3: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req lat 1, us: 9342.326
+    Req lat 2, us: 5095.573
+    Req lat 3, us: 5095.573
+Poll group: "nvmf_tgt_poll_group_6"
+  Pacer calls, polls, ios: 1832272, 544689, 230292
+  Pacer poll, io period, us: 37.928 89.707
+  Device: "mlx5_0"
+    Polls, comps, reqs: 1832272, 190396, 94942
+    Comps/poll: .103
+    Req lat, us: 357.778
+    Req lat (total), us: 5096.710
+    Req states 1: [3584,0,506,0,0,0,0,6,0,0,0,0,0,0]
+    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req states 3: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req lat 1, us: 7921.196
+    Req lat 2, us: 5096.710
+    Req lat 3, us: 5096.710
+  Device: "mlx5_1"
+    Polls, comps, reqs: 1832272, 269194, 134341
+    Comps/poll: .146
+    Req lat, us: 6655.330
+    Req lat (total), us: 6239.003
+    Req states 1: [3583,0,505,0,0,0,0,6,0,0,0,2,0,0]
+    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req states 3: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req lat 1, us: 5774.266
+    Req lat 2, us: 6239.003
+    Req lat 3, us: 6239.003
+Poll group: "nvmf_tgt_poll_group_7"
+  Pacer calls, polls, ios: 1923407, 546966, 227652
+  Pacer poll, io period, us: 37.770 90.748
+  Device: "mlx5_0"
+    Polls, comps, reqs: 1923407, 188261, 94128
+    Comps/poll: .097
+    Req lat, us: 351.136
+    Req lat (total), us: 7117.839
+    Req states 1: [4091,0,1,0,0,0,0,4,0,0,0,0,0,0]
+    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req states 3: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req lat 1, us: 11096.006
+    Req lat 2, us: 7117.839
+    Req lat 3, us: 7117.839
+  Device: "mlx5_1"
+    Polls, comps, reqs: 1923407, 267050, 133523
+    Comps/poll: .138
+    Req lat, us: 1163.454
+    Req lat (total), us: 5038.002
+    Req states 1: [4092,0,0,0,0,0,0,3,0,0,0,1,0,0]
+    Req states 2: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req states 3: [4096,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    Req lat 1, us: 9311.818
+    Req lat 2, us: 5038.002
+    Req lat 3, us: 5038.002
+~~~
