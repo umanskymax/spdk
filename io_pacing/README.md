@@ -752,6 +752,17 @@ Fixed rate IO pacer.
 
 Adaptive rate IO pacer. FIO with 8 jobs.
 
+Adaptive mechanism works as follows. IO pacer measures average IO
+period, i.e. how often IOs leave the pacer and go to buffer allocation
+and disk. Every tuning period (10 ms) pacer period is adjusted to
+match the measured IO period minus 1 us. Adjustments to pacer period
+are done in steps (1 us). For example, if current pacer period is 25
+us and measured IO period is 35 us, pacer period will be set to 26
+us. This works in both directions, up and down. Adjustments to pacer
+period are limited by a range with lower bound being the configured
+pacer period value (the first column in the table below) and upper
+bound being twice the lower bound.
+
 | Pacer period, us | QD   | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
 |------------------|------|-------|----------|-------------|-----------|-------------|----------------------|
 | 5.6 (22.4)       | 256  | 129.0 | 118.9491 | 4159.1      | 1.2       | 87.6        | 257.3 (32.1)         |
