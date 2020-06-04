@@ -365,6 +365,7 @@ Job 3 QD is 1024.
 | 96          | 32              | 64 | 158.6 | 176.6669 | 15227.0     | 3.4       | 95.5        | 54.6 (6.8)           |
 
 #### Enumerating through pacing periods
+Number of buffers **4095**
 
 CPU mask 0xF0, num cores 4, IO pacer period 5750, adjusted period 23000
 | Num delay bdevs | QD | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
