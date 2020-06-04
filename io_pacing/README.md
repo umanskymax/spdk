@@ -130,6 +130,12 @@ caching mechanism but we disable it in this PoC.
 
 ## Results
 
+Results for Samsung disks: [samsung_results.md](samsung_results.md)
+
+Results for Intel disks write flow: [intel_write.md](intel_write.md)
+
+Results for Intel disks small IOs: [intel_small.md](intel_small.md)
+
 | Test #              | IO pacing        | Disks                   | Description                                  |
 |---------------------|------------------|-------------------------|----------------------------------------------|
 | [Test 1](#test-1)   | none             | 1 Null                  | Basic test                                   |
