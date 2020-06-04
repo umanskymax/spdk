@@ -341,7 +341,7 @@ with it's own IO depth.
 
 **CPU mask**: 0xF
 
-Job 3 QD is 256.
+Job 3 QD is 1024.
 
 | Num buffers | Num delay bdevs | QD | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
 |-------------|-----------------|----|-------|----------|-------------|-----------|-------------|----------------------|
