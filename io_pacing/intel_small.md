@@ -9,14 +9,14 @@ Target CPU mask is 0xFFFF (16 cores) in all tests if not explictly
 stated otherwise.
 
 [4K payload](#4k-payload)
+
 [8K payload](#8k-payload)
+
 [16K payload](#16k-payload)
 
 ## 4k payload
 
 ### test_2_4k
-
-* Note: real QD is QD*8*2, where 8 - number of jobs, 2 - number of initiators
 
 | QD  | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) |
 |-----|-------|----------|-------------|-----------|-------------|----------------------|
