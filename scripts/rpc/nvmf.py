@@ -109,7 +109,8 @@ def nvmf_create_transport(client,
                           sock_priority=None,
                           io_pacer_period=None,
                           io_pacer_tuner_period=None,
-                          io_pacer_tuner_step=None):
+                          io_pacer_tuner_step=None,
+                          io_pacer_disk_credit=None):
     """NVMf Transport Create options.
 
     Args:
@@ -129,6 +130,7 @@ def nvmf_create_transport(client,
         io_pacer_period: IO pacer period - RDMA specific (optional)
         io_pacer_tuner_period: IO pacer tuner period - RDMA specific (optional)
         io_pacer_tuner_step: IO pacer tuner step - RDMA specific (optional)
+        io_pacer_disk_credit: IO pacer disk credit - RDMA specific (optional)
 
     Returns:
         True or False
@@ -170,6 +172,8 @@ def nvmf_create_transport(client,
         params['io_pacer_tuner_period'] = io_pacer_tuner_period
     if io_pacer_tuner_step is not None:
         params['io_pacer_tuner_step'] = io_pacer_tuner_step
+    if io_pacer_disk_credit is not None:
+        params['io_pacer_disk_credit'] = io_pacer_disk_credit
     return client.call('nvmf_create_transport', params)
 
 
