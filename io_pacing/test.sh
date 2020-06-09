@@ -5,9 +5,9 @@ TEST_TIME=${TEST_TIME-60}
 RW=${RW-randread}
 QD=${QD-32}
 IO_SIZE=${IO_SIZE-128k}
-HOSTS="r-dcs79 spdk03.swx.labs.mlnx"
-TARGET="ubuntu@spdk-tgt-bw-03"
-TARGET_ADDRS="1.1.103.1 2.2.103.1"
+HOSTS="spdk04.swx.labs.mlnx spdk05.swx.labs.mlnx"
+TARGET="ubuntu@swx-bw-07"
+TARGET_ADDRS="1.1.107.1 2.2.107.1"
 FIO_JOB=${FIO_JOB-"fio-16ns"}
 FIO_RAMP_TIME=${FIO_RAMP_TIME-5}
 KERNEL_DRIVER=${KERNEL_DRIVER-0}
@@ -18,8 +18,8 @@ SPDK_PATH="$PWD/.."
 FIO_JOBS_PATH="$PWD/jobs"
 OUT_PATH="$PWD/out"
 mkdir -p $OUT_PATH
-TARGET_SPDK_PATH="/home/evgeniik/spdk"
-TARGET_BF_COUNTERS="/home/evgeniik/bf_counters.py"
+TARGET_SPDK_PATH="/home/ubuntu/work/spdk"
+TARGET_BF_COUNTERS="/home/ubuntu/work/bf_counters.py"
 
 # Other configurations
 ENABLE_DEVICE_COUNTERS=1
@@ -446,6 +446,7 @@ function config_nvme_split3_delay()
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
     IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
     IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
+    IO_PACER_DISK_CREDIT=6
     local DISKS="05 06 07 08 09 0a 0b 0c 0f 10 11 12 13 14 15 16"
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
@@ -462,7 +463,8 @@ function config_nvme_split3_delay()
 	     --max-srq-depth 4096 \
 	     --io-pacer-period $IO_PACER_PERIOD \
 	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
-	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
+	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP \
+         --io-pacer-disk-credit $IO_PACER_DISK_CREDIT
     rpc_send nvmf_create_subsystem --allow-any-host \
 	     --max-namespaces 48 \
 	     nqn.2016-06.io.spdk:cnode1

@@ -3,7 +3,7 @@ ioengine=spdk
 
 [job1]
 numjobs=1
-cpus_allowed=1
+cpus_allowed=12
 cpus_allowed_policy=split
 filename=trtype=rdma adrfam=ipv4 traddr=1.1.107.1 trsvcid=4420 ns=1
 filename=trtype=rdma adrfam=ipv4 traddr=1.1.107.1 trsvcid=4420 ns=2
