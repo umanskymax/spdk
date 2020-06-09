@@ -269,6 +269,7 @@ struct spdk_nvmf_rdma_request {
 	uint32_t				num_outstanding_data_wr;
 	uint64_t				receive_tsc;
 
+	uint64_t                                key;
 	STAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
 };
 
@@ -2153,6 +2154,8 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			break;
 
 		case RDMA_REQUEST_STATE_IO_PACING:
+			rdma_req->key = ((uint64_t)rqpair->qpair.ctrlr->subsys->id << 32) +
+				rdma_req->req.cmd->nvme_cmd.nsid;
 			if ((rgroup->pacer == NULL) ||
 			    spdk_unlikely(spdk_nvmf_qpair_is_admin_queue(&rqpair->qpair)) ||
 			    spdk_unlikely(rdma_req->req.cmd->nvmf_cmd.opcode == SPDK_NVME_OPC_FABRIC)) {
@@ -2161,12 +2164,9 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 				break;
 			}
 
-			spdk_io_pacer_push(rgroup->pacer,
-					   ((uint64_t)rqpair->qpair.ctrlr->subsys->id << 32) +
-					   rdma_req->req.cmd->nvme_cmd.nsid,
-					   &rdma_req->state_link);
+			spdk_io_pacer_push(rgroup->pacer, rdma_req->key, &rdma_req->state_link);
+			spdk_io_pacer_drive_stats_add(&drives_stats, rdma_req->key, 1);
 			break;
-
 		case RDMA_REQUEST_STATE_NEED_BUFFER:
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_NEED_BUFFER, 0, 0,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
@@ -2358,6 +2358,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
 
 			rqpair->poller->stat.request_latency += spdk_get_ticks() - rdma_req->receive_tsc;
+			spdk_io_pacer_drive_stats_sub(&drives_stats, rdma_req->key, 1);
 			nvmf_rdma_request_free(rdma_req, rtransport);
 			break;
 		case RDMA_REQUEST_NUM_STATES:
@@ -2390,6 +2391,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_PERIOD 0
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_PERIOD 10000 /* us */
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_STEP 1000 /* ns */
+#define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_DISK_CREDIT 6 /* operations per disk in flight */
 
 static void
 spdk_nvmf_rdma_opts_init(struct spdk_nvmf_transport_opts *opts)
@@ -2408,6 +2410,7 @@ spdk_nvmf_rdma_opts_init(struct spdk_nvmf_transport_opts *opts)
 	opts->io_pacer_period = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_PERIOD;
 	opts->io_pacer_tuner_period = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_PERIOD;
 	opts->io_pacer_tuner_step = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_STEP;
+	opts->io_pacer_disk_credit = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_DISK_CREDIT;
 }
 
 const struct spdk_mem_map_ops g_nvmf_rdma_map_ops = {
@@ -3494,6 +3497,7 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 		rgroup->pacer = spdk_io_pacer_create(transport->opts.io_pacer_period,
 						     transport->opts.io_pacer_tuner_period,
 						     transport->opts.io_pacer_tuner_step,
+						     transport->opts.io_pacer_disk_credit,
 						     nvmf_rdma_io_pacer_pop_cb,
 						     rgroup);
 		if (!rgroup->pacer) {

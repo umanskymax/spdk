@@ -30,6 +30,7 @@
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+
 #include "io_pacer.h"
 #include "spdk/stdinc.h"
 #include "spdk/thread.h"
@@ -39,12 +40,17 @@
 
 #define IO_PACER_DEFAULT_MAX_QUEUES 32
 
+#define MAX_DRIVES_STATS 256
+static rte_spinlock_t drives_stats_create_lock = RTE_SPINLOCK_INITIALIZER;
+struct spdk_io_pacer_drives_stats drives_stats = {0};
+
 struct io_pacer_queue_entry {
 	STAILQ_ENTRY(io_pacer_queue_entry) link;
 };
 
 struct io_pacer_queue {
 	uint64_t key;
+	struct drive_stats *stats;
 	STAILQ_HEAD(, io_pacer_queue_entry) queue;
 };
 
@@ -68,6 +74,7 @@ struct spdk_io_pacer {
 	uint64_t tuner_last_ios;
 	struct spdk_poller *tuner;
 	void *ctx;
+	uint32_t disk_credit;
 };
 
 
@@ -97,7 +104,8 @@ io_pacer_poll(void *arg)
 	struct spdk_io_pacer *pacer = arg;
 	struct io_pacer_queue_entry *entry;
 	uint32_t next_queue = pacer->next_queue;
-
+	uint32_t ops_in_flight = 0;
+	
 	const uint64_t cur_tick = spdk_get_ticks();
 	const uint64_t ticks_diff = cur_tick - pacer->last_tick;
 
@@ -115,11 +123,14 @@ io_pacer_poll(void *arg)
 	}
 
 	do {
-		if (next_queue >= pacer->num_queues) {
-			next_queue = 0;
-		}
+		next_queue %= pacer->num_queues;
 
-		entry = STAILQ_FIRST(&pacer->queues[next_queue].queue);
+		ops_in_flight = rte_atomic32_read(&pacer->queues[next_queue].stats->ops_in_flight);
+		if (ops_in_flight > pacer->disk_credit) {
+			next_queue++;
+			continue;
+		}
+		entry = STAILQ_FIRST(&pacer->queues[next_queue].queue);		
 		next_queue++;
 	} while (entry == NULL);
 
@@ -176,7 +187,7 @@ io_pacer_tune(void *arg)
 
 struct spdk_io_pacer *
 spdk_io_pacer_create(uint32_t period_ns, uint32_t tuner_period_us, uint32_t tuner_step_ns,
-		     spdk_io_pacer_pop_cb pop_cb, void *ctx)
+		     uint32_t disk_credit, spdk_io_pacer_pop_cb pop_cb, void *ctx)
 {
 	struct spdk_io_pacer *pacer;
 
@@ -204,6 +215,7 @@ spdk_io_pacer_create(uint32_t period_ns, uint32_t tuner_period_us, uint32_t tune
 
 	pacer->tuner_period_ns = 1000ULL * tuner_period_us;
 	pacer->tuner_step_ns = tuner_step_ns;
+	pacer->disk_credit = disk_credit;
 	pacer->tuner = SPDK_POLLER_REGISTER(io_pacer_tune, (void *)pacer, tuner_period_us);
 	if (!pacer->tuner) {
 		SPDK_ERRLOG("Failed to create tuner poller for IO pacer\n");
@@ -270,6 +282,8 @@ spdk_io_pacer_create_queue(struct spdk_io_pacer *pacer, uint64_t key)
 
 	pacer->queues[pacer->num_queues].key = key;
 	STAILQ_INIT(&pacer->queues[pacer->num_queues].queue);
+	spdk_io_pacer_drive_stats_setup(&drives_stats, MAX_DRIVES_STATS);
+	pacer->queues[pacer->num_queues].stats = spdk_io_pacer_drive_stats_get(&drives_stats, key);
 	pacer->num_queues++;
 	SPDK_NOTICELOG("Created IO pacer queue: pacer %p, key %016lx\n",
 		       pacer, key);
@@ -336,3 +350,34 @@ spdk_io_pacer_get_stat(const struct spdk_io_pacer *pacer,
 		stat->io_pacer.period_ticks = pacer->period_ticks;
 	}
 }
+
+void spdk_io_pacer_drive_stats_setup(struct spdk_io_pacer_drives_stats *stats, int32_t entries)
+{
+	struct rte_hash_parameters hash_params = {
+		.name = "DRIVE_STATS",		
+		.entries = entries,
+		.key_len = sizeof(uint64_t),
+		.socket_id = rte_socket_id(),
+		.hash_func = rte_jhash,
+		.hash_func_init_val = 0,		
+	};
+	struct rte_hash *h = NULL;
+	
+	if (stats->h != NULL)
+		return;
+	
+	rte_spinlock_lock(&drives_stats_create_lock);
+
+	if (stats->h != NULL)
+		return;
+
+	h = rte_hash_create(&hash_params);
+	if (h == NULL)
+		SPDK_ERRLOG("IO pacer can't create drive statistics dict");
+	stats->h = h;
+	rte_spinlock_init(&stats->lock);
+	rte_spinlock_unlock(&drives_stats_create_lock);
+}
+
+
+

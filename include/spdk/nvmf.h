@@ -87,6 +87,7 @@ struct spdk_nvmf_transport_opts {
 	uint32_t        io_pacer_period;
 	uint32_t        io_pacer_tuner_period;
 	uint32_t        io_pacer_tuner_step;
+	uint32_t        io_pacer_disk_credit;
 };
 
 struct spdk_nvmf_poll_group_stat {
