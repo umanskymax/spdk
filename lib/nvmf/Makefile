@@ -51,6 +51,7 @@ C_SRCS-$(CONFIG_RDMA) += rdma.c
 LIBNAME = nvmf
 LOCAL_SYS_LIBS = -luuid
 
+CFLAGS += $(ENV_CFLAGS)
 
 ifeq ($(CONFIG_RDMA),y)
 LOCAL_SYS_LIBS += -libverbs -lrdmacm

@@ -116,6 +116,10 @@ ifeq ($(CONFIG_RAID5),y)
 LINK_HASH=y
 endif
 
+ifeq ($(CONFIG_RDMA),y)
+LINK_HASH=y
+endif
+
 ifeq ($(LINK_HASH),y)
 DPDK_LIB_LIST += rte_hash
 endif

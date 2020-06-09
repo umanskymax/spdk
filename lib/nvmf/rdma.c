@@ -274,6 +274,7 @@ struct spdk_nvmf_rdma_request {
 		STAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
 		struct io_pacer_queue_entry		pacer_entry;
 	};
+	uint64_t				pacer_key;
 };
 
 enum spdk_nvmf_rdma_qpair_disconnect_flags {
@@ -2162,6 +2163,8 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			break;
 
 		case RDMA_REQUEST_STATE_IO_PACING:
+			rdma_req->pacer_key = ((uint64_t)rqpair->qpair.ctrlr->subsys->id << 32) +
+				rdma_req->req.cmd->nvme_cmd.nsid;
 			if ((rgroup->pacer == NULL) ||
 			    spdk_unlikely(spdk_nvmf_qpair_is_admin_queue(&rqpair->qpair)) ||
 			    spdk_unlikely(rdma_req->req.cmd->nvmf_cmd.opcode == SPDK_NVME_OPC_FABRIC)) {
@@ -2188,6 +2191,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 					   ((uint64_t)rqpair->qpair.ctrlr->subsys->id << 32) +
 					   rdma_req->req.cmd->nvme_cmd.nsid,
 					   &rdma_req->pacer_entry);
+			spdk_io_pacer_drive_stats_add(&drives_stats, rdma_req->pacer_key, 1);
 			break;
 
 		case RDMA_REQUEST_STATE_NEED_BUFFER:
@@ -2390,6 +2394,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 				rqpair->poller->stat.requests_large++;
 				rqpair->poller->stat.request_latency_large += tsc - rdma_req->receive_tsc;
 			}
+			spdk_io_pacer_drive_stats_sub(&drives_stats, rdma_req->pacer_key, 1);
 
 			nvmf_rdma_request_free(rdma_req, rtransport);
 			break;
@@ -2426,6 +2431,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_STEP 1000 /* ns */
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_THRESHOLD 12*1024*1024
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_FACTOR 150
+#define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_DISK_CREDIT 0 /* operations per disk in flight */
 
 static void
 spdk_nvmf_rdma_opts_init(struct spdk_nvmf_transport_opts *opts)
@@ -2447,6 +2453,7 @@ spdk_nvmf_rdma_opts_init(struct spdk_nvmf_transport_opts *opts)
 	opts->io_pacer_tuner_step = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_STEP;
 	opts->io_pacer_tuner_threshold = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_THRESHOLD;
 	opts->io_pacer_tuner_factor = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_FACTOR;
+	opts->io_pacer_disk_credit = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_DISK_CREDIT;
 }
 
 const struct spdk_mem_map_ops g_nvmf_rdma_map_ops = {
@@ -3532,6 +3539,7 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 	if (0 != transport->opts.io_pacer_period) {
 		rgroup->pacer = spdk_io_pacer_create(transport->opts.io_pacer_period,
 						     transport->opts.io_pacer_credit,
+						     transport->opts.io_pacer_disk_credit,
 						     nvmf_rdma_io_pacer_pop_cb);
 		if (!rgroup->pacer) {
 			SPDK_ERRLOG("Failed to create IO pacer\n");
