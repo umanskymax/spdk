@@ -1,0 +1,14 @@
+[job1]
+stats=1
+group_reporting=1
+ioengine=spdk
+thread=1
+#readwrite=randread
+#bs=128k
+#iodepth=64
+#time_based=1
+#runtime=10s
+numjobs=1
+cpus_allowed=12
+cpus_allowed_policy=split
+filename=trtype=rdma adrfam=ipv4 traddr=1.1.107.1 trsvcid=4420 ns=1
