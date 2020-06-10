@@ -127,10 +127,12 @@ io_pacer_poll(void *arg)
 	while ((pacer->num_ios > 0) && (pacer->remaining_credit > 0)) {
 		next_queue %= pacer->num_queues;
 
-		ops_in_flight = rte_atomic32_read(&pacer->queues[next_queue].stats->ops_in_flight);
-		if (ops_in_flight > pacer->disk_credit) {
-			next_queue++;
-			continue;
+		if (pacer->disk_credit) {
+			ops_in_flight = rte_atomic32_read(&pacer->queues[next_queue].stats->ops_in_flight);
+			if (ops_in_flight > pacer->disk_credit) {
+				next_queue++;
+				continue;
+			}
 		}
 		entry = STAILQ_FIRST(&pacer->queues[next_queue].queue);
 		next_queue++;

@@ -1317,6 +1317,43 @@ function test_16()
     done
 }
 
+function test_17_pacing_internal()
+{
+    local CPU_MASK=$1
+    local NUM_CORES=$2
+    local ADJUSTED_PERIOD=$3
+
+	#for num_delay in 16 32; do
+	for num_delay in 16; do
+	    echo "| $CPU_MASK | $num_buffers | $num_delay"
+	    start_tgt $CPU_MASK
+	    IO_PACER_PERIOD=$ADJUSTED_PERIOD NUM_DELAY_BDEVS=$num_delay config_nvme_split3_delay
+	    if [ 0 -eq "$KERNEL_DRIVER" ]; then
+		#QD_LIST="1 2 4 8 16 32 64" FIO_JOB=fio-48ns basic_test
+		QD_LIST="8" FIO_JOB=fio-48ns basic_test
+	    else
+		connect_hosts $HOSTS
+		QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
+		disconnect_hosts $HOSTS
+	    fi
+	    stop_tgt
+    done
+}
+
+function test_17()
+{
+    local CPU_MASK=0xF0
+    local NUM_CORES=4
+
+    #for io_pacer in 5600 5650 5700 5750 5800 6000; do
+    #for io_pacer in 5750 6000; do
+    for io_pacer in 6000; do
+	ADJUSTED_PERIOD="$(M_SCALE=0 m $io_pacer*$NUM_CORES/1)"
+	echo "CPU mask $CPU_MASK, num cores $NUM_CORES, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD"
+        test_17_pacing_internal $CPU_MASK $NUM_CORES $ADJUSTED_PERIOD 
+    done
+}
+
 function test_18()
 {
     local TGT_CPU_MASK=0xFFFF
