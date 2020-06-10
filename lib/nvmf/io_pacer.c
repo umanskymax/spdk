@@ -226,19 +226,25 @@ void spdk_io_pacer_drive_stats_setup(struct spdk_io_pacer_drives_stats *stats, i
 	};
 	struct rte_hash *h = NULL;
 
-	if (stats->h != NULL)
+	if (stats->h != NULL) {
 		return;
+	}
 
 	rte_spinlock_lock(&drives_stats_create_lock);
-
-	if (stats->h != NULL)
-		return;
+	if (stats->h != NULL) {
+		goto exit;
+	}
 
 	h = rte_hash_create(&hash_params);
-	if (h == NULL)
-		SPDK_ERRLOG("IO pacer can't create drive statistics dict");
+	if (h == NULL) {
+		SPDK_ERRLOG("IO pacer can't create drive statistics dict\n");
+	}
+
 	stats->h = h;
 	rte_spinlock_init(&stats->lock);
+	SPDK_NOTICELOG("Drives stats setup done\n");
+
+ exit:
 	rte_spinlock_unlock(&drives_stats_create_lock);
 }
 

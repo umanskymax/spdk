@@ -112,7 +112,7 @@ static inline struct drive_stats* spdk_io_pacer_drive_stats_create(struct spdk_i
 	rte_atomic32_init(&data->ops_in_flight);
 	ret = rte_hash_add_key_data(h, (void *) &key, data);
 	if (ret < 0) {
-		SPDK_ERRLOG("Can't add key to drive statistics dict: %" PRIu64, key);
+		SPDK_ERRLOG("Can't add key to drive statistics dict: %" PRIu64 "\n", key);
 		goto err;
 	}
 	goto exit;
@@ -131,9 +131,9 @@ static inline struct drive_stats * spdk_io_pacer_drive_stats_get(struct spdk_io_
 	int ret = 0;
 	ret = rte_hash_lookup_data(stats->h, (void*) &key, (void**) &data);
 	if (ret == -EINVAL) {
-		SPDK_ERRLOG("Drive statistics seems broken");
+		SPDK_ERRLOG("Drive statistics seems broken\n");
 	} else if (unlikely(ret == -ENOENT)) {
-		SPDK_NOTICELOG("Creating drive stats for key: %" PRIu64, key);
+		SPDK_NOTICELOG("Creating drive stats for key: %" PRIu64 "\n", key);
 		data = spdk_io_pacer_drive_stats_create(stats, key);
 	}
 	return data;
