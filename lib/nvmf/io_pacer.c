@@ -125,10 +125,12 @@ io_pacer_poll(void *arg)
 	do {
 		next_queue %= pacer->num_queues;
 
-		ops_in_flight = rte_atomic32_read(&pacer->queues[next_queue].stats->ops_in_flight);
-		if (ops_in_flight > pacer->disk_credit) {
-			next_queue++;
-			continue;
+		if (pacer->disk_credit) {
+			ops_in_flight = rte_atomic32_read(&pacer->queues[next_queue].stats->ops_in_flight);
+			if (ops_in_flight > pacer->disk_credit) {
+				next_queue++;
+				continue;
+			}
 		}
 		entry = STAILQ_FIRST(&pacer->queues[next_queue].queue);		
 		next_queue++;
@@ -224,13 +226,14 @@ spdk_io_pacer_create(uint32_t period_ns, uint32_t tuner_period_us, uint32_t tune
 	}
 
 	pacer->ctx = ctx;
-	SPDK_NOTICELOG("Created IO pacer %p: period_ns %u, period_ticks %lu, max_queues %u, tuner_period_ns %lu, tuner_step_ns %lu\n",
+	SPDK_NOTICELOG("Created IO pacer %p: period_ns %u, period_ticks %lu, max_queues %u, tuner_period_ns %lu, tuner_step_ns %lu, disk_credit %" PRIu32 "\n",
 		       pacer,
 		       period_ns,
 		       pacer->period_ticks,
 		       pacer->max_queues,
 		       pacer->tuner_period_ns,
-		       pacer->tuner_step_ns);
+		       pacer->tuner_step_ns,
+		       pacer->disk_credit);
 
 	return pacer;
 }

@@ -2391,7 +2391,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_PERIOD 0
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_PERIOD 10000 /* us */
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_STEP 1000 /* ns */
-#define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_DISK_CREDIT 6 /* operations per disk in flight */
+#define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_DISK_CREDIT 0 /* operations per disk in flight allowed, 0 credit based skipping - disabled */
 
 static void
 spdk_nvmf_rdma_opts_init(struct spdk_nvmf_transport_opts *opts)
