@@ -890,7 +890,7 @@ nvmf_rdma_resources_create(struct spdk_nvmf_rdma_resource_opts *opts)
 
 	for (i = 0; i < opts->max_queue_depth; i++) {
 		rdma_req = &resources->reqs[i];
-
+		rdma_req->key = 0xDEADBEEF;
 		if (opts->qpair != NULL) {
 			rdma_req->req.qpair = &opts->qpair->qpair;
 		} else {
@@ -2163,13 +2163,10 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			break;
 
 		case RDMA_REQUEST_STATE_IO_PACING:
-			rdma_req->pacer_key = 0xDEADBEEF;
 			if ((rgroup->pacer == NULL) ||
 			    spdk_unlikely(spdk_nvmf_qpair_is_admin_queue(&rqpair->qpair)) ||
 			    spdk_unlikely(rdma_req->req.cmd->nvmf_cmd.opcode == SPDK_NVME_OPC_FABRIC)) {
 				rdma_req->state = RDMA_REQUEST_STATE_NEED_BUFFER;
-				rdma_req->pacer_key = ((uint64_t)rqpair->qpair.ctrlr->subsys->id << 32) +
-					rdma_req->req.cmd->nvme_cmd.nsid;
 				STAILQ_INSERT_TAIL(&rgroup->group.pending_buf_queue, &rdma_req->req, buf_link);
 				break;
 			}
@@ -2188,9 +2185,10 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 				break;
 			}
 
+			rdma_req->pacer_key = ((uint64_t)rqpair->qpair.ctrlr->subsys->id << 32) +
+				rdma_req->req.cmd->nvme_cmd.nsid;
 			spdk_io_pacer_push(rgroup->pacer,
-					   ((uint64_t)rqpair->qpair.ctrlr->subsys->id << 32) +
-					   rdma_req->req.cmd->nvme_cmd.nsid,
+					   rdma_req->pacer_key,
 					   &rdma_req->pacer_entry);
 			spdk_io_pacer_drive_stats_add(&drives_stats, rdma_req->pacer_key, 1);
 			break;
