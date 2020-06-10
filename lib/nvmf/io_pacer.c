@@ -336,7 +336,9 @@ spdk_io_pacer_push(struct spdk_io_pacer *pacer, uint64_t key, void *io)
 	}
 
 	STAILQ_INSERT_TAIL(&queue->queue, entry, link);
+	
 	pacer->num_ios++;
+	rte_atomic32_add(&queue->stats->ops_in_flight, 1);
 	return 0;
 }
 
