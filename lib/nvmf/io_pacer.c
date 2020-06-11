@@ -109,6 +109,8 @@ io_pacer_poll(void *arg)
 	const uint64_t cur_tick = spdk_get_ticks();
 	const uint64_t ticks_diff = cur_tick - pacer->last_tick;
 
+	uint32_t attempts_cnt = 0;
+
 	pacer->stat.calls++;
 	if (ticks_diff < pacer->period_ticks) {
 		return 0;
@@ -124,8 +126,11 @@ io_pacer_poll(void *arg)
 		pacer->stat.no_ios++;
 	}
 
-	while ((pacer->num_ios > 0) && (pacer->remaining_credit > 0)) {
+	while ((pacer->num_ios > 0) &&
+	       (pacer->remaining_credit > 0) &&
+	       (attempts_cnt < pacer->num_queues)) {
 		next_queue %= pacer->num_queues;
+		attempts_cnt++;
 
 		if (pacer->disk_credit) {
 			ops_in_flight = rte_atomic32_read(&pacer->queues[next_queue].stats->ops_in_flight);
@@ -145,6 +150,7 @@ io_pacer_poll(void *arg)
 			pacer->stat.bytes += entry->size;
 			pacer->pop_cb(entry);
 			rc++;
+			attempts_cnt = 0;
 		}
 	}
 
