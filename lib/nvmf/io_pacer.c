@@ -108,6 +108,8 @@ io_pacer_poll(void *arg)
 	const uint64_t cur_tick = spdk_get_ticks();
 	const uint64_t ticks_diff = cur_tick - pacer->last_tick;
 
+	uint32_t attemtps_cnt = pacer->num_queues;
+
 	pacer->stat.calls++;
 	if (ticks_diff < pacer->period_ticks) {
 		return 0;
@@ -122,6 +124,10 @@ io_pacer_poll(void *arg)
 	}
 
 	do {
+		if (attemtps_cnt-- == 0) {
+			return 0;
+		}
+
 		next_queue %= pacer->num_queues;
 
 		if (pacer->disk_credit) {
