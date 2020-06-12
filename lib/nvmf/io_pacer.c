@@ -226,13 +226,15 @@ spdk_io_pacer_create(uint32_t period_ns, uint32_t tuner_period_us, uint32_t tune
 
 	pacer->tuner_period_ns = 1000ULL * tuner_period_us;
 	pacer->tuner_step_ns = tuner_step_ns;
-	pacer->disk_credit = disk_credit;
-	pacer->tuner = SPDK_POLLER_REGISTER(io_pacer_tune, (void *)pacer, tuner_period_us);
-	if (!pacer->tuner) {
-		SPDK_ERRLOG("Failed to create tuner poller for IO pacer\n");
-		spdk_io_pacer_destroy(pacer);
-		return NULL;
-	}
+    pacer->disk_credit = disk_credit;
+    if (0 != tuner_period_us) {
+        pacer->tuner = SPDK_POLLER_REGISTER(io_pacer_tune, (void *)pacer, tuner_period_us);
+        if (!pacer->tuner) {
+            SPDK_ERRLOG("Failed to create tuner poller for IO pacer\n");
+            spdk_io_pacer_destroy(pacer);
+            return NULL;
+        }
+    }
 
 	pacer->ctx = ctx;
 	SPDK_NOTICELOG("Created IO pacer %p: period_ns %u, period_ticks %lu, max_queues %u, tuner_period_ns %lu, tuner_step_ns %lu, disk_credit %" PRIu32 "\n",
