@@ -271,6 +271,8 @@ function rpc_stop()
 function basic_test()
 {
     REPEAT=${REPEAT-1}
+    BUFFER_SIZE=${BUFFER_SIZE-131072}
+
     local FORMAT="| %-10s | %-10s | %-10s | %-15s | %-10s | %-15s | %-25s | %-15s\n"
     printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV" "L3 Hit Rate" "Bufs in-flight (MiB)" "Pacer period, us"
 
@@ -285,7 +287,7 @@ function basic_test()
 	    L3_HIT_RATE="$(echo "$OUT" | grep Total | awk '{print $13}')"
 	    BUFFERS_ALLOCATED="$(echo "$OUT" | grep Total | awk '{print $15}')"
 	    PACER_PERIOD="$(echo "$OUT" | grep Total | awk '{print $17}')"
-	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED ($(m $BUFFERS_ALLOCATED*128/1024))" "$PACER_PERIOD"
+	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED ($(m $BUFFERS_ALLOCATED*$BUFFER_SIZE/1024/1024))" "$PACER_PERIOD"
 	    if [ -n "$ENABLE_DETAILED_STATS" ]; then
 		./parse_stats.sh
 	    fi
@@ -298,8 +300,10 @@ function config_null_1()
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
+    IO_PACER_CREDIT=${IO_PACER_CREDIT-131072}
     IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
     IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
+    IO_UNIT_SIZE=${IO_UNIT_SIZE-131072}
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
     rpc_send framework_start_init
@@ -309,11 +313,12 @@ function config_null_1()
 	     --max-qpairs-per-ctrlr 64 \
 	     --in-capsule-data-size 4096 \
 	     --max-io-size 131072 \
-	     --io-unit-size 131072 \
+	     --io-unit-size $IO_UNIT_SIZE \
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
 	     --max-srq-depth 4096 \
 	     --io-pacer-period $IO_PACER_PERIOD \
+	     --io-pacer-credit $IO_PACER_CREDIT \
 	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
 	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
@@ -339,8 +344,10 @@ function config_null_16()
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
+    IO_PACER_CREDIT=${IO_PACER_CREDIT-131072}
     IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
     IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
+    IO_UNIT_SIZE=${IO_UNIT_SIZE-131072}
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
     rpc_send framework_start_init
@@ -350,11 +357,12 @@ function config_null_16()
 	     --max-qpairs-per-ctrlr 64 \
 	     --in-capsule-data-size 4096 \
 	     --max-io-size 131072 \
-	     --io-unit-size 131072 \
+	     --io-unit-size $IO_UNIT_SIZE \
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
 	     --max-srq-depth 4096 \
 	     --io-pacer-period $IO_PACER_PERIOD \
+	     --io-pacer-credit $IO_PACER_CREDIT \
 	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
 	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
@@ -382,8 +390,10 @@ function config_nvme()
     NUM_SHARED_BUFFERS=${NUM_SHARED_BUFFERS-4095}
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-128}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
+    IO_PACER_CREDIT=${IO_PACER_CREDIT-131072}
     IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
     IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
+    IO_UNIT_SIZE=${IO_UNIT_SIZE-131072}
     local DISKS="05 06 07 08 09 0a 0b 0c 0f 10 11 12 13 14 15 16"
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
@@ -394,11 +404,12 @@ function config_nvme()
 	     --max-qpairs-per-ctrlr 64 \
 	     --in-capsule-data-size 4096 \
 	     --max-io-size 131072 \
-	     --io-unit-size 131072 \
+	     --io-unit-size $IO_UNIT_SIZE \
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
 	     --max-srq-depth 4096 \
 	     --io-pacer-period $IO_PACER_PERIOD \
+	     --io-pacer-credit $IO_PACER_CREDIT \
 	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
 	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
@@ -431,8 +442,10 @@ function config_nvme_split3_delay()
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-128}
     NUM_DELAY_BDEVS=${NUM_DELAY_BDEVS-0}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
+    IO_PACER_CREDIT=${IO_PACER_CREDIT-131072}
     IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
     IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
+    IO_UNIT_SIZE=${IO_UNIT_SIZE-131072}
     local DISKS="05 06 07 08 09 0a 0b 0c 0f 10 11 12 13 14 15 16"
     rpc_start
     rpc_send nvmf_set_config --conn-sched transport
@@ -443,11 +456,12 @@ function config_nvme_split3_delay()
 	     --max-qpairs-per-ctrlr 64 \
 	     --in-capsule-data-size 4096 \
 	     --max-io-size 131072 \
-	     --io-unit-size 131072 \
+	     --io-unit-size $IO_UNIT_SIZE \
 	     --num-shared-buffers $NUM_SHARED_BUFFERS \
 	     --buf-cache-size $BUF_CACHE_SIZE \
 	     --max-srq-depth 4096 \
 	     --io-pacer-period $IO_PACER_PERIOD \
+	     --io-pacer-credit $IO_PACER_CREDIT \
 	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
 	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
