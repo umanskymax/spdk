@@ -44,6 +44,7 @@
 #include "spdk/string.h"
 #include "spdk/trace.h"
 #include "spdk/util.h"
+#include "spdk/endian.h"
 #include "nvmf_internal.h"
 #include "io_pacer.h"
 
@@ -269,7 +270,10 @@ struct spdk_nvmf_rdma_request {
 	uint32_t				num_outstanding_data_wr;
 	uint64_t				receive_tsc;
 
-	STAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
+	union {
+		STAILQ_ENTRY(spdk_nvmf_rdma_request)	state_link;
+		struct io_pacer_queue_entry		pacer_entry;
+	};
 };
 
 enum spdk_nvmf_rdma_qpair_disconnect_flags {
@@ -2161,10 +2165,18 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 				break;
 			}
 
+			struct spdk_nvmf_ns *ns;
+			ns = _spdk_nvmf_subsystem_get_ns(rqpair->qpair.ctrlr->subsys,
+							 rdma_req->req.cmd->nvme_cmd.nsid);
+			assert(ns != NULL);
+
+			/* @todo: check if size is calculated correctly for all types of commands */
+			rdma_req->pacer_entry.size = spdk_bdev_get_block_size(ns->bdev) *
+				((from_le32(&rdma_req->req.cmd->nvme_cmd.cdw12) & 0xFFFFu) + 1);
 			spdk_io_pacer_push(rgroup->pacer,
 					   ((uint64_t)rqpair->qpair.ctrlr->subsys->id << 32) +
 					   rdma_req->req.cmd->nvme_cmd.nsid,
-					   &rdma_req->state_link);
+					   &rdma_req->pacer_entry);
 			break;
 
 		case RDMA_REQUEST_STATE_NEED_BUFFER:
@@ -3492,6 +3504,9 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 
 	if (0 != transport->opts.io_pacer_period) {
 		rgroup->pacer = spdk_io_pacer_create(transport->opts.io_pacer_period,
+						     transport->opts.io_pacer_credit,
+						     /* @todo: do something smarter with max credit */
+						     transport->opts.max_io_size * 2,
 						     transport->opts.io_pacer_tuner_period,
 						     transport->opts.io_pacer_tuner_step,
 						     nvmf_rdma_io_pacer_pop_cb,

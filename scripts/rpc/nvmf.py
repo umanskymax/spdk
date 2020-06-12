@@ -108,6 +108,7 @@ def nvmf_create_transport(client,
                           dif_insert_or_strip=None,
                           sock_priority=None,
                           io_pacer_period=None,
+                          io_pacer_credit=None,
                           io_pacer_tuner_period=None,
                           io_pacer_tuner_step=None):
     """NVMf Transport Create options.
@@ -127,6 +128,7 @@ def nvmf_create_transport(client,
         c2h_success: Boolean flag to disable the C2H success optimization - TCP specific (optional)
         dif_insert_or_strip: Boolean flag to enable DIF insert/strip for I/O - TCP specific (optional)
         io_pacer_period: IO pacer period - RDMA specific (optional)
+        io_pacer_credit: IO pacer credit - RDMA specific (optional)
         io_pacer_tuner_period: IO pacer tuner period - RDMA specific (optional)
         io_pacer_tuner_step: IO pacer tuner step - RDMA specific (optional)
 
@@ -166,6 +168,8 @@ def nvmf_create_transport(client,
         params['sock_priority'] = sock_priority
     if io_pacer_period is not None:
         params['io_pacer_period'] = io_pacer_period
+    if io_pacer_credit is not None:
+        params['io_pacer_credit'] = io_pacer_credit
     if io_pacer_tuner_period is not None:
         params['io_pacer_tuner_period'] = io_pacer_tuner_period
     if io_pacer_tuner_step is not None:
