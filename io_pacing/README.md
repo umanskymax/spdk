@@ -136,22 +136,24 @@ Results for Intel disks write flow: [intel_write.md](intel_write.md)
 
 Results for Intel disks small IOs: [intel_small.md](intel_small.md)
 
-| Test #              | IO pacing        | Disks                   | Description                                  |
-|---------------------|------------------|-------------------------|----------------------------------------------|
-| [Test 1](#test-1)   | none             | 1 Null                  | Basic test                                   |
-| [Test 2](#test-2)   | none             | 16 Null                 | Basic test                                   |
-| [Test 3](#test-3)   | none             | 16 NVMe                 | Basic test                                   |
-| [Test 4](#test-4)   | NumSharedBuffers | 16 Null                 | Basic test                                   |
-| [Test 5](#test-5)   | NumSharedBuffers | 16 NVMe                 | Basic test                                   |
-| [Test 6](#test-6)   | NumSharedBuffers | 16 NVMe                 | Stability test: multiple same test runs      |
-| [Test 7](#test-7)   | NumSharedBuffers | 16 NVMe                 | Different number of target cores             |
-| [Test 8](#test-8)   | NumSharedBuffers | 16 NVMe                 | Different buffer cache size                  |
-| [Test 9](#test-9)   | NumSharedBuffers | 16 NVMe                 | Different number of buffers, 16 target cores |
-| [Test 10](#test-10) | NumSharedBuffers | 16 NVMe                 | Different number of buffers, 4 target cores  |
-| [Test 11](#test-11) | NumSharedBuffers | 16 NVMe, split 3, delay | No limit of IO depth for delay devices       |
-| [Test 12](#test-12) | NumSharedBuffers | 16 NVMe, split 3, delay | Control IO depthfor delay devices            |
-| [Test 13](#test-13) | N/A              | 16 NVMe, split 3, delay | Test disk latencies                          |
-| [Test 14](#test-14) | Rate based       | 16 NVMe                 | Basic test                                   |
+| Test #              | IO pacing            | Disks                   | Description                                  |
+|---------------------|----------------------|-------------------------|----------------------------------------------|
+| [Test 1](#test-1)   | none                 | 1 Null                  | Basic test                                   |
+| [Test 2](#test-2)   | none                 | 16 Null                 | Basic test                                   |
+| [Test 3](#test-3)   | none                 | 16 NVMe                 | Basic test                                   |
+| [Test 4](#test-4)   | NumSharedBuffers     | 16 Null                 | Basic test                                   |
+| [Test 5](#test-5)   | NumSharedBuffers     | 16 NVMe                 | Basic test                                   |
+| [Test 6](#test-6)   | NumSharedBuffers     | 16 NVMe                 | Stability test: multiple same test runs      |
+| [Test 7](#test-7)   | NumSharedBuffers     | 16 NVMe                 | Different number of target cores             |
+| [Test 8](#test-8)   | NumSharedBuffers     | 16 NVMe                 | Different buffer cache size                  |
+| [Test 9](#test-9)   | NumSharedBuffers     | 16 NVMe                 | Different number of buffers, 16 target cores |
+| [Test 10](#test-10) | NumSharedBuffers     | 16 NVMe                 | Different number of buffers, 4 target cores  |
+| [Test 11](#test-11) | NumSharedBuffers     | 16 NVMe, split 3, delay | No limit of IO depth for delay devices       |
+| [Test 12](#test-12) | NumSharedBuffers     | 16 NVMe, split 3, delay | Control IO depth for delay devices           |
+| [Test 13](#test-13) | N/A                  | 16 NVMe, split 3, delay | Test disk latencies                          |
+| [Test 14](#test-14) | Rate based, adaptive | 16 NVMe                 | Basic test                                   |
+| [Test 15](#test-15) | Rate based, fixed    | 16 NVMe                 | Basic test                                   |
+| [Test 16](#test-16) | Rate based, adaptive | 16 NVMe, split 3, delay | Test 12 with IO pacer                        |
 
 ### Test 1
 
@@ -725,7 +727,7 @@ Local single NVMe disk (SPDK perf)
 
 ### Test 14
 
-Basic test with rate based IO pacing.
+Basic test with rate based IO pacing. Adaptive rate IO pacer. FIO with 8 jobs.
 
 **IO pacing**: `Rate based`
 
@@ -734,29 +736,6 @@ Basic test with rate based IO pacing.
 **Initiator**: `fio+SPDK`
 
 **CPU mask**: 0xF0 (4 cores)
-
-Fixed rate IO pacer.
-
-| Pacer period, us | QD   | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
-|------------------|------|-------|----------|-------------|-----------|-------------|----------------------|------------------|
-| 5.6 (22.4)       | 256  | 160.0 | 180.231  | 3357.1      | 6.7       | 74.0        | 367.0 (45.8)         | 22.5             |
-| 5.65 (22.6)      | 256  | 178.1 | 195.7152 | 3013.5      | 4.3       | 99.5        | 129.6 (16.2)         | 22.7             |
-| 5.675 (22.7)     | 256  | 183.5 | 195.0755 | 2924.5      | .1        | 99.5        | 25.0 (3.1)           | 22.7             |
-| 5.7 (22.8)       | 256  | 182.8 | 194.2888 | 2936.3      | .2        | 99.5        | 23.6 (2.9)           | 22.8             |
-| 5.725 (22.9)     | 256  | 181.9 | 193.3365 | 2949.9      | .2        | 99.5        | 24.3 (3.0)           | 22.9             |
-| 5.75 (23)        | 256  | 181.2 | 192.5431 | 2961.5      | .2        | 99.5        | 22.6 (2.8)           | 23.0             |
-| 5.8 (23.2)       | 256  | 179.7 | 190.9718 | 2986.4      | .3        | 99.5        | 22.6 (2.8)           | 23.2             |
-| 6 (24)           | 256  | 169.8 | 184.7295 | 3163.1      | 1.0       | 99.5        | 183.6 (22.9)         | 24.0             |
-| 5.6 (22.4)       | 1024 | 156.1 | 170.3481 | 11276.8     | 5.7       | 76.7        | 596.0 (74.5)         | 22.5             |
-| 5.65 (22.6)      | 1024 | 154.2 | 171.9468 | 11708.2     | 5.4       | 73.9        | 588.6 (73.5)         | 22.7             |
-| 5.675 (22.7)     | 1024 | 141.7 | 165.9734 | 10886.6     | 9.2       | 58.9        | 572.6 (71.5)         | 22.8             |
-| 5.7 (22.8)       | 1024 | 160.9 | 148.8915 | 12118.0     | 11.1      | 67.7        | 255.6 (31.9)         | 22.8             |
-| 5.725 (22.9)     | 1024 | 137.9 | 124.2786 | 11597.4     | 10.7      | 60.5        | 758.0 (94.7)         | 23.0             |
-| 5.75 (23)        | 1024 | 152.6 | 192.9411 | 11941.0     | 13.8      | 99.2        | 428.0 (53.5)         | 23.0             |
-| 5.8 (23.2)       | 1024 | 157.3 | 134.1641 | 12723.2     | 11.6      | 65.3        | 28.3 (3.5)           | 23.2             |
-| 6 (24)           | 1024 | 173.7 | 184.5522 | 12364.5     | .5        | 99.5        | 22.3 (2.7)           | 24.0             |
-
-Adaptive rate IO pacer. FIO with 8 jobs.
 
 Adaptive mechanism works as follows. IO pacer measures average IO
 period, i.e. how often IOs leave the pacer and go to buffer allocation
@@ -1039,3 +1018,80 @@ io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, i
 io_pacer.c: 168:io_pacer_tune: *NOTICE*: IO pacer tuner: pacer 0xaaaae1ee2490, ios 0, io period 100000000 ns, new period 46593 ns, new period 7124 ticks, min 3562, max 7124
 io_pacer.c: 237:spdk_io_pacer_destroy: *NOTICE*: Destroyed IO pacer 0xaaaae1ee2490
 ~~~
+
+### Test 15
+
+Basic test with rate based IO pacing. Tuner disabled (fixed rate).
+
+**IO pacing**: `Rate based`
+
+**Configuration**: `config_nvme`
+
+**Initiator**: `fio+SPDK`
+
+**CPU mask**: 0xF0 (4 cores)
+
+| Pacer period, us | QD   | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
+|------------------|------|-------|----------|-------------|-----------|-------------|----------------------|------------------|
+| 5.6 (22.4)       | 256  | 160.0 | 180.231  | 3357.1      | 6.7       | 74.0        | 367.0 (45.8)         | 22.5             |
+| 5.65 (22.6)      | 256  | 178.1 | 195.7152 | 3013.5      | 4.3       | 99.5        | 129.6 (16.2)         | 22.7             |
+| 5.675 (22.7)     | 256  | 183.5 | 195.0755 | 2924.5      | .1        | 99.5        | 25.0 (3.1)           | 22.7             |
+| 5.7 (22.8)       | 256  | 182.8 | 194.2888 | 2936.3      | .2        | 99.5        | 23.6 (2.9)           | 22.8             |
+| 5.725 (22.9)     | 256  | 181.9 | 193.3365 | 2949.9      | .2        | 99.5        | 24.3 (3.0)           | 22.9             |
+| 5.75 (23)        | 256  | 181.2 | 192.5431 | 2961.5      | .2        | 99.5        | 22.6 (2.8)           | 23.0             |
+| 5.8 (23.2)       | 256  | 179.7 | 190.9718 | 2986.4      | .3        | 99.5        | 22.6 (2.8)           | 23.2             |
+| 6 (24)           | 256  | 169.8 | 184.7295 | 3163.1      | 1.0       | 99.5        | 183.6 (22.9)         | 24.0             |
+| 5.6 (22.4)       | 1024 | 156.1 | 170.3481 | 11276.8     | 5.7       | 76.7        | 596.0 (74.5)         | 22.5             |
+| 5.65 (22.6)      | 1024 | 154.2 | 171.9468 | 11708.2     | 5.4       | 73.9        | 588.6 (73.5)         | 22.7             |
+| 5.675 (22.7)     | 1024 | 141.7 | 165.9734 | 10886.6     | 9.2       | 58.9        | 572.6 (71.5)         | 22.8             |
+| 5.7 (22.8)       | 1024 | 160.9 | 148.8915 | 12118.0     | 11.1      | 67.7        | 255.6 (31.9)         | 22.8             |
+| 5.725 (22.9)     | 1024 | 137.9 | 124.2786 | 11597.4     | 10.7      | 60.5        | 758.0 (94.7)         | 23.0             |
+| 5.75 (23)        | 1024 | 152.6 | 192.9411 | 11941.0     | 13.8      | 99.2        | 428.0 (53.5)         | 23.0             |
+| 5.8 (23.2)       | 1024 | 157.3 | 134.1641 | 12723.2     | 11.6      | 65.3        | 28.3 (3.5)           | 23.2             |
+| 6 (24)           | 1024 | 173.7 | 184.5522 | 12364.5     | .5        | 99.5        | 22.3 (2.7)           | 24.0             |
+
+### Test 16
+
+IO pacer period 5750, adjusted period 23000, num delay 16
+| QD | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
+|----|-------|----------|-------------|-----------|-------------|----------------------|------------------|
+| 1  | 169.6 | 191.0841 | 12737.7     | 3.4       | 99.4        | 19.0 (2.3)           | 26.7             |
+| 2  | 175.5 | 190.674  | 12290.3     | 1.3       | 99.4        | 21.0 (2.6)           | 26.2             |
+| 4  | 175.1 | 190.9027 | 12369.1     | 2.5       | 99.3        | 22.0 (2.7)           | 26.1             |
+| 8  | 179.4 | 190.7852 | 12162.6     | .9        | 98.9        | 30.6 (3.8)           | 25.9             |
+| 16 | 179.2 | 190.2876 | 12363.9     | 1.0       | 97.3        | 38.6 (4.8)           | 25.8             |
+| 32 | 123.5 | 114.2105 | 18478.2     | 4.9       | 38.4        | 1293.3 (161.6)       | 27.0             |
+| 64 | 123.1 | 110.4748 | 19634.4     | 5.1       | 30.6        | 1319.3 (164.9)       | 28.1             |
+
+IO pacer period 5750, adjusted period 23000, num delay 32
+| QD | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
+|----|-------|----------|-------------|-----------|-------------|----------------------|------------------|
+| 1  | 175.9 | 191.2743 | 12239.3     | 3.1       | 99.4        | 16.0 (2.0)           | 25.5             |
+| 2  | 179.6 | 190.8678 | 12006.9     | .2        | 99.4        | 23.0 (2.8)           | 25.4             |
+| 4  | 173.5 | 190.4886 | 12486.1     | .2        | 99.1        | 29.0 (3.6)           | 25.6             |
+| 8  | 178.6 | 189.9393 | 12211.3     | .3        | 97.8        | 41.0 (5.1)           | 25.5             |
+| 16 | 105.0 | 110.8799 | 21078.7     | 2.2       | 44.3        | 1336.3 (167.0)       | 27.6             |
+| 32 | 104.6 | 110.4205 | 21820.5     | 1.9       | 34.1        | 1379.6 (172.4)       | 29.2             |
+| 64 | 104.5 | 110.3843 | 23120.3     | 1.5       | 30.0        | 1079.0 (134.8)       | 30.4             |
+
+IO pacer period 6000, adjusted period 24000, num delay 16
+| QD | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
+|----|-------|----------|-------------|-----------|-------------|----------------------|------------------|
+| 1  | 163.5 | 183.6816 | 13211.4     | 4.2       | 92.7        | 17.0 (2.1)           | 27.2             |
+| 2  | 172.3 | 183.4786 | 12484.2     | .8        | 99.4        | 19.6 (2.4)           | 26.8             |
+| 4  | 172.6 | 183.2886 | 12542.7     | .6        | 99.4        | 20.3 (2.5)           | 26.7             |
+| 8  | 172.5 | 183.1826 | 12648.9     | 1.1       | 99.1        | 25.3 (3.1)           | 26.6             |
+| 16 | 172.3 | 183.0874 | 12856.7     | 1.0       | 97.3        | 38.6 (4.8)           | 26.6             |
+| 32 | 154.1 | 182.1496 | 14811.4     | 4.7       | 90.7        | 714.0 (89.2)         | 27.2             |
+| 64 | 171.2 | 182.0205 | 14119.8     | .5        | 88.1        | 52.0 (6.5)           | 27.1             |
+
+IO pacer period 6000, adjusted period 24000, num delay 32
+| QD | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
+|----|-------|----------|-------------|-----------|-------------|----------------------|------------------|
+| 1  | 172.5 | 183.4912 | 12471.7     | .3        | 99.4        | 16.3 (2.0)           | 26.1             |
+| 2  | 172.4 | 183.0833 | 12503.9     | .3        | 99.3        | 24.0 (3.0)           | 26.3             |
+| 4  | 166.5 | 98.1667  | 13021.3     | 3.4       | 99.1        | 28.6 (3.5)           | 26.5             |
+| 8  | 171.8 | 182.5819 | 12699.0     | .4        | 96.4        | 37.0 (4.6)           | 26.5             |
+| 16 | 137.2 | 181.5809 | 16143.7     | 7.6       | 89.5        | 588.6 (73.5)         | 27.7             |
+| 32 | 105.5 | 111.3706 | 19815.1     | 2.0       | 35.0        | 897.6 (112.2)        | 29.3             |
+| 64 | 104.3 | 110.2806 | 23161.0     | 1.5       | 29.6        | 1436.6 (179.5)       | 30.5             |

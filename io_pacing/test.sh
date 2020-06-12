@@ -1246,6 +1246,26 @@ function test_14_16k()
     done
 }
 
+function test_15()
+{
+    local TGT_CPU_MASK=0xF0
+    local NUM_CORES=4
+
+    for io_pacer in 5600 5650 5700 5750 5800 6000; do
+	ADJUSTED_PERIOD="$(M_SCALE=0 m $io_pacer*$NUM_CORES/1)"
+	echo "CPU mask $CPU_MASK, num cores $NUM_CORES, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD"
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK=$TGT_CPU_MASK \
+	      FIO_JOB=fio-16ns \
+	      QD_LIST="256 2048" \
+	      IO_SIZE=128k \
+	      IO_PACER_PERIOD=$ADJUSTED_PERIOD \
+	      IO_PACER_TUNER_PERIOD=0 \
+	      test_base
+	sleep 3
+    done
+}
+
 function test_16()
 {
     local CPU_MASK=0xF0
