@@ -1624,6 +1624,10 @@ static const struct spdk_json_object_decoder nvmf_rpc_create_transport_decoder[]
 		spdk_json_decode_uint32, true
 	},
 	{
+		"io_pacer_threshold", offsetof(struct nvmf_rpc_create_transport_ctx, opts.io_pacer_threshold),
+		spdk_json_decode_uint32, true
+	},
+	{
 		"io_pacer_tuner_period", offsetof(struct nvmf_rpc_create_transport_ctx, opts.io_pacer_tuner_period),
 		spdk_json_decode_uint32, true
 	},

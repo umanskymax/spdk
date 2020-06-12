@@ -1702,6 +1702,7 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
                                        sock_priority=args.sock_priority,
                                        io_pacer_period=args.io_pacer_period,
                                        io_pacer_credit=args.io_pacer_credit,
+                                       io_pacer_threshold=args.io_pacer_threshold,
                                        io_pacer_tuner_period=args.io_pacer_tuner_period,
                                        io_pacer_tuner_step=args.io_pacer_tuner_step)
 
@@ -1723,6 +1724,7 @@ Format: 'user:u1 secret:s1 muser:mu1 msecret:ms1,user:u2 secret:s2 muser:mu2 mse
     p.add_argument('-y', '--sock-priority', help='The sock priority of the tcp connection. Relevant only for TCP transport', type=int)
     p.add_argument('-d', '--io-pacer-period', help='IO pacer period, ns. (0 - no IO pacing). RDMA transport only.', type=int)
     p.add_argument('--io-pacer-credit', help='IO pacer credit, bytes. Must be at least max IO size. RDMA transport only.', type=int)
+    p.add_argument('--io-pacer-threshold', help='IO pacer threshold, bytes. IO sizes less or equal to threshold will bypass IO pacer. RDMA transport only.', type=int)
     p.add_argument('--io-pacer-tuner-period', help='IO pacer tuner period, us. . RDMA transport only.', type=int)
     p.add_argument('--io-pacer-tuner-step', help='IO pacer tuner step,ns. RDMA transport only.', type=int)
     p.set_defaults(func=nvmf_create_transport)

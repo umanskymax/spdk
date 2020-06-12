@@ -86,6 +86,7 @@ struct spdk_nvmf_transport_opts {
 	uint32_t	sock_priority;
 	uint32_t	io_pacer_period;
 	uint32_t	io_pacer_credit;
+	uint32_t	io_pacer_threshold;
 	uint32_t	io_pacer_tuner_period;
 	uint32_t	io_pacer_tuner_step;
 };

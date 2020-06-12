@@ -109,6 +109,7 @@ def nvmf_create_transport(client,
                           sock_priority=None,
                           io_pacer_period=None,
                           io_pacer_credit=None,
+                          io_pacer_threshold=None,
                           io_pacer_tuner_period=None,
                           io_pacer_tuner_step=None):
     """NVMf Transport Create options.
@@ -129,6 +130,7 @@ def nvmf_create_transport(client,
         dif_insert_or_strip: Boolean flag to enable DIF insert/strip for I/O - TCP specific (optional)
         io_pacer_period: IO pacer period - RDMA specific (optional)
         io_pacer_credit: IO pacer credit - RDMA specific (optional)
+        io_pacer_threshold: IO pacer threshold - RDMA specific (optional)
         io_pacer_tuner_period: IO pacer tuner period - RDMA specific (optional)
         io_pacer_tuner_step: IO pacer tuner step - RDMA specific (optional)
 
@@ -170,6 +172,8 @@ def nvmf_create_transport(client,
         params['io_pacer_period'] = io_pacer_period
     if io_pacer_credit is not None:
         params['io_pacer_credit'] = io_pacer_credit
+    if io_pacer_threshold is not None:
+        params['io_pacer_threshold'] = io_pacer_threshold
     if io_pacer_tuner_period is not None:
         params['io_pacer_tuner_period'] = io_pacer_tuner_period
     if io_pacer_tuner_step is not None:

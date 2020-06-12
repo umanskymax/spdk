@@ -2173,6 +2173,12 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			/* @todo: check if size is calculated correctly for all types of commands */
 			rdma_req->pacer_entry.size = spdk_bdev_get_block_size(ns->bdev) *
 				((from_le32(&rdma_req->req.cmd->nvme_cmd.cdw12) & 0xFFFFu) + 1);
+			if (rdma_req->pacer_entry.size <= rtransport->transport.opts.io_pacer_threshold) {
+				rdma_req->state = RDMA_REQUEST_STATE_NEED_BUFFER;
+				STAILQ_INSERT_TAIL(&rgroup->group.pending_buf_queue, &rdma_req->req, buf_link);
+				break;
+			}
+
 			spdk_io_pacer_push(rgroup->pacer,
 					   ((uint64_t)rqpair->qpair.ctrlr->subsys->id << 32) +
 					   rdma_req->req.cmd->nvme_cmd.nsid,
@@ -2400,6 +2406,7 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 #define SPDK_NVMF_RDMA_DEFAULT_NO_SRQ false
 #define SPDK_NVMF_RDMA_DIF_INSERT_OR_STRIP false
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_PERIOD 0
+#define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_THRESHOLD 0
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_PERIOD 10000 /* us */
 #define SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_STEP 1000 /* ns */
 
@@ -2418,6 +2425,7 @@ spdk_nvmf_rdma_opts_init(struct spdk_nvmf_transport_opts *opts)
 	opts->no_srq =			SPDK_NVMF_RDMA_DEFAULT_NO_SRQ;
 	opts->dif_insert_or_strip =	SPDK_NVMF_RDMA_DIF_INSERT_OR_STRIP;
 	opts->io_pacer_period = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_PERIOD;
+	opts->io_pacer_threshold = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_THRESHOLD;
 	opts->io_pacer_tuner_period = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_PERIOD;
 	opts->io_pacer_tuner_step = SPDK_NVMF_RDMA_DEFAULT_IO_PACER_TUNER_STEP;
 }
