@@ -23,7 +23,7 @@ TARGET_BF_COUNTERS="/home/evgeniik/bf_counters.py"
 
 # Other configurations
 ENABLE_DEVICE_COUNTERS=1
-ENABLE_DETAILED_STATS=1
+ENABLE_DETAILED_STATS=
 
 # Internal variables
 
@@ -122,14 +122,6 @@ function print_report()
 
     fi
     printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE" "$(m $SUM_BW_STDDEV_R*8/1000^2)" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED" "$PACER_PERIOD"
-}
-
-function set_fio_params()
-{
-    FIO_PARAMS="--stats=1 --group_reporting=1 --output-format=json --thread=1 \
-    --numjobs=1 --cpus_allowed=1 --cpus_allowed_policy=split \
-    --time_based=1 --runtime=$TEST_TIME --ramp_time=3 \
-    --readwrite=$RW --bs=$IO_SIZE --iodepth=$QD"
 }
 
 function run_fio()
