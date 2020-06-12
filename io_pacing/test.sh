@@ -278,11 +278,6 @@ function rpc_stop()
 
 function basic_test()
 {
-    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	QD_LIST=${QD_LIST-"32 64 128 256 1024 2048"}
-    else
-	QD_LIST=${QD_LIST-"2 4 8 16 32"}
-    fi
     REPEAT=${REPEAT-1}
     local FORMAT="| %-10s | %-10s | %-10s | %-15s | %-10s | %-15s | %-25s | %-15s\n"
     printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV" "L3 Hit Rate" "Bufs in-flight (MiB)" "Pacer period, us"
@@ -506,76 +501,83 @@ function config_nvme_split3_delay()
     sleep 1
 }
 
+function test_base()
+{
+    start_tgt $TGT_CPU_MASK
+    $CONFIG
+    basic_test
+    stop_tgt
+}
+
+function test_base_kernel()
+{
+    start_tgt $TGT_CPU_MASK
+    $CONFIG
+    connect_hosts $HOSTS
+    basic_test
+    disconnect_hosts $HOSTS
+    stop_tgt
+}
+
 function test_1()
 {
-    start_tgt 0xF
-    config_null_1
-    FIO_JOB=fio-1ns basic_test
-    stop_tgt
+    CONFIG=config_null_1 \
+	  TGT_CPU_MASK=0xF \
+	  FIO_JOB=fio-1ns \
+	  QD_LIST="32 64 128 1024 2048" \
+	  test_base
 }
 
 function test_2()
 {
-    start_tgt 0xF
-    config_null_16
-    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	FIO_JOB=fio-16ns basic_test
-    else
-	connect_hosts $HOSTS
-	FIO_JOB=fio-kernel-16ns basic_test
-	disconnect_hosts $HOSTS
-    fi
-    stop_tgt
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xF \
+	  FIO_JOB=fio-16ns \
+	  QD_LIST="32 64 128 1024 2048" \
+	  test_base
 }
 
 function test_3()
 {
-    start_tgt 0xF
-    config_nvme
-    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	QD_LIST="32 36 40 44 48 64 128 256 1024 2048" FIO_JOB=fio-16ns basic_test
-    else
-	connect_hosts $HOSTS
-	FIO_JOB=fio-kernel-16ns basic_test
-	disconnect_hosts $HOSTS
-    fi
-    stop_tgt
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xF \
+	  FIO_JOB=fio-16ns \
+	  QD_LIST="32 36 40 44 48 64 128 256 1024 2048" \
+	  test_base
 }
 
 function test_4()
 {
-    start_tgt 0xF
-    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=24 config_null_16
-    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	FIO_JOB=fio-16ns basic_test
-    else
-	connect_hosts $HOSTS
-	FIO_JOB=fio-kernel-16ns basic_test
-	disconnect_hosts $HOSTS
-    fi
-    stop_tgt
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xF \
+	  FIO_JOB=fio-16ns \
+	  NUM_SHARED_BUFFERS=96 \
+	  BUF_CACHE_SIZE=24 \
+	  QD_LIST="32 64 128 1024 2048" \
+	  test_base
 }
 
 function test_5()
 {
-    start_tgt 0xF
-    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=24 config_nvme
-    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	FIO_JOB=fio-16ns basic_test
-    else
-	connect_hosts $HOSTS
-	FIO_JOB=fio-kernel-16ns basic_test
-	disconnect_hosts $HOSTS
-    fi
-    stop_tgt
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xF \
+	  FIO_JOB=fio-16ns \
+	  NUM_SHARED_BUFFERS=96 \
+	  BUF_CACHE_SIZE=24 \
+	  QD_LIST="32 64 128 1024 2048" \
+	  test_base
 }
 
 function test_6()
 {
-    start_tgt 0xF
-    NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=24 config_nvme
-    FIO_JOB=fio-16ns QD_LIST="32 256 1024 2048" REPEAT=10 basic_test
-    stop_tgt
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xF \
+	  FIO_JOB=fio-16ns \
+	  NUM_SHARED_BUFFERS=96 \
+	  BUF_CACHE_SIZE=24 \
+	  QD_LIST="32 256 1024 2048" \
+	  REPEAT=10 \
+	  test_base
 }
 
 function test_7()
@@ -584,12 +586,17 @@ function test_7()
 	local bin_mask=$(m "ibase=16; obase=2; $cpu_mask")
 	bin_mask=${bin_mask//0/}
 	local core_count=${#bin_mask}
-	local cache_size=$((96/core_count))
+	local num_buffers=96
+	local cache_size=$((num_buffers/core_count))
 	echo "Target cores $core_count (0x$cpu_mask). Buffer cache size $cache_size"
-	start_tgt 0x$cpu_mask
-	NUM_SHARED_BUFFERS=96 BUF_CACHE_SIZE=$cache_size config_nvme
-	FIO_JOB=fio-16ns basic_test
-	stop_tgt
+
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK="0x$cpu_mask" \
+	      FIO_JOB=fio-16ns \
+	      NUM_SHARED_BUFFERS=$num_buffers \
+	      BUF_CACHE_SIZE=$cache_size \
+	      QD_LIST="2048" \
+	      test_base
 	sleep 3
     done
 }
@@ -608,82 +615,85 @@ function test_8()
 
 function test_9()
 {
+    local TGT_CPU_MASK=0xFFFF
+    local NUM_CORES=16
+
     for num_buffers in 128 96 64 48 44 40 36 32 24 16; do
-	local cache_size=$((num_buffers/16))
+	local cache_size=$((num_buffers/NUM_CORES))
 	echo "Num shared buffers $num_buffers. Buffer cache size $cache_size"
-	start_tgt 0xFFFF
-	NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$cache_size config_nvme
-	if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	    QD_LIST=256 FIO_JOB=fio-16ns basic_test
-	else
-	    connect_hosts $HOSTS
-	    QD_LIST=32 FIO_JOB=fio-kernel-16ns basic_test
-	    disconnect_hosts $HOSTS
-	fi
-	stop_tgt
+
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK=$TGT_CPU_MASK \
+	      FIO_JOB=fio-16ns \
+	      NUM_SHARED_BUFFERS=$num_buffers \
+	      BUF_CACHE_SIZE=$cache_size \
+	      QD_LIST="2048" \
+	      test_base
 	sleep 3
     done
 }
 
 function test_10()
 {
+    local TGT_CPU_MASK=0xF
+    local NUM_CORES=4
+
     for num_buffers in 128 96 64 48 44 40 36 32 24 16; do
-	local cache_size=$((num_buffers/4))
+	local cache_size=$((num_buffers/NUM_CORES))
 	echo "Num shared buffers $num_buffers. Buffer cache size $cache_size"
-	start_tgt 0xF
-	NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$cache_size config_nvme
-	if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	    QD_LIST="256 1024" FIO_JOB=fio-16ns basic_test
-	else
-	    connect_hosts $HOSTS
-	    QD_LIST=32 FIO_JOB=fio-kernel-16ns basic_test
-	    disconnect_hosts $HOSTS
-	fi
-	stop_tgt
+
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK=$TGT_CPU_MASK \
+	      FIO_JOB=fio-16ns \
+	      NUM_SHARED_BUFFERS=$num_buffers \
+	      BUF_CACHE_SIZE=$cache_size \
+	      QD_LIST="256 2048" \
+	      test_base
 	sleep 3
     done
 }
 
 function test_11()
 {
-    local CPU_MASK=0xF
+    local TGT_CPU_MASK=0xF
     local NUM_CORES=4
 
     for num_buffers in 96 48; do
 	for num_delay in 0 16 32; do
-	    echo "| $CPU_MASK | $num_buffers | $num_delay"
-	    start_tgt $CPU_MASK
-	    NUM_DELAY_BDEVS=$num_delay NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme_split3_delay
-	    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-		QD_LIST="85 341" FIO_JOB=fio-48ns basic_test
-	    else
-		connect_hosts $HOSTS
-		QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
-		disconnect_hosts $HOSTS
-	    fi
-	    stop_tgt
+	    local cache_size=$((num_buffers/NUM_CORES))
+	    echo "| $TGT_CPU_MASK | $num_buffers | $num_delay"
+	    CONFIG=config_nvme_split3_delay \
+		  TGT_CPU_MASK=$TGT_CPU_MASK \
+		  FIO_JOB=fio-48ns \
+		  NUM_SHARED_BUFFERS=$num_buffers \
+		  BUF_CACHE_SIZE=$cache_size \
+		  NUM_DELAY_BDEVS=$num_delay \
+		  QD_LIST="85 341" \
+		  test_base
+	    sleep 3
 	done
     done
 }
 
+# Uncomment line "iodepth=1024" in job3 in fio-48ns job files to run this test
 function test_12()
 {
-    local CPU_MASK=0xF
+    local TGT_CPU_MASK=0xF
     local NUM_CORES=4
 
     for num_buffers in 48; do
 	for num_delay in 16 32; do
-	    echo "| $CPU_MASK | $num_buffers | $num_delay"
-	    start_tgt $CPU_MASK
-	    NUM_DELAY_BDEVS=$num_delay NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme_split3_delay
-	    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-		QD_LIST="1 2 4 8 16 32 64" FIO_JOB=fio-48ns basic_test
-	    else
-		connect_hosts $HOSTS
-		QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
-		disconnect_hosts $HOSTS
-	    fi
-	    stop_tgt
+	    local cache_size=$((num_buffers/NUM_CORES))
+	    echo "| $TGT_CPU_MASK | $num_buffers | $num_delay"
+	    CONFIG=config_nvme_split3_delay \
+		  TGT_CPU_MASK=$TGT_CPU_MASK \
+		  FIO_JOB=fio-48ns \
+		  NUM_SHARED_BUFFERS=$num_buffers \
+		  BUF_CACHE_SIZE=$cache_size \
+		  NUM_DELAY_BDEVS=$num_delay \
+		  QD_LIST="1 2 4 8 16 32 64" \
+		  test_base
+	    sleep 3
 	done
     done
 }
@@ -691,93 +701,51 @@ function test_12()
 # Test latencies
 function test_13()
 {
-    local CPU_MASK=0xF
+    local TGT_CPU_MASK=0xF
     local NUM_CORES=4
     HOSTS="spdk03.swx.labs.mlnx"
 
-    for num_buffers in 48; do
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=$TGT_CPU_MASK \
+	  FIO_JOB=fio-16ns \
+	  QD_LIST="1" \
+	  HOSTS="spdk03.swx.labs.mlnx" \
+	  test_base
 
-	# 16 Null disks
-	start_tgt $CPU_MASK
-	NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_null_16
-	if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	    QD_LIST="1" FIO_JOB=fio-16ns basic_test
-	else
-	    connect_hosts $HOSTS
-	    QD_LIST="1" FIO_JOB=fio-kernel-16ns basic_test
-	    disconnect_hosts $HOSTS
-	fi
-	stop_tgt
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=$TGT_CPU_MASK \
+	  FIO_JOB=fio-16ns \
+	  QD_LIST="1" \
+	  HOSTS="spdk03.swx.labs.mlnx" \
+	  test_base
 
-	# 16 NVMe disks
-	start_tgt $CPU_MASK
-	NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme
-	if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	    QD_LIST="1" FIO_JOB=fio-16ns basic_test
-	else
-	    connect_hosts $HOSTS
-	    QD_LIST="1" FIO_JOB=fio-kernel-16ns basic_test
-	    disconnect_hosts $HOSTS
-	fi
-	stop_tgt
-
-	# 48 split and delay disks
-	for num_delay in 0 48; do
-	    echo "| $CPU_MASK | $num_buffers | $num_delay"
-	    start_tgt $CPU_MASK
-	    NUM_DELAY_BDEVS=$num_delay NUM_SHARED_BUFFERS=$num_buffers BUF_CACHE_SIZE=$((num_buffers/NUM_CORES)) config_nvme_split3_delay
-	    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-		QD_LIST="1" FIO_JOB=fio-48ns basic_test
-	    else
-		connect_hosts $HOSTS
-		QD_LIST="1" FIO_JOB=fio-kernel-48ns basic_test
-		disconnect_hosts $HOSTS
-	    fi
-	    stop_tgt
-	done
+    for num_delay in 0 48; do
+	CONFIG=config_nvme_split3_delay \
+	      NUM_DELAY_BDEVS=$num_delay \
+	      TGT_CPU_MASK=$TGT_CPU_MASK \
+	      FIO_JOB=fio-16ns \
+	      QD_LIST="1" \
+	      HOSTS="spdk03.swx.labs.mlnx" \
+	      test_base
     done
 }
 
-
 function test_14()
 {
-    local CPU_MASK=0xF0
+    local TGT_CPU_MASK=0xF0
     local NUM_CORES=4
 
     for io_pacer in 5600 5650 5700 5750 5800 6000; do
 	ADJUSTED_PERIOD="$(M_SCALE=0 m $io_pacer*$NUM_CORES/1)"
 	echo "CPU mask $CPU_MASK, num cores $NUM_CORES, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD"
-	start_tgt $CPU_MASK
-	IO_PACER_PERIOD=$ADJUSTED_PERIOD config_nvme
-	if [ 0 -eq "$KERNEL_DRIVER" ]; then
-	    QD_LIST="256 1024 2048" FIO_JOB=fio-16ns basic_test
-	else
-	    connect_hosts $HOSTS
-	    FIO_JOB=fio-kernel-16ns basic_test
-	    disconnect_hosts $HOSTS
-	fi
-	stop_tgt
-    done
-}
-
-function test_16_pacing_internal()
-{
-    local CPU_MASK=$1
-    local NUM_CORES=$2
-    local ADJUSTED_PERIOD=$3
-
-	for num_delay in 16 32; do
-	    echo "| $CPU_MASK | $num_buffers | $num_delay"
-	    start_tgt $CPU_MASK
-	    IO_PACER_PERIOD=$ADJUSTED_PERIOD NUM_DELAY_BDEVS=$num_delay config_nvme_split3_delay
-	    if [ 0 -eq "$KERNEL_DRIVER" ]; then
-		QD_LIST="1 2 4 8 16 32 64" FIO_JOB=fio-48ns basic_test
-	    else
-		connect_hosts $HOSTS
-		QD_LIST=32 FIO_JOB=fio-kernel-48ns basic_test
-		disconnect_hosts $HOSTS
-	    fi
-	    stop_tgt
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK=$TGT_CPU_MASK \
+	      FIO_JOB=fio-16ns \
+	      QD_LIST="256 2048" \
+	      IO_SIZE=128k \
+	      IO_PACER_PERIOD=$ADJUSTED_PERIOD \
+	      test_base
+	sleep 3
     done
 }
 
@@ -786,11 +754,15 @@ function test_16()
     local CPU_MASK=0xF0
     local NUM_CORES=4
 
-    #for io_pacer in 5600 5650 5700 5750 5800 6000; do
     for io_pacer in 5750 6000; do
 	ADJUSTED_PERIOD="$(M_SCALE=0 m $io_pacer*$NUM_CORES/1)"
-	echo "CPU mask $CPU_MASK, num cores $NUM_CORES, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD"
-        test_16_pacing_internal $CPU_MASK $NUM_CORES $ADJUSTED_PERIOD 
+	for num_delay in 16 32; do
+	    echo "IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD, num delay $num_delay"
+	    start_tgt $CPU_MASK
+	    IO_PACER_PERIOD=$ADJUSTED_PERIOD NUM_DELAY_BDEVS=$num_delay config_nvme_split3_delay
+	    QD_LIST="1 2 4 8 16 32 64" FIO_JOB=fio-48ns basic_test
+	    stop_tgt
+	done
     done
 }
 
