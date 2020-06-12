@@ -543,12 +543,90 @@ function test_2()
 	  test_base
 }
 
+function test_2_4k()
+{
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  BUF_CACHE_SIZE=128 \
+	  QD_LIST="32" \
+	  IO_SIZE=4k \
+	  BUFFER_SIZE=4096 \
+	  test_base
+}
+
+function test_2_8k()
+{
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  BUF_CACHE_SIZE=128 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=8k \
+	  BUFFER_SIZE=8192 \
+	  test_base
+}
+
+function test_2_16k()
+{
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  BUF_CACHE_SIZE=128 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=16k \
+	  BUFFER_SIZE=8192 \
+	  test_base
+}
+
 function test_3()
 {
     CONFIG=config_nvme \
 	  TGT_CPU_MASK=0xF \
 	  FIO_JOB=fio-16ns \
 	  QD_LIST="32 36 40 44 48 64 128 256 1024 2048" \
+	  test_base
+}
+
+function test_3_4k()
+{
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  BUF_CACHE_SIZE=128 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=4k \
+	  BUFFER_SIZE=4096 \
+	  test_base
+}
+
+function test_3_8k()
+{
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  BUF_CACHE_SIZE=128 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=8k \
+	  BUFFER_SIZE=8192 \
+	  test_base
+}
+
+function test_3_16k()
+{
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  BUF_CACHE_SIZE=128 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=16k \
+	  BUFFER_SIZE=8192 \
 	  test_base
 }
 
@@ -563,6 +641,48 @@ function test_4()
 	  test_base
 }
 
+function test_4_4k()
+{
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  NUM_SHARED_BUFFERS=1536 \
+	  BUF_CACHE_SIZE=96 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=4k \
+	  BUFFER_SIZE=4096 \
+	  test_base
+}
+
+function test_4_8k()
+{
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  NUM_SHARED_BUFFERS=1024 \
+	  BUF_CACHE_SIZE=64 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=8k \
+	  BUFFER_SIZE=8192 \
+	  test_base
+}
+
+function test_4_16k()
+{
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  NUM_SHARED_BUFFERS=1024 \
+	  BUF_CACHE_SIZE=64 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=16k \
+	  BUFFER_SIZE=8192 \
+	  test_base
+}
+
 function test_5()
 {
     CONFIG=config_nvme \
@@ -571,6 +691,48 @@ function test_5()
 	  NUM_SHARED_BUFFERS=96 \
 	  BUF_CACHE_SIZE=24 \
 	  QD_LIST="32 64 128 1024 2048" \
+	  test_base
+}
+
+function test_5_4k()
+{
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  NUM_SHARED_BUFFERS=1536 \
+	  BUF_CACHE_SIZE=96 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=4k \
+	  BUFFER_SIZE=4096 \
+	  test_base
+}
+
+function test_5_8k()
+{
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  NUM_SHARED_BUFFERS=1024 \
+	  BUF_CACHE_SIZE=64 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=8k \
+	  BUFFER_SIZE=8192 \
+	  test_base
+}
+
+function test_5_16k()
+{
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  NUM_SHARED_BUFFERS=1024 \
+	  BUF_CACHE_SIZE=64 \
+	  QD_LIST="32 64 128 256 512" \
+	  IO_SIZE=16k \
+	  BUFFER_SIZE=8192 \
 	  test_base
 }
 
@@ -607,6 +769,78 @@ function test_7()
     done
 }
 
+function test_7_4k()
+{
+    for cpu_mask in FFFF FF F 3 1; do
+	local bin_mask=$(m "ibase=16; obase=2; $cpu_mask")
+	bin_mask=${bin_mask//0/}
+	local core_count=${#bin_mask}
+	local num_buffers=1536
+	local cache_size=$((num_buffers/core_count))
+	echo "Target cores $core_count (0x$cpu_mask). Buffer cache size $cache_size"
+
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK="0x$cpu_mask" \
+	      FIO_JOB=fio-16ns-16jobs \
+	      IO_UNIT_SIZE=8192 \
+	      NUM_SHARED_BUFFERS=$num_buffers \
+	      BUF_CACHE_SIZE=$cache_size \
+	      QD_LIST="512" \
+	      IO_SIZE=4k \
+	      BUFFER_SIZE=4096 \
+	      test_base
+	sleep 3
+    done
+}
+
+function test_7_8k()
+{
+    for cpu_mask in FFFF FF F 3 1; do
+	local bin_mask=$(m "ibase=16; obase=2; $cpu_mask")
+	bin_mask=${bin_mask//0/}
+	local core_count=${#bin_mask}
+	local num_buffers=1024
+	local cache_size=$((num_buffers/core_count))
+	echo "Target cores $core_count (0x$cpu_mask). Buffer cache size $cache_size"
+
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK="0x$cpu_mask" \
+	      FIO_JOB=fio-16ns-16jobs \
+	      IO_UNIT_SIZE=8192 \
+	      NUM_SHARED_BUFFERS=$num_buffers \
+	      BUF_CACHE_SIZE=$cache_size \
+	      QD_LIST="512" \
+	      IO_SIZE=8k \
+	      BUFFER_SIZE=8192 \
+	      test_base
+	sleep 3
+    done
+}
+
+function test_7_16k()
+{
+    for cpu_mask in FFFF FF F 3 1; do
+	local bin_mask=$(m "ibase=16; obase=2; $cpu_mask")
+	bin_mask=${bin_mask//0/}
+	local core_count=${#bin_mask}
+	local num_buffers=1024
+	local cache_size=$((num_buffers/core_count))
+	echo "Target cores $core_count (0x$cpu_mask). Buffer cache size $cache_size"
+
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK="0x$cpu_mask" \
+	      FIO_JOB=fio-16ns-16jobs \
+	      IO_UNIT_SIZE=8192 \
+	      NUM_SHARED_BUFFERS=$num_buffers \
+	      BUF_CACHE_SIZE=$cache_size \
+	      QD_LIST="512" \
+	      IO_SIZE=16k \
+	      BUFFER_SIZE=8192 \
+	      test_base
+	sleep 3
+    done
+}
+
 function test_8()
 {
     for cache_size in 6 3 1 0; do
@@ -635,6 +869,76 @@ function test_9()
 	      BUF_CACHE_SIZE=$cache_size \
 	      QD_LIST="2048" \
 	      test_base
+	sleep 3
+    done
+}
+
+function test_9_4k()
+{
+    local TGT_CPU_MASK=0xFFFF
+    local NUM_CORES=16
+
+    for num_buffers in 4096 3072 2560 2048 1536 1024 512 256; do
+	local cache_size=$((num_buffers/NUM_CORES))
+	echo "Num shared buffers $num_buffers. Buffer cache size $cache_size"
+
+	CONFIG=config_nvme \
+	  TGT_CPU_MASK=$TGT_CPU_MASK \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  NUM_SHARED_BUFFERS=$num_buffers \
+	  BUF_CACHE_SIZE=$cache_size \
+	  QD_LIST="512" \
+	  IO_SIZE=4k \
+	  BUFFER_SIZE=4096 \
+	  test_base
+	sleep 3
+    done
+}
+
+
+function test_9_8k()
+{
+    local TGT_CPU_MASK=0xFFFF
+    local NUM_CORES=16
+
+    for num_buffers in 2048 1536 1280 1024 768 512 256 128; do
+	local cache_size=$((num_buffers/NUM_CORES))
+	echo "Num shared buffers $num_buffers. Buffer cache size $cache_size"
+
+	CONFIG=config_nvme \
+	  TGT_CPU_MASK=$TGT_CPU_MASK \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  NUM_SHARED_BUFFERS=$num_buffers \
+	  BUF_CACHE_SIZE=$cache_size \
+	  QD_LIST="512" \
+	  IO_SIZE=8k \
+	  BUFFER_SIZE=8192 \
+	  test_base
+	sleep 3
+    done
+}
+
+function test_9_16k()
+{
+    local TGT_CPU_MASK=0xFFFF
+    local NUM_CORES=16
+
+    for num_buffers in 2048 1536 1280 1024 768 512 256 128; do
+	local cache_size=$((num_buffers/NUM_CORES))
+	echo "Num shared buffers $num_buffers. Buffer cache size $cache_size"
+
+	CONFIG=config_nvme \
+	  TGT_CPU_MASK=$TGT_CPU_MASK \
+	  FIO_JOB=fio-16ns-16jobs \
+	  IO_UNIT_SIZE=8192 \
+	  NUM_SHARED_BUFFERS=$num_buffers \
+	  BUF_CACHE_SIZE=$cache_size \
+	  QD_LIST="512" \
+	  IO_SIZE=16k \
+	  BUFFER_SIZE=8192 \
+	  test_base
 	sleep 3
     done
 }
@@ -736,6 +1040,114 @@ function test_13()
     done
 }
 
+function test_13_4k()
+{
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns \
+	  IO_UNIT_SIZE=8192 \
+	  QD_LIST="1" \
+	  IO_SIZE=4k \
+	  BUFFER_SIZE=4096 \
+	  HOSTS="spdk03.swx.labs.mlnx" \
+	  test_base
+
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns \
+	  IO_UNIT_SIZE=8192 \
+	  QD_LIST="1" \
+	  IO_SIZE=4k \
+	  BUFFER_SIZE=4096 \
+	  HOSTS="spdk03.swx.labs.mlnx" \
+	  test_base
+
+    for num_delay in 0 48; do
+	CONFIG=config_nvme_split3_delay \
+	      NUM_DELAY_BDEVS=$num_delay \
+	      TGT_CPU_MASK=0xFFFF \
+	      FIO_JOB=fio-16ns \
+	      IO_UNIT_SIZE=8192 \
+	      QD_LIST="1" \
+	      IO_SIZE=4k \
+	      BUFFER_SIZE=4096 \
+	      HOSTS="spdk03.swx.labs.mlnx" \
+	      test_base
+    done
+}
+
+function test_13_8k()
+{
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns \
+	  IO_UNIT_SIZE=8192 \
+	  QD_LIST="1" \
+	  IO_SIZE=8k \
+	  BUFFER_SIZE=8192 \
+	  HOSTS="spdk03.swx.labs.mlnx" \
+	  test_base
+
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns \
+	  IO_UNIT_SIZE=8192 \
+	  QD_LIST="1" \
+	  IO_SIZE=8k \
+	  BUFFER_SIZE=8192 \
+	  HOSTS="spdk03.swx.labs.mlnx" \
+	  test_base
+
+    for num_delay in 0 48; do
+	CONFIG=config_nvme_split3_delay \
+	      NUM_DELAY_BDEVS=$num_delay \
+	      TGT_CPU_MASK=0xFFFF \
+	      FIO_JOB=fio-16ns \
+	      IO_UNIT_SIZE=8192 \
+	      QD_LIST="1" \
+	      IO_SIZE=8k \
+	      BUFFER_SIZE=8192 \
+	      HOSTS="spdk03.swx.labs.mlnx" \
+	      test_base
+    done
+}
+
+function test_13_16k()
+{
+    CONFIG=config_null_16 \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns \
+	  IO_UNIT_SIZE=8192 \
+	  QD_LIST="1" \
+	  IO_SIZE=16k \
+	  BUFFER_SIZE=8192 \
+	  HOSTS="spdk03.swx.labs.mlnx" \
+	  test_base
+
+    CONFIG=config_nvme \
+	  TGT_CPU_MASK=0xFFFF \
+	  FIO_JOB=fio-16ns \
+	  IO_UNIT_SIZE=8192 \
+	  QD_LIST="1" \
+	  IO_SIZE=16k \
+	  BUFFER_SIZE=8192 \
+	  HOSTS="spdk03.swx.labs.mlnx" \
+	  test_base
+
+    for num_delay in 0 48; do
+	CONFIG=config_nvme_split3_delay \
+	      NUM_DELAY_BDEVS=$num_delay \
+	      TGT_CPU_MASK=0xFFFF \
+	      FIO_JOB=fio-16ns \
+	      IO_UNIT_SIZE=8192 \
+	      QD_LIST="1" \
+	      IO_SIZE=16k \
+	      BUFFER_SIZE=8192 \
+	      HOSTS="spdk03.swx.labs.mlnx" \
+	      test_base
+    done
+}
+
 function test_14()
 {
     local TGT_CPU_MASK=0xF0
@@ -750,6 +1162,85 @@ function test_14()
 	      QD_LIST="256 2048" \
 	      IO_SIZE=128k \
 	      IO_PACER_PERIOD=$ADJUSTED_PERIOD \
+	      test_base
+	sleep 3
+    done
+}
+
+function test_14_4k()
+{
+    local TGT_CPU_MASK=0xFFFF
+    local NUM_CORES=16
+
+    for io_pacer in 1400 1425 1437 1450 1500; do
+#    for io_pacer in 5600 5650 5700 5750 5800 6000; do
+#    for io_pacer in 170 180 190; do
+	ADJUSTED_PERIOD="$(M_SCALE=0 m $io_pacer*$NUM_CORES/1)"
+	echo "CPU mask $CPU_MASK, num cores $NUM_CORES, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD"
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK=$TGT_CPU_MASK \
+	      FIO_JOB=fio-16ns-16jobs \
+	      NUM_SHARED_BUFFERS=32768 \
+	      BUF_CACHE_SIZE=1024 \
+	      IO_UNIT_SIZE=8192 \
+	      QD_LIST="256 1024 2048" \
+	      IO_SIZE=4k \
+	      BUFFER_SIZE=4096 \
+	      IO_PACER_PERIOD=$ADJUSTED_PERIOD \
+	      IO_PACER_CREDIT=32768 \
+	      test_base
+	sleep 3
+    done
+}
+
+function test_14_8k()
+{
+    local TGT_CPU_MASK=0xFFFF
+    local NUM_CORES=16
+
+#    for io_pacer in 5600 5650 5700 5750 5800 6000; do
+#    for io_pacer in 330 350 380; do
+#    for io_pacer in 1400 1425 1437 1450 1500; do
+    for io_pacer in 1450; do
+	ADJUSTED_PERIOD="$(M_SCALE=0 m $io_pacer*$NUM_CORES/1)"
+	echo "CPU mask $CPU_MASK, num cores $NUM_CORES, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD"
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK=$TGT_CPU_MASK \
+	      FIO_JOB=fio-16ns-16jobs \
+	      NUM_SHARED_BUFFERS=32768 \
+	      BUF_CACHE_SIZE=1024 \
+	      IO_UNIT_SIZE=8192 \
+	      QD_LIST="1024" \
+	      IO_SIZE=8k \
+	      BUFFER_SIZE=8192 \
+	      IO_PACER_PERIOD=$ADJUSTED_PERIOD \
+	      IO_PACER_CREDIT=32768 \
+	      test_base
+	sleep 3
+    done
+}
+function test_14_16k()
+{
+    local TGT_CPU_MASK=0xFFFF
+    local NUM_CORES=16
+
+#    for io_pacer in 5600 5650 5700 5750 5800 6000; do
+
+    for io_pacer in 1400 1425 1437 1450 1500; do
+#    for io_pacer in 750 770 800; do
+	ADJUSTED_PERIOD="$(M_SCALE=0 m $io_pacer*$NUM_CORES/1)"
+	echo "CPU mask $CPU_MASK, num cores $NUM_CORES, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD"
+	CONFIG=config_nvme \
+	      TGT_CPU_MASK=$TGT_CPU_MASK \
+	      FIO_JOB=fio-16ns-16jobs \
+	      NUM_SHARED_BUFFERS=32768 \
+	      BUF_CACHE_SIZE=1024 \
+	      IO_UNIT_SIZE=8192 \
+	      QD_LIST="64 256 512" \
+	      IO_SIZE=16k \
+	      BUFFER_SIZE=8192 \
+	      IO_PACER_PERIOD=$ADJUSTED_PERIOD \
+	      IO_PACER_CREDIT=32768 \
 	      test_base
 	sleep 3
     done
