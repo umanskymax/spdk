@@ -619,3 +619,38 @@ Poll group: "nvmf_tgt_poll_group_7"
     Req lat 2, us: 5038.002
     Req lat 3, us: 5038.002
 ~~~
+
+
+With disk credit = 6 enabled
+~~~
+CPU mask 0xF0, num cores 4, IO pacer period 5600, adjusted period 22400
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
+| 256        | 160.9      | 182.7996   | 3334.8          | 8.5        | 91.3            | 36.6 (4.5)                | 31.1
+| 1024       | 173.9      | 194.9515   | 12351.6         | 4.4        | 95.5            | 37.0 (4.6)                | 29.2
+| 2048       | 145.6      | 161.1026   | 11984.3         | 5.5        | 87.1            | 32.3 (4.0)                | 29.1
+CPU mask 0xF0, num cores 4, IO pacer period 5650, adjusted period 22600
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
+| 256        | 183.3      | 195.2323   | 2928.1          | .9         | 99.3            | 31.3 (3.9)                | 29.8
+| 1024       | 159.5      | 169.6107   | 12993.1         | 12.1       | 99.1            | 30.6 (3.8)                | 28.7
+| 2048       | 156.8      | 168.7692   | 18836.8         | 7.1        | 91.6            | 22.6 (2.8)                | 28.5
+CPU mask 0xF0, num cores 4, IO pacer period 5700, adjusted period 22800
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
+| 256        | 181.6      | 192.9062   | 2955.0          | 1.3        | 99.4            | 30.6 (3.8)                | 29.8
+| 1024       | 170.5      | 193.8426   | 12592.2         | 7.8        | 99.3            | 32.6 (4.0)                | 28.9
+| 2048       | 152.9      | 184.7478   | 23730.2         | 14.8       | 95.1            | 51.3 (6.4)                | 28.7
+CPU mask 0xF0, num cores 4, IO pacer period 5750, adjusted period 23000
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
+| 256        | 178.0      | 192.6732   | 3015.7          | 6.9        | 99.4            | 30.0 (3.7)                | 30.2
+| 1024       | 141.5      | 164.2529   | 13621.0         | 12.1       | 97.8            | 38.3 (4.7)                | 29.6
+| 2048       | 159.0      | 192.1995   | 23207.3         | 12.9       | 99.3            | 42.0 (5.2)                | 29.2
+CPU mask 0xF0, num cores 4, IO pacer period 5800, adjusted period 23200
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
+| 256        | 176.9      | 126.0131   | 3034.1          | 6.7        | 99.4            | 30.6 (3.8)                | 30.6
+| 1024       | 158.0      | 190.7169   | 13560.0         | 12.4       | 99.3            | 35.3 (4.4)                | 29.6
+| 2048       | 154.5      | 167.761    | 15933.9         | 11.5       | 91.7            | 46.6 (5.8)                | 29.4
+CPU mask 0xF0, num cores 4, IO pacer period 6000, adjusted period 24000
+| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
+| 256        | 172.6      | 184.5024   | 3109.6          | 1.5        | 99.4            | 28.6 (3.5)                | 31.4
+| 1024       | 154.0      | 184.9637   | 13817.3         | 13.8       | 99.4            | 27.6 (3.4)                | 30.3
+| 2048       | 163.8      | 183.595    | 22911.2         | 8.7        | 97.3            | 46.0 (5.7)                | 29.7
+~~~
