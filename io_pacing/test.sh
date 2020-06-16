@@ -136,7 +136,7 @@ function run_fio()
 
     local FIO_PARAMS="--stats=1 --group_reporting=1 --thread=1 --direct=1 --norandommap \
     --time_based=1 --runtime=$TEST_TIME --ramp_time=$FIO_RAMP_TIME --file_service_type=roundrobin:1 \
-    --readwrite=$RW --bs=$IO_SIZE --iodepth=$QD"
+    --readwrite=$RW --bssplit=$IO_SIZE --iodepth=$QD"
 
     [ -z "$FIO_NO_JSON" ] && FIO_PARAMS="--output-format=json --output=$OUT_PATH/fio-$HOST.json $FIO_PARAMS"
 
@@ -301,6 +301,7 @@ function config_null_1()
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
     IO_PACER_CREDIT=${IO_PACER_CREDIT-131072}
+    IO_PACER_THRESHOLD=${IO_PACER_THRESHOLD-0}
     IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
     IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
     IO_UNIT_SIZE=${IO_UNIT_SIZE-131072}
@@ -319,6 +320,7 @@ function config_null_1()
 	     --max-srq-depth 4096 \
 	     --io-pacer-period $IO_PACER_PERIOD \
 	     --io-pacer-credit $IO_PACER_CREDIT \
+	     --io-pacer-threshold $IO_PACER_THRESHOLD \
 	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
 	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
@@ -345,6 +347,7 @@ function config_null_16()
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-32}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
     IO_PACER_CREDIT=${IO_PACER_CREDIT-131072}
+    IO_PACER_THRESHOLD=${IO_PACER_THRESHOLD-0}
     IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
     IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
     IO_UNIT_SIZE=${IO_UNIT_SIZE-131072}
@@ -363,6 +366,7 @@ function config_null_16()
 	     --max-srq-depth 4096 \
 	     --io-pacer-period $IO_PACER_PERIOD \
 	     --io-pacer-credit $IO_PACER_CREDIT \
+	     --io-pacer-threshold $IO_PACER_THRESHOLD \
 	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
 	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
@@ -391,6 +395,7 @@ function config_nvme()
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-128}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
     IO_PACER_CREDIT=${IO_PACER_CREDIT-131072}
+    IO_PACER_THRESHOLD=${IO_PACER_THRESHOLD-0}
     IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
     IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
     IO_UNIT_SIZE=${IO_UNIT_SIZE-131072}
@@ -410,6 +415,7 @@ function config_nvme()
 	     --max-srq-depth 4096 \
 	     --io-pacer-period $IO_PACER_PERIOD \
 	     --io-pacer-credit $IO_PACER_CREDIT \
+	     --io-pacer-threshold $IO_PACER_THRESHOLD \
 	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
 	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
@@ -442,6 +448,7 @@ function config_nvme_split3_delay()
     BUF_CACHE_SIZE=${BUF_CACHE_SIZE-128}
     NUM_DELAY_BDEVS=${NUM_DELAY_BDEVS-0}
     IO_PACER_PERIOD=${IO_PACER_PERIOD-0}
+    IO_PACER_THRESHOLD=${IO_PACER_THRESHOLD-0}
     IO_PACER_CREDIT=${IO_PACER_CREDIT-131072}
     IO_PACER_TUNER_PERIOD=${IO_PACER_TUNER_PERIOD-10000}
     IO_PACER_TUNER_STEP=${IO_PACER_TUNER_STEP-1000}
@@ -462,6 +469,7 @@ function config_nvme_split3_delay()
 	     --max-srq-depth 4096 \
 	     --io-pacer-period $IO_PACER_PERIOD \
 	     --io-pacer-credit $IO_PACER_CREDIT \
+	     --io-pacer-threshold $IO_PACER_THRESHOLD \
 	     --io-pacer-tuner-period $IO_PACER_TUNER_PERIOD \
 	     --io-pacer-tuner-step $IO_PACER_TUNER_STEP
     rpc_send nvmf_create_subsystem --allow-any-host \
@@ -1283,6 +1291,35 @@ function test_16()
     done
 }
 
+function test_18()
+{
+    local TGT_CPU_MASK=0xFFFF
+    local NUM_CORES=16
+
+#    for io_pacer in 1425; do
+    for io_pacer in 5700; do
+	for threshold in 0 4096 16384; do
+	    for io_size in "128k" "128k/80:4k/20" "128k/20:4k/80" "128k/80:16k/20" "128k/20:16k/80"; do
+		ADJUSTED_PERIOD="$(M_SCALE=0 m $io_pacer*$NUM_CORES/1)"
+		echo "CPU mask $TGT_CPU_MASK, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD, IO size $io_size, pacer threshold $threshold"
+		CONFIG=config_nvme \
+		      TGT_CPU_MASK=$TGT_CPU_MASK \
+		      FIO_JOB=fio-16ns-16jobs \
+		      NUM_SHARED_BUFFERS=32768 \
+		      BUF_CACHE_SIZE=1024 \
+		      IO_UNIT_SIZE=8192 \
+		      QD_LIST="256" \
+		      IO_SIZE="$io_size" \
+		      BUFFER_SIZE=8192 \
+		      IO_PACER_PERIOD=$ADJUSTED_PERIOD \
+		      IO_PACER_CREDIT=131072 \
+		      IO_PACER_THRESHOLD=$threshold \
+		      test_base
+		sleep 3
+	    done
+	done
+    done
+}
 
 function test_tgt()
 {
