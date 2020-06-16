@@ -1100,78 +1100,22 @@ IO pacer period 6000, adjusted period 24000, num delay 32
 
 Mixed IO sizes.
 
-~~~
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k, pacer threshold 0
+CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200
 
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 165.5      | 179.1065   | 25953.1         | 1.6        | 98.0            | 133.3 (1.0)               | 122.0
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/80:4k/20, pacer threshold 0
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 100.2      | 108.775    | 33997.6         | .3         | 56.3            | 10333.3 (80.7)            | 145.2
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/20:4k/80, pacer threshold 0
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 100.8      | 107.7723   | 9572.5          | .4         | 51.1            | 3940.6 (30.7)             | 112.3
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/80:16k/20, pacer threshold 0
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 100.0      | 108.4131   | 34749.5         | .4         | 59.6            | 9684.6 (75.6)             | 148.6
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/20:16k/80, pacer threshold 0
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 100.1      | 108.4904   | 12688.9         | .4         | 60.3            | 5081.3 (39.6)             | 114.7
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k, pacer threshold 4096
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 156.8      | 194.7037   | 27406.6         | 2.1        | 98.8            | 144.0 (1.1)               | 123.1
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/80:4k/20, pacer threshold 4096
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 133.1      | 108.4132   | 26046.5         | 2.2        | 83.4            | 161.0 (1.2)               | 140.9
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/20:4k/80, pacer threshold 4096
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 109.3      | 105.5914   | 8624.3          | 1.5        | 57.4            | 3400.6 (26.5)             | 165.8
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/80:16k/20, pacer threshold 4096
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 102.2      | 107.614    | 34653.3         | .4         | 62.0            | 10288.0 (80.3)            | 148.9
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/20:16k/80, pacer threshold 4096
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 101.8      | 107.606    | 12640.6         | .3         | 60.3            | 5195.3 (40.5)             | 113.6
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k, pacer threshold 16384
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 164.7      | 194.001    | 26127.0         | 1.7        | 88.5            | 138.6 (1.0)               | 122.2
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/80:4k/20, pacer threshold 16384
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 133.6      | 186.864    | 25470.5         | 2.2        | 74.2            | 96.0 (.7)                 | 135.6
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/20:4k/80, pacer threshold 16384
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 110.6      | 176.8402   | 8507.0          | 1.6        | 61.3            | 165.0 (1.2)               | 165.9
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/80:16k/20, pacer threshold 16384
-
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 133.6      | 112.1761   | 26637.2         | 2.2        | 93.8            | 148.0 (1.1)               | 138.7
-
-CPU mask 0xFFFF, IO pacer period 5700, adjusted period 91200, IO size 128k/20:16k/80, pacer threshold 16384
-| QD         | BW         | WIRE BW    | AVG LAT, us     | BW STDDEV  | L3 Hit Rate     | Bufs in-flight (MiB)      | Pacer period, us
-| 256        | 99.2       | 108.023    | 12761.3         | .4         | 62.4            | 4772.0 (37.2)             | 184.2
-~~~
+| IO size        | Pacer threshold | QD  | BW    | WIRE BW  | AVG LAT, us | BW STDDEV | L3 Hit Rate | Bufs in-flight (MiB) | Pacer period, us |
+|----------------|-----------------|-----|-------|----------|-------------|-----------|-------------|----------------------|------------------|
+| 128k           | 0               | 256 | 165.5 | 179.1065 | 25953.1     | 1.6       | 98.0        | 133.3 (1.0)          | 122.0            |
+| 128k/80:4k/20  | 0               | 256 | 100.2 | 108.775  | 33997.6     | .3        | 56.3        | 10333.3 (80.7)       | 145.2            |
+| 128k/20:4k/80  | 0               | 256 | 100.8 | 107.7723 | 9572.5      | .4        | 51.1        | 3940.6 (30.7)        | 112.3            |
+| 128k/80:16k/20 | 0               | 256 | 100.0 | 108.4131 | 34749.5     | .4        | 59.6        | 9684.6 (75.6)        | 148.6            |
+| 128k/20:16k/80 | 0               | 256 | 100.1 | 108.4904 | 12688.9     | .4        | 60.3        | 5081.3 (39.6)        | 114.7            |
+| 128k           | 4096            | 256 | 156.8 | 194.7037 | 27406.6     | 2.1       | 98.8        | 144.0 (1.1)          | 123.1            |
+| 128k/80:4k/20  | 4096            | 256 | 133.1 | 108.4132 | 26046.5     | 2.2       | 83.4        | 161.0 (1.2)          | 140.9            |
+| 128k/20:4k/80  | 4096            | 256 | 109.3 | 105.5914 | 8624.3      | 1.5       | 57.4        | 3400.6 (26.5)        | 165.8            |
+| 128k/80:16k/20 | 4096            | 256 | 102.2 | 107.614  | 34653.3     | .4        | 62.0        | 10288.0 (80.3)       | 148.9            |
+| 128k/20:16k/80 | 4096            | 256 | 101.8 | 107.606  | 12640.6     | .3        | 60.3        | 5195.3 (40.5)        | 113.6            |
+| 128k           | 16384           | 256 | 164.7 | 194.001  | 26127.0     | 1.7       | 88.5        | 138.6 (1.0)          | 122.2            |
+| 128k/80:4k/20  | 16384           | 256 | 133.6 | 186.864  | 25470.5     | 2.2       | 74.2        | 96.0 (.7)            | 135.6            |
+| 128k/20:4k/80  | 16384           | 256 | 110.6 | 176.8402 | 8507.0      | 1.6       | 61.3        | 165.0 (1.2)          | 165.9            |
+| 128k/80:16k/20 | 16384           | 256 | 133.6 | 112.1761 | 26637.2     | 2.2       | 93.8        | 148.0 (1.1)          | 138.7            |
+| 128k/20:16k/80 | 16384           | 256 | 99.2  | 108.023  | 12761.3     | .4        | 62.4        | 4772.0 (37.2)        | 184.2            |
