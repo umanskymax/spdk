@@ -148,6 +148,7 @@ io_pacer_poll(void *arg)
 			pacer->remaining_credit -= entry->size;
 			pacer->stat.ios++;
 			pacer->stat.bytes += entry->size;
+			rte_atomic32_add(&pacer->queues[next_queue - 1].stats->ops_in_flight, 1);
 			pacer->pop_cb(entry);
 			rc++;
 			attempts_cnt = 0;
@@ -330,7 +331,6 @@ spdk_io_pacer_push(struct spdk_io_pacer *pacer, uint64_t key, struct io_pacer_qu
 
 	STAILQ_INSERT_TAIL(&queue->queue, entry, link);
 	pacer->num_ios++;
-	rte_atomic32_add(&queue->stats->ops_in_flight, 1);
 	return 0;
 }
 
