@@ -124,15 +124,18 @@ io_pacer_poll(void *arg)
 	}
 
 	do {
+		next_queue %= pacer->num_queues;
+
 		if (attemtps_cnt-- == 0) {
 			return 0;
 		}
 
-		next_queue %= pacer->num_queues;
-
 		if (pacer->disk_credit) {
 			ops_in_flight = rte_atomic32_read(&pacer->queues[next_queue].stats->ops_in_flight);
 			if (ops_in_flight > pacer->disk_credit) {
+				/*SPDK_NOTICELOG("key: %" PRIx64 " ops_in_flight: %" PRIu32 "\n", 
+						pacer->queues[next_queue].key,
+						ops_in_flight); */
 				next_queue++;
 				continue;
 			}
@@ -144,6 +147,7 @@ io_pacer_poll(void *arg)
 	STAILQ_REMOVE_HEAD(&pacer->queues[next_queue - 1].queue, link);
 	pacer->num_ios--;
 	pacer->next_queue = next_queue;
+	rte_atomic32_add(&pacer->queues[next_queue - 1].stats->ops_in_flight, 1);
 	pacer->pop_cb(entry);
 	pacer->stat.ios++;
 	return 1;
@@ -343,7 +347,6 @@ spdk_io_pacer_push(struct spdk_io_pacer *pacer, uint64_t key, void *io)
 	STAILQ_INSERT_TAIL(&queue->queue, entry, link);
 	
 	pacer->num_ios++;
-	rte_atomic32_add(&queue->stats->ops_in_flight, 1);
 	return 0;
 }
 
