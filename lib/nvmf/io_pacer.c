@@ -46,9 +46,8 @@ struct io_pacer_queue {
 
 struct spdk_io_pacer {
 	uint64_t period_ticks;
-	uint64_t credit;
-	uint64_t max_credit;
-	uint64_t remaining_credit;
+	int64_t credit;
+	int64_t remaining_credit;
 	uint32_t max_queues;
 	spdk_io_pacer_pop_cb pop_cb;
 	uint32_t num_queues;
@@ -109,16 +108,14 @@ io_pacer_poll(void *arg)
 	pacer->last_tick = cur_tick - ticks_diff % pacer->period_ticks;
 	pacer->stat.polls++;
 
+	pacer->remaining_credit = spdk_min(pacer->remaining_credit + pacer->credit,
+					   pacer->credit);
+
 	if (pacer->num_ios == 0) {
 		pacer->stat.no_ios++;
-		return 0;
 	}
 
-	/* @todo: max credit is now defined by user to fit max IO size. Is there a better way? */
-	pacer->remaining_credit = spdk_min(pacer->remaining_credit + pacer->credit,
-					   pacer->max_credit);
-
-	do {
+	while ((pacer->num_ios > 0) && (pacer->remaining_credit > 0)) {
 		if (next_queue >= pacer->num_queues) {
 			next_queue = 0;
 		}
@@ -126,23 +123,16 @@ io_pacer_poll(void *arg)
 		entry = STAILQ_FIRST(&pacer->queues[next_queue].queue);
 		next_queue++;
 		if (entry != NULL) {
-			if (entry->size <= pacer->remaining_credit) {
-				STAILQ_REMOVE_HEAD(&pacer->queues[next_queue - 1].queue, link);
-				pacer->num_ios--;
-				pacer->next_queue = next_queue;
-				pacer->remaining_credit -= entry->size;
-				pacer->stat.ios++;
-				pacer->stat.bytes += entry->size;
-				/* SPDK_NOTICELOG("Submitted IO: size %u, remaining credit %u\n", */
-				/* 	       entry->size, pacer->remaining_credit); */
-				pacer->pop_cb(entry);
-				rc++;
-			} else {
-				/* IO does not fit into remaining credit. Wait till we get more */
-				break;
-			}
+			STAILQ_REMOVE_HEAD(&pacer->queues[next_queue - 1].queue, link);
+			pacer->num_ios--;
+			pacer->next_queue = next_queue;
+			pacer->remaining_credit -= entry->size;
+			pacer->stat.ios++;
+			pacer->stat.bytes += entry->size;
+			pacer->pop_cb(entry);
+			rc++;
 		}
-	} while (pacer->num_ios > 0);
+	}
 
 	return rc;
 }
@@ -192,7 +182,7 @@ io_pacer_tune(void *arg)
 }
 
 struct spdk_io_pacer *
-spdk_io_pacer_create(uint32_t period_ns, uint32_t credit, uint32_t max_credit,
+spdk_io_pacer_create(uint32_t period_ns, uint32_t credit,
 		     uint32_t tuner_period_us, uint32_t tuner_step_ns,
 		     spdk_io_pacer_pop_cb pop_cb, void *ctx)
 {
@@ -211,7 +201,6 @@ spdk_io_pacer_create(uint32_t period_ns, uint32_t credit, uint32_t max_credit,
 	pacer->max_period_ticks = 2 * pacer->min_period_ticks;
 	pacer->period_ticks = pacer->min_period_ticks;
 	pacer->credit = credit;
-	pacer->max_credit = max_credit;
 	pacer->pop_cb = pop_cb;
 	pacer->first_tick = spdk_get_ticks();
 	pacer->last_tick = spdk_get_ticks();

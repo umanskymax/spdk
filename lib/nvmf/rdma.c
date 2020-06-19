@@ -3513,8 +3513,6 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 	if (0 != transport->opts.io_pacer_period) {
 		rgroup->pacer = spdk_io_pacer_create(transport->opts.io_pacer_period,
 						     transport->opts.io_pacer_credit,
-						     /* @todo: do something smarter with max credit */
-						     transport->opts.max_io_size * 2,
 						     transport->opts.io_pacer_tuner_period,
 						     transport->opts.io_pacer_tuner_step,
 						     nvmf_rdma_io_pacer_pop_cb,

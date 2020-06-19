@@ -44,7 +44,6 @@ struct io_pacer_queue_entry {
 
 struct spdk_io_pacer *spdk_io_pacer_create(uint32_t period_ns,
 					   uint32_t credit,
-					   uint32_t max_credit,
 					   uint32_t tuner_period_us,
 					   uint32_t tuner_step_ns,
 					   spdk_io_pacer_pop_cb pop_cb,
