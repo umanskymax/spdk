@@ -44,10 +44,7 @@ struct io_pacer_queue_entry {
 
 struct spdk_io_pacer *spdk_io_pacer_create(uint32_t period_ns,
 					   uint32_t credit,
-					   uint32_t tuner_period_us,
-					   uint32_t tuner_step_ns,
-					   spdk_io_pacer_pop_cb pop_cb,
-					   void *ctx);
+					   spdk_io_pacer_pop_cb pop_cb);
 void spdk_io_pacer_destroy(struct spdk_io_pacer *pacer);
 int spdk_io_pacer_create_queue(struct spdk_io_pacer *pacer, uint64_t key);
 int spdk_io_pacer_destroy_queue(struct spdk_io_pacer *pacer, uint64_t key);
@@ -56,5 +53,9 @@ int spdk_io_pacer_push(struct spdk_io_pacer *pacer,
 		       struct io_pacer_queue_entry *entry);
 void spdk_io_pacer_get_stat(const struct spdk_io_pacer *pacer,
 			    struct spdk_nvmf_transport_poll_group_stat *stat);
+struct spdk_io_pacer_tuner *spdk_io_pacer_tuner_create(struct spdk_io_pacer *pacer,
+						       uint32_t tuner_period_us,
+						       uint32_t tuner_step_ns);
+void spdk_io_pacer_tuner_destroy(struct spdk_io_pacer_tuner *tuner);
 
 #endif /* IO_PACER_H */

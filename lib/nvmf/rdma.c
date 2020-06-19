@@ -479,6 +479,7 @@ struct spdk_nvmf_rdma_poll_group {
 	TAILQ_HEAD(, spdk_nvmf_rdma_poller)		pollers;
 	TAILQ_ENTRY(spdk_nvmf_rdma_poll_group)		link;
 	struct spdk_io_pacer				*pacer;
+	struct spdk_io_pacer_tuner			*pacer_tuner;
 	/*
 	 * buffers which are split across multiple RDMA
 	 * memory regions cannot be used by this transport.
@@ -3513,12 +3514,18 @@ spdk_nvmf_rdma_poll_group_create(struct spdk_nvmf_transport *transport)
 	if (0 != transport->opts.io_pacer_period) {
 		rgroup->pacer = spdk_io_pacer_create(transport->opts.io_pacer_period,
 						     transport->opts.io_pacer_credit,
-						     transport->opts.io_pacer_tuner_period,
-						     transport->opts.io_pacer_tuner_step,
-						     nvmf_rdma_io_pacer_pop_cb,
-						     rgroup);
+						     nvmf_rdma_io_pacer_pop_cb);
 		if (!rgroup->pacer) {
 			SPDK_ERRLOG("Failed to create IO pacer\n");
+			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
+			pthread_mutex_unlock(&rtransport->lock);
+			return NULL;
+		}
+		rgroup->pacer_tuner = spdk_io_pacer_tuner_create(rgroup->pacer,
+								 transport->opts.io_pacer_tuner_period,
+								 transport->opts.io_pacer_tuner_step);
+		if (!rgroup->pacer_tuner) {
+			SPDK_ERRLOG("Failed to create IO pacer tuner\n");
 			spdk_nvmf_rdma_poll_group_destroy(&rgroup->group);
 			pthread_mutex_unlock(&rtransport->lock);
 			return NULL;
@@ -3647,6 +3654,7 @@ spdk_nvmf_rdma_poll_group_destroy(struct spdk_nvmf_transport_poll_group *group)
 	}
 
 	if (rgroup->pacer) {
+		spdk_io_pacer_tuner_destroy(rgroup->pacer_tuner);
 		spdk_io_pacer_destroy(rgroup->pacer);
 	}
 
