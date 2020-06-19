@@ -64,7 +64,7 @@ struct spdk_io_pacer {
 	uint64_t tuner_step_ns;
 	uint64_t min_period_ticks;
 	uint64_t max_period_ticks;
-	uint64_t tuner_last_ios;
+	uint64_t tuner_last_bytes;
 	struct spdk_poller *tuner;
 	void *ctx;
 };
@@ -131,10 +131,11 @@ io_pacer_poll(void *arg)
 				pacer->num_ios--;
 				pacer->next_queue = next_queue;
 				pacer->remaining_credit -= entry->size;
+				pacer->stat.ios++;
+				pacer->stat.bytes += entry->size;
 				/* SPDK_NOTICELOG("Submitted IO: size %u, remaining credit %u\n", */
 				/* 	       entry->size, pacer->remaining_credit); */
 				pacer->pop_cb(entry);
-				pacer->stat.ios++;
 				rc++;
 			} else {
 				/* IO does not fit into remaining credit. Wait till we get more */
@@ -151,8 +152,9 @@ io_pacer_tune(void *arg)
 {
 	struct spdk_io_pacer *pacer = arg;
 	const uint64_t ticks_hz = spdk_get_ticks_hz();
-	const uint64_t ios = pacer->stat.ios - pacer->tuner_last_ios;
-	const uint64_t io_period_ns = pacer->tuner_period_ns / ((ios != 0) ? ios : 1);
+	const uint64_t bytes = pacer->stat.bytes - pacer->tuner_last_bytes;
+	/* We do calculations in terms of credit sized IO */
+	const uint64_t io_period_ns = pacer->tuner_period_ns / ((bytes != 0) ? (bytes / pacer->credit) : 1);
 
 	const uint64_t cur_period_ns = (pacer->period_ticks * SPDK_SEC_TO_NSEC) / ticks_hz;
 	/* We always want to set pacer period one step shorter than measured IO period.
@@ -172,9 +174,9 @@ io_pacer_tune(void *arg)
 	static __thread uint32_t log_counter = 0;
 	/* Try to log once per second */
 	if (log_counter % (SPDK_SEC_TO_NSEC / pacer->tuner_period_ns) == 0) {
-		SPDK_NOTICELOG("IO pacer tuner: pacer %p, ios %lu, io period %lu ns, new period %lu ns, new period %lu ticks, min %lu, max %lu\n",
+		SPDK_NOTICELOG("IO pacer tuner: pacer %p, bytes %lu, io period %lu ns, new period %lu ns, new period %lu ticks, min %lu, max %lu\n",
 			       pacer,
-			       pacer->stat.ios - pacer->tuner_last_ios,
+			       pacer->stat.bytes - pacer->tuner_last_bytes,
 			       io_period_ns,
 			       new_period_ns,
 			       new_period_ticks,
@@ -184,7 +186,7 @@ io_pacer_tune(void *arg)
 	log_counter++;
 
 	pacer->period_ticks = new_period_ticks;
-	pacer->tuner_last_ios = pacer->stat.ios;
+	pacer->tuner_last_bytes = pacer->stat.bytes;
 
 	return 1;
 }
@@ -350,6 +352,7 @@ spdk_io_pacer_get_stat(const struct spdk_io_pacer *pacer,
 		stat->io_pacer.total_ticks = pacer->stat.total_ticks;
 		stat->io_pacer.polls = pacer->stat.polls;
 		stat->io_pacer.ios = pacer->stat.ios;
+		stat->io_pacer.bytes = pacer->stat.bytes;
 		stat->io_pacer.calls = pacer->stat.calls;
 		stat->io_pacer.no_ios = pacer->stat.no_ios;
 		stat->io_pacer.period_ticks = pacer->period_ticks;
