@@ -1100,7 +1100,7 @@ IO pacer period 6000, adjusted period 24000, num delay 32
 
 Mixed IO sizes.
 
-Total queue depth (max number of in-flight IO requests) is QD*num_jobs*num_hosts=QD*8*2
+Total queue depth (max number of in-flight IO requests) is `QD*num_jobs*num_hosts = QD*8*2`
 
 **IO rate based tuner**
 
