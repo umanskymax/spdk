@@ -1296,23 +1296,24 @@ function test_18()
     local TGT_CPU_MASK=0xFFFF
     local NUM_CORES=16
 
-#    for io_pacer in 1425; do
-    for io_pacer in 5700; do
-	for threshold in 0 4096 16384; do
-	    for io_size in "128k" "128k/80:4k/20" "128k/20:4k/80" "128k/80:16k/20" "128k/20:16k/80"; do
+    for io_pacer in 2875; do
+	for threshold in 0 16384; do
+	    for io_size in "128k" "4k" "128k/80:4k/20" "128k/20:4k/80" "8k" "128k/80:8k/20" "128k/20:8k/80" "16k" "128k/80:16k/20" "128k/20:16k/80"; do
 		ADJUSTED_PERIOD="$(M_SCALE=0 m $io_pacer*$NUM_CORES/1)"
-		echo "CPU mask $TGT_CPU_MASK, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD, IO size $io_size, pacer threshold $threshold"
+		num_buffers=131072
+		buf_cache=$((num_buffers/NUM_CORES))
+		echo "CPU mask $TGT_CPU_MASK, IO pacer period $io_pacer, adjusted period $ADJUSTED_PERIOD, IO size $io_size, pacer threshold $threshold, num buffers $num_buffers, buf cache $buf_cache"
 		CONFIG=config_nvme \
 		      TGT_CPU_MASK=$TGT_CPU_MASK \
 		      FIO_JOB=fio-16ns-16jobs \
-		      NUM_SHARED_BUFFERS=32768 \
-		      BUF_CACHE_SIZE=1024 \
+		      NUM_SHARED_BUFFERS=$num_buffers \
+		      BUF_CACHE_SIZE=$buf_cache \
 		      IO_UNIT_SIZE=8192 \
-		      QD_LIST="256" \
+		      QD_LIST="32 64 128 256" \
 		      IO_SIZE="$io_size" \
 		      BUFFER_SIZE=8192 \
 		      IO_PACER_PERIOD=$ADJUSTED_PERIOD \
-		      IO_PACER_CREDIT=131072 \
+		      IO_PACER_CREDIT=65536 \
 		      IO_PACER_THRESHOLD=$threshold \
 		      test_base
 		sleep 3
