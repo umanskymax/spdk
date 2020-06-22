@@ -154,6 +154,7 @@ Results for Intel disks small IOs: [intel_small.md](intel_small.md)
 | [Test 14](#test-14) | Rate based, adaptive | 16 NVMe                 | Basic test                                   |
 | [Test 15](#test-15) | Rate based, fixed    | 16 NVMe                 | Basic test                                   |
 | [Test 16](#test-16) | Rate based, adaptive | 16 NVMe, split 3, delay | Test 12 with IO pacer                        |
+| [Test 18](#test-18) | Rate based, adaptive | 16 NVMe                 | Mixed IO sizes                               |
 
 ### Test 1
 
