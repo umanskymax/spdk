@@ -49,11 +49,13 @@ function parse_fio()
 
     IOPS_R=$(jq .jobs[].read.iops $LOG 2>/dev/null)
     BW_R=$(jq .jobs[].read.bw_bytes $LOG 2>/dev/null)
+    BW_MAX_R=$(jq .jobs[].read.bw_max $LOG 2>/dev/null)
     BW_STDDEV_R=$(jq .jobs[].read.bw_dev $LOG 2>/dev/null)
     LAT_AVG_R=$(jq .jobs[].read.lat_ns.mean $LOG 2>/dev/null)
 
-    IOPS_W=$(jq .jobs[].write.bw_bytes $LOG 2>/dev/null)
-    BW_W=$(jq .jobs[].write.iops $LOG 2>/dev/null)
+    IOPS_W=$(jq .jobs[].write.iops $LOG 2>/dev/null)
+    BW_W=$(jq .jobs[].write.bw_bytes $LOG 2>/dev/null)
+    BW_MAX_W=$(jq .jobs[].write.bw_max $LOG 2>/dev/null)
     BW_STDDEV_W=$(jq .jobs[].write.bw_dev $LOG 2>/dev/null)
     LAT_AVG_W=$(jq .jobs[].write.lat_ns.mean $LOG 2>/dev/null)
 }
@@ -63,6 +65,7 @@ function print_report()
     local HOSTS=$@
     local SUM_IOPS_R=0
     local SUM_BW_R=0
+    local SUM_BW_MAX_R=0
     local SUM_BW_STDDEV_R=0
     local SUM_LAT_AVG_R=0
 
@@ -75,8 +78,8 @@ function print_report()
     echo ""
 
     echo Results
-    local FORMAT="%-30s | %-10s | %-10s | %-15s | %-15s | %-15s | %-15s | %-15s | %-15s\n"
-    printf "$FORMAT" "Host" "kIOPS" "BW,Gb/s" "AVG_LAT,us" "Wire BW,Gb/s" "BW STDDEV" "L3 Hit Rate, %" "Bufs in-flight" "Pacer period, us"
+    local FORMAT="%-30s | %-10s | %-10s | %-10s | %-15s | %-15s | %-15s | %-15s | %-15s | %-20s\n"
+    printf "$FORMAT" "Host" "kIOPS" "BW,Gb/s" "BW Max" "AVG_LAT,us" "Wire BW,Gb/s" "BW STDDEV" "L3 Hit Rate, %" "Bufs in-flight" "Pacer period, us"
     printf "$FORMAT" | tr " " "-"
 
     local count=0
@@ -84,10 +87,11 @@ function print_report()
 	parse_fio $OUT_PATH/fio-$host.json
 	SUM_IOPS_R=$(m $SUM_IOPS_R + $IOPS_R)
 	SUM_BW_R=$(m $SUM_BW_R + $BW_R)
+	SUM_BW_MAX_R=$(m $SUM_BW_MAX_R + $BW_MAX_R)
 	SUM_BW_STDDEV_R=$(m $SUM_BW_STDDEV_R + $BW_STDDEV_R^2)
 	SUM_LAT_AVG_R=$(m $SUM_LAT_AVG_R + $LAT_AVG_R)
 
-	printf "$FORMAT" $host $(m $IOPS_R/1000) $(m $BW_R*8/1000^3) $(m $LAT_AVG_R/1000)
+	printf "$FORMAT" $host $(m $IOPS_R/1000) $(m $BW_R*8/1000^3) "$(m $BW_MAX_R*8*1024/1000^3)" $(m $LAT_AVG_R/1000) "" "$(m $BW_STDDEV_R*8*1024/1000^3)"
 	((count+=1))
     done
     SUM_LAT_AVG_R=$(m $SUM_LAT_AVG_R / $count)
@@ -121,7 +125,7 @@ function print_report()
 	local PACER_PERIOD=$(m 10^6*$TOTAL_TICKS/$TICK_RATE/$TOTAL_POLLS)
 
     fi
-    printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE" "$(m $SUM_BW_STDDEV_R*8/1000^2)" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED" "$PACER_PERIOD"
+    printf "$FORMAT" "Total" $(m $SUM_IOPS_R/1000) $(m $SUM_BW_R*8/1000^3)  $(m $SUM_BW_MAX_R*8*1024/1000^3) "$(m $SUM_LAT_AVG_R/1000)" "$TX_BW_WIRE" "$(m $SUM_BW_STDDEV_R*8*1024/1000^3)" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED" "$PACER_PERIOD"
 }
 
 function run_fio()
@@ -273,21 +277,22 @@ function basic_test()
     REPEAT=${REPEAT-1}
     BUFFER_SIZE=${BUFFER_SIZE-131072}
 
-    local FORMAT="| %-10s | %-10s | %-10s | %-15s | %-10s | %-15s | %-25s | %-15s\n"
-    printf "$FORMAT" "QD" "BW" "WIRE BW" "AVG LAT, us" "BW STDDEV" "L3 Hit Rate" "Bufs in-flight (MiB)" "Pacer period, us"
+    local FORMAT="| %-10s | %-10s |  %-10s | %-10s | %-15s | %-10s | %-15s | %-20s | %-20s\n"
+    printf "$FORMAT" "QD" "BW" "BW Max" "WIRE BW" "AVG LAT, us" "BW STDDEV" "L3 Hit Rate" "Bufs in-flight (MiB)" "Pacer period, us"
 
     for qd in $QD_LIST; do
 	for rep in $(seq $REPEAT); do
 	    QD=$qd run_test $HOSTS > /dev/null
 	    OUT=$(print_report $HOSTS | tee $OUT_PATH/basic_test.log)
 	    BW="$(echo "$OUT" | grep Total | awk '{print $5}')"
-	    LAT_AVG="$(echo "$OUT" | grep Total | awk '{print $7}')"
-	    WIRE_BW="$(echo "$OUT" | grep Total | awk '{print $9}')"
-	    BW_STDDEV="$(echo "$OUT" | grep Total | awk '{print $11}')"
-	    L3_HIT_RATE="$(echo "$OUT" | grep Total | awk '{print $13}')"
-	    BUFFERS_ALLOCATED="$(echo "$OUT" | grep Total | awk '{print $15}')"
-	    PACER_PERIOD="$(echo "$OUT" | grep Total | awk '{print $17}')"
-	    printf "$FORMAT" "$qd" "$BW" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED ($(m $BUFFERS_ALLOCATED*$BUFFER_SIZE/1024/1024))" "$PACER_PERIOD"
+	    BW_MAX="$(echo "$OUT" | grep Total | awk '{print $7}')"
+	    LAT_AVG="$(echo "$OUT" | grep Total | awk '{print $9}')"
+	    WIRE_BW="$(echo "$OUT" | grep Total | awk '{print $11}')"
+	    BW_STDDEV="$(echo "$OUT" | grep Total | awk '{print $13}')"
+	    L3_HIT_RATE="$(echo "$OUT" | grep Total | awk '{print $15}')"
+	    BUFFERS_ALLOCATED="$(echo "$OUT" | grep Total | awk '{print $17}')"
+	    PACER_PERIOD="$(echo "$OUT" | grep Total | awk '{print $19}')"
+	    printf "$FORMAT" "$qd" "$BW" "$BW_MAX" "$WIRE_BW" "$LAT_AVG" "$BW_STDDEV" "$L3_HIT_RATE" "$BUFFERS_ALLOCATED ($(m $BUFFERS_ALLOCATED*$BUFFER_SIZE/1024/1024))" "$PACER_PERIOD"
 	    if [ -n "$ENABLE_DETAILED_STATS" ]; then
 		./parse_stats.sh
 	    fi
