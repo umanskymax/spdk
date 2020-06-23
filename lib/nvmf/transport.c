@@ -59,6 +59,8 @@
 int __itt_init_ittlib(const char *, __itt_group_id);
 __itt_string_handle *buffer_get_task;
 __itt_string_handle *buffer_free_task;
+__itt_string_handle *io_pacer_poll_task;
+__itt_domain *io_pacer_domain;
 __itt_domain *domain;
 static inline void init_itt_calls(void)
 {
@@ -67,6 +69,8 @@ static inline void init_itt_calls(void)
     domain = __itt_domain_create("NVMF transport" ); 
     buffer_get_task = __itt_string_handle_create("getting buffer");
     buffer_free_task = __itt_string_handle_create("freeing buffer");
+    io_pacer_domain = __itt_domain_create("NVMF io_pacer" ); 
+    io_pacer_poll_task = __itt_string_handle_create("poll");
 }
 
 #endif /* SPDK_CONFIG_VTUNE */
