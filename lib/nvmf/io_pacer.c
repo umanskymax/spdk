@@ -167,11 +167,12 @@ spdk_io_pacer_create(uint32_t period_ns,
 		return NULL;
 	}
 
-	SPDK_NOTICELOG("Created IO pacer %p: period_ns %u, period_ticks %lu, max_queues %u\n",
+	SPDK_NOTICELOG("Created IO pacer %p: period_ns %u, period_ticks %lu, max_queues %u, core %u\n",
 		       pacer,
 		       period_ns,
 		       pacer->period_ticks,
-		       pacer->max_queues);
+		       pacer->max_queues,
+		       spdk_env_get_current_core());
 
 	return pacer;
 }
@@ -378,6 +379,102 @@ spdk_io_pacer_tuner_create(struct spdk_io_pacer *pacer,
 
 void
 spdk_io_pacer_tuner_destroy(struct spdk_io_pacer_tuner *tuner)
+{
+	assert(tuner != NULL);
+
+	spdk_poller_unregister(&tuner->poller);
+	free(tuner);
+	SPDK_NOTICELOG("Destroyed IO pacer tuner %p\n", tuner);
+}
+
+struct spdk_io_pacer_tuner2 {
+	struct spdk_io_pacer *pacer;
+	uint64_t period_ns;
+	uint32_t *value;
+	uint32_t min_threshold;
+	uint64_t factor;
+	uint64_t min_pacer_period_ticks;
+	uint64_t max_pacer_period_ticks;
+	struct spdk_poller *poller;
+};
+
+static int
+io_pacer_tune2(void *arg)
+{
+	struct spdk_io_pacer_tuner2 *tuner = arg;
+	struct spdk_io_pacer *pacer = tuner->pacer;
+	uint32_t v = *tuner->value;
+
+	uint64_t new_period_ticks = (v <= tuner->min_threshold) ?
+		tuner->min_pacer_period_ticks :
+		(v - tuner->min_threshold) * tuner->factor + tuner->min_pacer_period_ticks;
+	new_period_ticks = spdk_min(new_period_ticks, tuner->max_pacer_period_ticks);
+
+	static __thread uint32_t log_counter = 0;
+	/* Try to log once per second */
+	if (log_counter % (SPDK_SEC_TO_NSEC / tuner->period_ns) == 0) {
+		SPDK_NOTICELOG("IO pacer tuner %p: pacer %p, value %u, new period %lu ticks, min %lu\n",
+			       tuner,
+			       pacer,
+			       v,
+			       new_period_ticks,
+			       tuner->min_pacer_period_ticks);
+	}
+	log_counter++;
+
+	pacer->period_ticks = new_period_ticks;
+
+	return 1;
+}
+
+struct spdk_io_pacer_tuner2 *
+spdk_io_pacer_tuner2_create(struct spdk_io_pacer *pacer,
+			    uint32_t period_us,
+			    uint32_t *value,
+			    uint32_t min_threshold,
+			    uint64_t factor)
+{
+	struct spdk_io_pacer_tuner2 *tuner;
+
+	assert(pacer != NULL);
+	assert(value != NULL);
+
+	tuner = (struct spdk_io_pacer_tuner2 *)calloc(1, sizeof(struct spdk_io_pacer_tuner2));
+	if (!tuner) {
+		SPDK_ERRLOG("Failed to allocate IO pacer tuner\n");
+		return NULL;
+	}
+
+	tuner->pacer = pacer;
+	tuner->period_ns = 1000ULL * period_us;
+	tuner->value = value;
+	tuner->min_threshold = min_threshold;
+	tuner->factor = factor;
+	tuner->min_pacer_period_ticks = pacer->period_ticks;
+	tuner->max_pacer_period_ticks = 4 * tuner->min_pacer_period_ticks;
+
+	if (0 != period_us) {
+		tuner->poller = SPDK_POLLER_REGISTER(io_pacer_tune2, (void *)tuner, period_us);
+		if (!tuner->poller) {
+			SPDK_ERRLOG("Failed to create tuner poller for IO pacer\n");
+			spdk_io_pacer_tuner2_destroy(tuner);
+			return NULL;
+		}
+	}
+
+	SPDK_NOTICELOG("Created IO pacer tuner %p: pacer %p, period_ns %lu, val_ptr %p, threshold %u, factor %lu\n",
+		       tuner,
+		       pacer,
+		       tuner->period_ns,
+		       tuner->value,
+		       tuner->min_threshold,
+		       tuner->factor);
+
+	return tuner;
+}
+
+void
+spdk_io_pacer_tuner2_destroy(struct spdk_io_pacer_tuner2 *tuner)
 {
 	assert(tuner != NULL);
 

@@ -36,6 +36,8 @@
 #include "spdk/nvmf.h"
 
 struct spdk_io_pacer;
+struct spdk_io_pacer_tuner;
+struct spdk_io_pacer_tuner2;
 typedef void (*spdk_io_pacer_pop_cb)(void *io);
 struct io_pacer_queue_entry {
 	uint64_t size;
@@ -57,5 +59,11 @@ struct spdk_io_pacer_tuner *spdk_io_pacer_tuner_create(struct spdk_io_pacer *pac
 						       uint32_t tuner_period_us,
 						       uint32_t tuner_step_ns);
 void spdk_io_pacer_tuner_destroy(struct spdk_io_pacer_tuner *tuner);
+struct spdk_io_pacer_tuner2 *spdk_io_pacer_tuner2_create(struct spdk_io_pacer *pacer,
+							 uint32_t period_us,
+							 uint32_t *value,
+							 uint32_t min_threshold,
+							 uint64_t factor);
+void spdk_io_pacer_tuner2_destroy(struct spdk_io_pacer_tuner2 *tuner);
 
 #endif /* IO_PACER_H */
