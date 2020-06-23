@@ -59,14 +59,18 @@
 int __itt_init_ittlib(const char *, __itt_group_id);
 __itt_string_handle *buffer_get_task;
 __itt_string_handle *buffer_free_task;
+__itt_string_handle *io_pacer_poll_task;
+__itt_domain *io_pacer_domain;
 __itt_domain *domain;
 static inline void init_itt_calls(void)
 {
     __itt_init_ittlib(NULL, 0);
-    
-    domain = __itt_domain_create("NVMF transport" ); 
+
+    domain = __itt_domain_create("NVMF transport" );
     buffer_get_task = __itt_string_handle_create("getting buffer");
     buffer_free_task = __itt_string_handle_create("freeing buffer");
+    io_pacer_domain = __itt_domain_create("NVMF io_pacer" );
+    io_pacer_poll_task = __itt_string_handle_create("poll");
 }
 
 #endif /* SPDK_CONFIG_VTUNE */
@@ -483,8 +487,8 @@ spdk_nvmf_request_free_buffers(struct spdk_nvmf_request *req,
 			       struct spdk_nvmf_transport *transport)
 {
 	uint32_t i;
-	unsigned long long cnt_val = 0;
 #ifdef SPDK_CONFIG_VTUNE
+	unsigned long long cnt_val = 0;
 	 __itt_task_begin(domain, __itt_null, __itt_null, buffer_free_task);
 #endif /*SPDK_CONFIG_VTUNE*/	
 	for (i = 0; i < req->iovcnt; i++) {
@@ -535,13 +539,13 @@ nvmf_request_get_buffers(struct spdk_nvmf_request *req,
 	uint32_t num_buffers;
 	uint32_t i = 0, j;
 	void *buffer, *buffers[NVMF_REQ_MAX_BUFFERS];
-	unsigned long long cnt_val = 0;
 
 	/* If the number of buffers is too large, then we know the I/O is larger than allowed.
 	 *  Fail it.
 	 */
 
 #ifdef SPDK_CONFIG_VTUNE
+	unsigned long long cnt_val = 0;
 	 __itt_task_begin(domain, __itt_null, __itt_null, buffer_get_task);
 #endif /* SPDK_CONFIG_VTUNE */
     

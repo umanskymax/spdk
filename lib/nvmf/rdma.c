@@ -2394,12 +2394,11 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 				rqpair->poller->stat.request_latency_large += tsc - rdma_req->receive_tsc;
 			}
 
+			nvmf_rdma_request_free(rdma_req, rtransport);
 			if (rdma_req->pacer_key != 0xDEADBEEF) {
 				spdk_io_pacer_drive_stats_sub(&drives_stats, rdma_req->pacer_key, 1);
 				rdma_req->pacer_key = 0xDEADBEEF;
 			}
-
-			nvmf_rdma_request_free(rdma_req, rtransport);
 			break;
 		case RDMA_REQUEST_NUM_STATES:
 		default:

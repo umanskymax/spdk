@@ -30,6 +30,7 @@
  *   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "spdk/config.h"
 #include "io_pacer.h"
 #include "spdk/stdinc.h"
 #include "spdk/thread.h"
@@ -38,6 +39,13 @@
 #include "spdk_internal/log.h"
 
 #define IO_PACER_DEFAULT_MAX_QUEUES 32
+
+#ifdef SPDK_CONFIG_VTUNE
+#include <ittnotify.h>
+extern __itt_string_handle *io_pacer_poll_task;
+extern __itt_domain *io_pacer_domain;
+#endif /* SPDK_CONFIG_VTUNE */
+
 
 #define MAX_DRIVES_STATS 256
 static rte_spinlock_t drives_stats_create_lock = RTE_SPINLOCK_INITIALIZER;
@@ -111,6 +119,13 @@ io_pacer_poll(void *arg)
 
 	uint32_t attempts_cnt = 0;
 
+#ifdef SPDK_CONFIG_VTUNE
+	static __thread uint64_t poll_cnt;
+	poll_cnt++;
+	if (poll_cnt % 100 == 0)
+		__itt_task_begin(io_pacer_domain, __itt_null, __itt_null, io_pacer_poll_task);
+#endif /* SPDK_CONFIG_VTUNE */
+
 	pacer->stat.calls++;
 	if (ticks_diff < pacer->period_ticks) {
 		return 0;
@@ -154,6 +169,11 @@ io_pacer_poll(void *arg)
 			attempts_cnt = 0;
 		}
 	}
+
+#ifdef  SPDK_CONFIG_VTUNE
+	if (poll_cnt % 100 == 0)
+		__itt_task_end(io_pacer_domain);
+#endif /* SPDK_CONFIG_VTUNE */
 
 	return rc;
 }
