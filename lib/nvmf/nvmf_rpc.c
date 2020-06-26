@@ -1900,6 +1900,14 @@ write_nvmf_transport_stats(struct spdk_json_write_ctx *w,
 						     stat->rdma.devices[i].requests);
 			spdk_json_write_named_uint64(w, "request_latency",
 						     stat->rdma.devices[i].request_latency);
+			spdk_json_write_named_uint64(w, "requests_small",
+						     stat->rdma.devices[i].requests_small);
+			spdk_json_write_named_uint64(w, "request_latency_small",
+						     stat->rdma.devices[i].request_latency_small);
+			spdk_json_write_named_uint64(w, "requests_large",
+						     stat->rdma.devices[i].requests_large);
+			spdk_json_write_named_uint64(w, "request_latency_large",
+						     stat->rdma.devices[i].request_latency_large);
 			spdk_json_write_named_uint64(w, "pending_free_request",
 						     stat->rdma.devices[i].pending_free_request);
 			spdk_json_write_named_uint64(w, "pending_rdma_read",

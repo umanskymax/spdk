@@ -432,6 +432,10 @@ struct spdk_nvmf_rdma_poller_stat {
 	uint64_t				polls;
 	uint64_t				requests;
 	uint64_t				request_latency;
+	uint64_t				requests_small;
+	uint64_t				request_latency_small;
+	uint64_t				requests_large;
+	uint64_t				request_latency_large;
 	uint64_t				pending_free_request;
 	uint64_t				pending_rdma_read;
 	uint64_t				pending_rdma_write;
@@ -2073,7 +2077,6 @@ nvmf_rdma_io_pacer_pop_cb(void *io)
 	STAILQ_INSERT_TAIL(&rqpair->poller->group->group.pending_buf_queue,
 			   &rdma_req->req,
 			   buf_link);
-	rdma_req->receive_tsc = spdk_get_ticks();
 	spdk_nvmf_rdma_request_process(rtransport, rdma_req);
 }
 
@@ -2377,7 +2380,17 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			spdk_trace_record(TRACE_RDMA_REQUEST_STATE_COMPLETED, 0, 0,
 					  (uintptr_t)rdma_req, (uintptr_t)rqpair->cm_id);
 
-			rqpair->poller->stat.request_latency += spdk_get_ticks() - rdma_req->receive_tsc;
+			const uint64_t tsc = spdk_get_ticks();
+			rqpair->poller->stat.requests++;
+			rqpair->poller->stat.request_latency += tsc - rdma_req->receive_tsc;
+			if (rdma_req->req.length <= 16384) {
+				rqpair->poller->stat.requests_small++;
+				rqpair->poller->stat.request_latency_small += tsc - rdma_req->receive_tsc;
+			} else {
+				rqpair->poller->stat.requests_large++;
+				rqpair->poller->stat.request_latency_large += tsc - rdma_req->receive_tsc;
+			}
+
 			nvmf_rdma_request_free(rdma_req, rtransport);
 			break;
 		case RDMA_REQUEST_NUM_STATES:
@@ -4103,7 +4116,6 @@ spdk_nvmf_rdma_poller_poll(struct spdk_nvmf_rdma_transport *rtransport,
 			rdma_recv->wr.next = NULL;
 			rqpair->current_recv_depth++;
 			rdma_recv->receive_tsc = poll_tsc;
-			rpoller->stat.requests++;
 			STAILQ_INSERT_TAIL(&rqpair->resources->incoming_queue, rdma_recv, link);
 			break;
 #ifndef SEND_CQ
@@ -4466,6 +4478,10 @@ spdk_nvmf_rdma_poll_group_get_stat(struct spdk_nvmf_tgt *tgt,
 				device_stat->completions = rpoller->stat.completions;
 				device_stat->requests = rpoller->stat.requests;
 				device_stat->request_latency = rpoller->stat.request_latency;
+				device_stat->requests_small = rpoller->stat.requests_small;
+				device_stat->request_latency_small = rpoller->stat.request_latency_small;
+				device_stat->requests_large = rpoller->stat.requests_large;
+				device_stat->request_latency_large = rpoller->stat.request_latency_large;
 				device_stat->pending_free_request = rpoller->stat.pending_free_request;
 				device_stat->pending_rdma_read = rpoller->stat.pending_rdma_read;
 				device_stat->pending_rdma_write = rpoller->stat.pending_rdma_write;
