@@ -67,14 +67,27 @@ for pg in $(seq 0 $((PG_COUNT-1))); do
 	COMPS=$(jq_diff .poll_groups[$pg].transports[].devices[$dev].completions $OUT_PATH/nvmf_stats.log)
 	REQS=$(jq_diff .poll_groups[$pg].transports[].devices[$dev].requests $OUT_PATH/nvmf_stats.log)
 	REQ_LAT=$(jq_diff .poll_groups[$pg].transports[].devices[$dev].request_latency $OUT_PATH/nvmf_stats.log)
+	REQS_SMALL=$(jq_diff .poll_groups[$pg].transports[].devices[$dev].requests_small $OUT_PATH/nvmf_stats.log)
+	REQ_LAT_SMALL=$(jq_diff .poll_groups[$pg].transports[].devices[$dev].request_latency_small $OUT_PATH/nvmf_stats.log)
+	REQS_LARGE=$(jq_diff .poll_groups[$pg].transports[].devices[$dev].requests_large $OUT_PATH/nvmf_stats.log)
+	REQ_LAT_LARGE=$(jq_diff .poll_groups[$pg].transports[].devices[$dev].request_latency_large $OUT_PATH/nvmf_stats.log)
 
-	echo "    Polls, comps, reqs: $POLLS, $COMPS, $REQS"
+	echo "    Polls, comps, reqs, reqs_small, reqs_large: $POLLS, $COMPS, $REQS, $REQS_SMALL, $REQS_LARGE"
 	echo "    Comps/poll: $(m $COMPS/$POLLS)"
 	echo "    Req lat, us: $(m 10^6*$REQ_LAT/$REQS/$TICK_RATE)"
+	echo "    Req lat small, us: $(m 10^6*$REQ_LAT_SMALL/$REQS_SMALL/$TICK_RATE)"
+	echo "    Req lat large, us: $(m 10^6*$REQ_LAT_LARGE/$REQS_LARGE/$TICK_RATE)"
 
 	REQS=$(jq .poll_groups[$pg].transports[].devices[$dev].requests $OUT_PATH/nvmf_stats_final.log)
 	REQ_LAT=$(jq .poll_groups[$pg].transports[].devices[$dev].request_latency $OUT_PATH/nvmf_stats_final.log)
+	REQS_SMALL=$(jq .poll_groups[$pg].transports[].devices[$dev].requests_small $OUT_PATH/nvmf_stats_final.log)
+	REQ_LAT_SMALL=$(jq .poll_groups[$pg].transports[].devices[$dev].request_latency_small $OUT_PATH/nvmf_stats_final.log)
+	REQS_LARGE=$(jq .poll_groups[$pg].transports[].devices[$dev].requests_large $OUT_PATH/nvmf_stats_final.log)
+	REQ_LAT_LARGE=$(jq .poll_groups[$pg].transports[].devices[$dev].request_latency_large $OUT_PATH/nvmf_stats_final.log)
 	echo "    Req lat (total), us: $(m 10^6*$REQ_LAT/$REQS/$TICK_RATE)"
+	echo "    Req lat small(total), us: $(m 10^6*$REQ_LAT_SMALL/$REQS_SMALL/$TICK_RATE)"
+	echo "    Req lat large(total), us: $(m 10^6*$REQ_LAT_LARGE/$REQS_LARGE/$TICK_RATE)"
+
 	REQ_STATES1=$(jq -c .poll_groups[$pg].transports[].devices[$dev].req_state_count $OUT_PATH/nvmf_stats.log | head -1)
 	REQ_STATES2=$(jq -c .poll_groups[$pg].transports[].devices[$dev].req_state_count $OUT_PATH/nvmf_stats.log | head -2 | tail -1)
 	REQ_STATES3=$(jq -c .poll_groups[$pg].transports[].devices[$dev].req_state_count $OUT_PATH/nvmf_stats.log | tail -1)
