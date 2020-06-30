@@ -122,7 +122,9 @@ struct nvme_tcp_req {
 	struct {
 		uint8_t				send_ack : 1;
 		uint8_t				data_recv : 1;
-		uint8_t				reserved : 6;
+		uint8_t				h2c_transfer: 1;
+		uint8_t				h2c_send_ack : 1;
+		uint8_t				reserved : 4;
 	} ordering;
 	struct nvme_tcp_pdu			*send_pdu;
 	struct iovec				iov[NVME_TCP_MAX_SGL_DESCRIPTORS];
@@ -174,6 +176,8 @@ nvme_tcp_req_get(struct nvme_tcp_qpair *tqpair)
 	tcp_req->iovcnt = 0;
 	tcp_req->ordering.send_ack = 0;
 	tcp_req->ordering.data_recv = 0;
+	tcp_req->ordering.h2c_send_ack = 0;
+	tcp_req->ordering.h2c_transfer = 0;
 	memset(tcp_req->send_pdu, 0, sizeof(struct nvme_tcp_pdu));
 	TAILQ_INSERT_TAIL(&tqpair->outstanding_reqs, tcp_req, link);
 
@@ -504,11 +508,17 @@ nvme_tcp_req_init(struct nvme_tcp_qpair *tqpair, struct nvme_request *req,
 static inline void
 nvme_tcp_req_put_safe(struct nvme_tcp_req *tcp_req)
 {
-	if (tcp_req->ordering.send_ack && tcp_req->ordering.data_recv) {
-		assert(tcp_req->state == NVME_TCP_REQ_ACTIVE);
-		assert(tcp_req->tqpair != NULL);
-		nvme_tcp_req_put(tcp_req->tqpair, tcp_req);
+	if (!(tcp_req->ordering.send_ack && tcp_req->ordering.data_recv)) {
+		return;
 	}
+
+	if (tcp_req->ordering.h2c_transfer && !tcp_req->ordering.h2c_send_ack) {
+		return;
+	}
+
+	assert(tcp_req->state == NVME_TCP_REQ_ACTIVE);
+	assert(tcp_req->tqpair != NULL);
+	nvme_tcp_req_put(tcp_req->tqpair, tcp_req);
 }
 
 static void
@@ -1122,13 +1132,13 @@ nvme_tcp_qpair_h2c_data_send_complete(void *cb_arg)
 
 	assert(tcp_req != NULL);
 
-	tcp_req->ordering.send_ack = 1;
 	if (tcp_req->r2tl_remain) {
 		nvme_tcp_send_h2c_data(tcp_req);
 	} else {
 		assert(tcp_req->active_r2ts > 0);
 		tcp_req->active_r2ts--;
 		tcp_req->state = NVME_TCP_REQ_ACTIVE;
+		tcp_req->ordering.h2c_send_ack = 1;
 		/* Need also call this function to free the resource */
 		nvme_tcp_req_put_safe(tcp_req);
 	}
@@ -1142,8 +1152,6 @@ nvme_tcp_send_h2c_data(struct nvme_tcp_req *tcp_req)
 	struct spdk_nvme_tcp_h2c_data_hdr *h2c_data;
 	uint32_t plen, pdo, alignment;
 
-	/* Reinit the send_ack */
-	tcp_req->ordering.send_ack = 0;
 	rsp_pdu = tcp_req->send_pdu;
 	memset(rsp_pdu, 0, sizeof(*rsp_pdu));
 	h2c_data = &rsp_pdu->hdr.h2c_data;
@@ -1245,6 +1253,8 @@ nvme_tcp_r2t_hdr_handle(struct nvme_tcp_qpair *tqpair, struct nvme_tcp_pdu *pdu)
 	tcp_req->ttag = r2t->ttag;
 	tcp_req->r2tl_remain = r2t->r2tl;
 	nvme_tcp_qpair_set_recv_state(tqpair, NVME_TCP_PDU_RECV_STATE_AWAIT_PDU_READY);
+
+	tcp_req->ordering.h2c_transfer = 1;
 
 	nvme_tcp_send_h2c_data(tcp_req);
 	return;
