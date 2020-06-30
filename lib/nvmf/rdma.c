@@ -2190,7 +2190,6 @@ spdk_nvmf_rdma_request_process(struct spdk_nvmf_rdma_transport *rtransport,
 			spdk_io_pacer_push(rgroup->pacer,
 					   rdma_req->pacer_key,
 					   &rdma_req->pacer_entry);
-			spdk_io_pacer_drive_stats_add(&drives_stats, rdma_req->pacer_key, 1);
 			break;
 
 		case RDMA_REQUEST_STATE_NEED_BUFFER:
