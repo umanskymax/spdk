@@ -151,7 +151,7 @@ io_pacer_poll(void *arg)
 		}
 
 		if (pacer->disk_credit) {
-			ops_in_flight = rte_atomic32_read(&pacer->queues[next_queue].stats->ops_in_flight);
+			ops_in_flight = pacer->queues[next_queue].stats->ops_in_flight;
 			if (ops_in_flight > pacer->disk_credit) {
 				/*SPDK_NOTICELOG("key: %" PRIx64 " ops_in_flight: %" PRIu32 "\n", 
 						pacer->queues[next_queue].key,
@@ -167,7 +167,7 @@ io_pacer_poll(void *arg)
 	STAILQ_REMOVE_HEAD(&pacer->queues[next_queue - 1].queue, link);
 	pacer->num_ios--;
 	pacer->next_queue = next_queue;
-	rte_atomic32_add(&pacer->queues[next_queue - 1].stats->ops_in_flight, 1);
+	pacer->queues[next_queue - 1].stats->ops_in_flight += 1;
 	pacer->pop_cb(entry);
 	pacer->stat.ios++;
 #ifdef  SPDK_CONFIG_VTUNE

@@ -33,6 +33,7 @@
 #define IO_PACER_H
 
 #include <stdint.h>
+#include <stdatomic.h>
 #include <rte_config.h>
 #include <rte_hash.h>
 #include <rte_spinlock.h>
@@ -53,7 +54,8 @@ struct spdk_io_pacer_drives_stats {
 extern struct spdk_io_pacer_drives_stats drives_stats;
 	
 struct drive_stats {
-	rte_atomic32_t ops_in_flight;
+	_Atomic int32_t ops_in_flight;
+//	rte_atomic32_t ops_in_flight;
 };
 
 
@@ -95,7 +97,8 @@ static inline struct drive_stats* spdk_io_pacer_drive_stats_create(struct spdk_i
 
 	drive_stats_lock(stats);
 	data = calloc(1, sizeof(struct drive_stats));
-	rte_atomic32_init(&data->ops_in_flight);
+	data->ops_in_flight = ATOMIC_VAR_INIT (0);
+	//rte_atomic32_init(&data->ops_in_flight);
 	ret = rte_hash_add_key_data(h, (void *) &key, data);
 	if (ret < 0) {
 		SPDK_ERRLOG("Can't add key to drive statistics dict: %" PRIx64 "\n", key);
@@ -128,13 +131,15 @@ static inline struct drive_stats * spdk_io_pacer_drive_stats_get(struct spdk_io_
 static inline void spdk_io_pacer_drive_stats_add(struct spdk_io_pacer_drives_stats *stats, uint64_t key, uint32_t val)
 {
 	struct drive_stats *drive_stats = spdk_io_pacer_drive_stats_get(stats, key);
-	rte_atomic32_add(&drive_stats->ops_in_flight, val);
+	drive_stats->ops_in_flight += val;
+	//rte_atomic32_add(&drive_stats->ops_in_flight, val);
 }
 
 static inline void spdk_io_pacer_drive_stats_sub(struct spdk_io_pacer_drives_stats *stats, uint64_t key, uint32_t val)
 {
 	struct drive_stats *drive_stats = spdk_io_pacer_drive_stats_get(stats, key);
-	rte_atomic32_sub(&drive_stats->ops_in_flight, val);
+	drive_stats->ops_in_flight -= val;
+	//rte_atomic32_sub(&drive_stats->ops_in_flight, val);
 }
 void spdk_io_pacer_drive_stats_setup(struct spdk_io_pacer_drives_stats *stats, int32_t entries);
 
